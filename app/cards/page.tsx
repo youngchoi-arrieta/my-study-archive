@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
 type Card = {
   id: string
@@ -9,20 +11,33 @@ type Card = {
   category: string
   tags: string[]
   source: string
+  status: string
+  review_count: number
   created_at: string
 }
 
-export default function CardList() {
+const STATUS_COLORS: Record<string, string> = {
+  '미숙지': 'bg-red-700',
+  '숙지중': 'bg-yellow-600',
+  '완전숙지': 'bg-green-600',
+  '오답노트': 'bg-red-600',
+  '완료': 'bg-blue-600',
+}
+
+function CardListInner() {
+  const searchParams = useSearchParams()
+  const statusFilter = searchParams.get('status') || ''
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedTag, setSelectedTag] = useState('')
+  const [selectedStatus, setSelectedStatus] = useState(statusFilter)
 
   useEffect(() => {
     const fetchCards = async () => {
       const { data } = await supabase
         .from('cards')
-        .select('id, title, category, tags, source, created_at')
+        .select('id, title, category, tags, source, status, review_count, created_at')
         .order('created_at', { ascending: false })
       setCards(data || [])
       setLoading(false)
@@ -31,6 +46,7 @@ export default function CardList() {
   }, [])
 
   const allTags = Array.from(new Set(cards.flatMap(c => c.tags || [])))
+  const allStatuses = ['미숙지', '숙지중', '완전숙지', '오답노트', '완료']
 
   const filtered = cards.filter(card => {
     const matchSearch = search === '' ||
@@ -39,14 +55,19 @@ export default function CardList() {
       card.source?.toLowerCase().includes(search.toLowerCase()) ||
       card.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()))
     const matchTag = selectedTag === '' || card.tags?.includes(selectedTag)
-    return matchSearch && matchTag
+    const matchStatus = selectedStatus === '' || card.status === selectedStatus
+    return matchSearch && matchTag && matchStatus
   })
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-4xl mx-auto">
+
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">📚 카드 목록</h1>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
+            <h1 className="text-3xl font-bold">📚 카드 목록</h1>
+          </div>
           <Link href="/cards/new" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg transition">
             + 새 카드
           </Link>
@@ -59,13 +80,32 @@ export default function CardList() {
           onChange={e => setSearch(e.target.value)}
         />
 
+        {/* 상태 필터 */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button onClick={() => setSelectedStatus('')}
+            className={`px-3 py-1 rounded-full text-sm transition ${
+              selectedStatus === '' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+            }`}>
+            전체
+          </button>
+          {allStatuses.map(s => (
+            <button key={s} onClick={() => setSelectedStatus(selectedStatus === s ? '' : s)}
+              className={`px-3 py-1 rounded-full text-sm transition ${
+                selectedStatus === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'
+              }`}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* 태그 필터 */}
         {allTags.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-6">
             <button onClick={() => setSelectedTag('')}
               className={`px-3 py-1 rounded-full text-sm transition ${
-                selectedTag === '' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                selectedTag === '' ? 'bg-gray-500' : 'bg-gray-700 hover:bg-gray-600'
               }`}>
-              전체
+              # 전체태그
             </button>
             {allTags.map(tag => (
               <button key={tag} onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
@@ -85,12 +125,7 @@ export default function CardList() {
         {!loading && filtered.length === 0 && (
           <div className="text-center py-20 text-gray-500">
             <p className="text-5xl mb-4">📭</p>
-            <p>{search || selectedTag ? '검색 결과가 없어요' : '아직 저장된 카드가 없어요'}</p>
-            {!search && !selectedTag && (
-              <Link href="/cards/new" className="text-blue-400 hover:underline mt-2 inline-block">
-                첫 카드 추가하기 →
-              </Link>
-            )}
+            <p>{search || selectedTag || selectedStatus ? '검색 결과가 없어요' : '아직 저장된 카드가 없어요'}</p>
           </div>
         )}
 
@@ -100,9 +135,19 @@ export default function CardList() {
               className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-5 transition">
               <div className="flex justify-between items-start">
                 <h2 className="text-lg font-semibold">{card.title}</h2>
-                <span className="text-xs text-gray-500 ml-4 shrink-0">
-                  {new Date(card.created_at).toLocaleDateString('ko-KR')}
-                </span>
+                <div className="flex items-center gap-2 ml-4 shrink-0">
+                  {card.status && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLORS[card.status] || 'bg-gray-600'}`}>
+                      {card.status}
+                    </span>
+                  )}
+                  {card.review_count > 0 && (
+                    <span className="text-xs text-gray-500">{card.review_count}회독</span>
+                  )}
+                  <span className="text-xs text-gray-500">
+                    {new Date(card.created_at).toLocaleDateString('ko-KR')}
+                  </span>
+                </div>
               </div>
               {card.category && <p className="text-blue-400 text-sm mt-1">{card.category}</p>}
               {card.tags?.length > 0 && (
@@ -116,11 +161,18 @@ export default function CardList() {
                   ))}
                 </div>
               )}
-              {card.source && <p className="text-gray-500 text-xs mt-2">{card.source}</p>}
             </Link>
           ))}
         </div>
       </div>
     </main>
+  )
+}
+
+export default function CardList() {
+  return (
+    <Suspense>
+      <CardListInner />
+    </Suspense>
   )
 }

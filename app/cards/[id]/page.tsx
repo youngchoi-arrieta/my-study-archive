@@ -24,10 +24,22 @@ type Card = {
   keywords: string[]
   flow_steps: FlowStep[]
   image_urls: string[]
+  status: string
+  review_count: number
+  last_reviewed: string
+  my_note: string
   created_at: string
 }
 
 type Mode = 'full' | 'cloze' | 'keyword' | 'flow'
+
+const STATUS_COLORS: Record<string, string> = {
+  '미숙지': 'bg-red-700',
+  '숙지중': 'bg-yellow-600',
+  '완전숙지': 'bg-green-600',
+  '오답노트': 'bg-red-600',
+  '완료': 'bg-blue-600',
+}
 
 export default function CardDetail() {
   const { id } = useParams()
@@ -41,11 +53,14 @@ export default function CardDetail() {
     full_solution: '', cloze_text: '', keywords: '', flow_steps: '[]'
   })
   const [revealedSteps, setRevealedSteps] = useState<Set<number>>(new Set())
+  const [myNote, setMyNote] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
 
   useEffect(() => {
     const fetchCard = async () => {
       const { data } = await supabase.from('cards').select('*').eq('id', id).single()
       setCard(data)
+      setMyNote(data?.my_note || '')
       if (data) setForm({
         title: data.title || '',
         category: data.category || '',
@@ -60,10 +75,33 @@ export default function CardDetail() {
     fetchCard()
   }, [id])
 
+  const handleStatusChange = async (status: string) => {
+    const newCount = status === '미숙지' ? 0 : (card?.review_count || 0) + 1
+    const { data } = await supabase.from('cards').update({
+      status,
+      review_count: newCount,
+      last_reviewed: new Date().toISOString(),
+    }).eq('id', id).select().single()
+    if (data) setCard(data)
+  }
+
+  const handleCategoryChange = async (status: string) => {
+    const newStatus = card?.status === status ? '미숙지' : status
+    const { data } = await supabase.from('cards').update({
+      status: newStatus,
+    }).eq('id', id).select().single()
+    if (data) setCard(data)
+  }
+
+  const handleSaveNote = async () => {
+    setSavingNote(true)
+    await supabase.from('cards').update({ my_note: myNote }).eq('id', id)
+    setSavingNote(false)
+  }
+
   const handleSave = async () => {
     let parsedFlow = []
     try { parsedFlow = JSON.parse(form.flow_steps) } catch { parsedFlow = [] }
-
     const { error } = await supabase.from('cards').update({
       title: form.title,
       category: form.category,
@@ -74,7 +112,6 @@ export default function CardDetail() {
       keywords: form.keywords.split(',').map(k => k.trim()).filter(Boolean),
       flow_steps: parsedFlow,
     }).eq('id', id)
-
     if (!error) {
       const { data } = await supabase.from('cards').select('*').eq('id', id).single()
       setCard(data)
@@ -88,24 +125,6 @@ export default function CardDetail() {
     router.push('/cards')
   }
 
-  const renderLatex = (text: string) => {
-    if (!text) return ''
-    const parts = text.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g)
-    return parts.map(part => {
-      if (part.startsWith('$$') && part.endsWith('$$')) {
-        const math = part.slice(2, -2)
-        try { return katex.renderToString(math, { displayMode: true }) }
-        catch { return part }
-      }
-      if (part.startsWith('$') && part.endsWith('$')) {
-        const math = part.slice(1, -1)
-        try { return katex.renderToString(math, { displayMode: false }) }
-        catch { return part }
-      }
-      return part
-    }).join('')
-  }
-
   const renderContent = (html: string) => {
     if (!html) return ''
     return html.replace(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g, match => {
@@ -115,26 +134,19 @@ export default function CardDetail() {
       catch { return match }
     })
   }
-  
-const renderCloze = () => {
+
+  const renderCloze = () => {
     if (!card?.cloze_text) return <p className="text-gray-400">Cloze 텍스트가 없습니다.</p>
-    
-    // 이미지 태그 추출
     const imgTags = Array.from(card.cloze_text.matchAll(/<img[^>]+>/g)).map(m => m[0])
-    
-    // 텍스트만 추출해서 빈칸 처리
     const stripped = card.cloze_text.replace(/<img[^>]+>/g, '').replace(/<[^>]+>/g, '')
     const parts = stripped.split(/(\{\{.*?\}\})/g)
     let idx = 0
-
     return (
       <div>
-        {/* 이미지 먼저 표시 */}
         {imgTags.length > 0 && (
           <div className="flex flex-wrap gap-3 mb-4"
             dangerouslySetInnerHTML={{ __html: imgTags.join('') }} />
         )}
-        {/* 빈칸 텍스트 */}
         <p className="text-lg leading-relaxed">
           {parts.map((part, i) => {
             const match = part.match(/^\{\{(.*?)\}\}$/)
@@ -171,7 +183,7 @@ const renderCloze = () => {
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-3xl mx-auto">
 
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex justify-between items-center mb-4">
           <Link href="/cards" className="text-gray-400 hover:text-white">← 목록</Link>
           <div className="flex gap-2">
             <button onClick={() => setEditing(!editing)}
@@ -200,25 +212,18 @@ const renderCloze = () => {
             <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
               placeholder="출처" value={form.source}
               onChange={e => setForm({...form, source: e.target.value})} />
-
             <div>
               <label className="text-sm text-gray-400 mb-1 block">📝 전체 풀이 / 증명</label>
-              <RichEditor
-                content={form.full_solution}
+              <RichEditor content={form.full_solution}
                 onChange={val => setForm({...form, full_solution: val})}
-                placeholder="전체 풀이 또는 증명 입력 (LaTeX: $$ ... $$)"
-              />
+                placeholder="전체 풀이 또는 증명 입력 (LaTeX: $$ ... $$)" />
             </div>
-
             <div>
-              <label className="text-sm text-gray-400 mb-1 block">🔲 Cloze 텍스트 (빈칸: 중괄호 두 개로 답 감싸기)</label>
-              <RichEditor
-                content={form.cloze_text}
+              <label className="text-sm text-gray-400 mb-1 block">🔲 Cloze (빈칸: 중괄호 두 개로 답 감싸기)</label>
+              <RichEditor content={form.cloze_text}
                 onChange={val => setForm({...form, cloze_text: val})}
-                placeholder="예: 테브난 등가회로의 개방전압을 Vth, 등가저항을 Rth라 한다."
-              />
+                placeholder="예: 테브난 등가회로의 개방전압을 Vth, 등가저항을 Rth라 한다." />
             </div>
-
             <div>
               <label className="text-sm text-gray-400 mb-1 block">🔑 키워드 (쉼표 구분)</label>
               <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
@@ -226,8 +231,6 @@ const renderCloze = () => {
                 value={form.keywords}
                 onChange={e => setForm({...form, keywords: e.target.value})} />
             </div>
-
-            {/* Flow 스텝 */}
             <div className="bg-gray-900 rounded-lg p-4">
               <div className="flex justify-between items-center mb-3">
                 <p className="text-sm text-gray-400">🔀 Flow 스텝</p>
@@ -242,8 +245,7 @@ const renderCloze = () => {
                 return steps.map((s, i) => (
                   <div key={i} className="mb-4 space-y-2">
                     <p className="text-xs text-gray-500">Step {i + 1}</p>
-                    <RichEditor
-                      content={s.prompt}
+                    <RichEditor content={s.prompt}
                       onChange={val => {
                         try {
                           const steps = JSON.parse(form.flow_steps)
@@ -251,10 +253,8 @@ const renderCloze = () => {
                           setForm({ ...form, flow_steps: JSON.stringify(steps, null, 2) })
                         } catch {}
                       }}
-                      placeholder="질문 / 증명할 것"
-                    />
-                    <RichEditor
-                      content={s.answer}
+                      placeholder="질문 / 증명할 것" />
+                    <RichEditor content={s.answer}
                       onChange={val => {
                         try {
                           const steps = JSON.parse(form.flow_steps)
@@ -262,13 +262,11 @@ const renderCloze = () => {
                           setForm({ ...form, flow_steps: JSON.stringify(steps, null, 2) })
                         } catch {}
                       }}
-                      placeholder="정답 / 풀이"
-                    />
+                      placeholder="정답 / 풀이" />
                   </div>
                 ))
               })()}
             </div>
-
             <button onClick={handleSave}
               className="w-full bg-blue-600 hover:bg-blue-500 rounded-lg p-3 font-semibold transition">
               💾 저장
@@ -287,6 +285,48 @@ const renderCloze = () => {
               </div>
             )}
 
+            {/* 학습 상태 */}
+            <div className="bg-gray-900 rounded-xl p-4 mb-6 space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[card.status || '미숙지'] || 'bg-gray-600'}`}>
+                  {card.status || '미숙지'}
+                </span>
+                <span className="text-gray-400 text-sm">회독 {card.review_count || 0}회</span>
+                {card.last_reviewed && (
+                  <span className="text-gray-500 text-xs">
+                    마지막: {new Date(card.last_reviewed).toLocaleDateString('ko-KR')}
+                  </span>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-2">숙지도 (회독수 변경)</p>
+                <div className="flex gap-2 flex-wrap">
+                  {['미숙지', '숙지중', '완전숙지'].map(s => (
+                    <button key={s} onClick={() => handleStatusChange(s)}
+                      className={`px-3 py-1 rounded-full text-sm transition ${
+                        card.status === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'
+                      }`}>
+                      {s === '미숙지' ? '😅 미숙지' : s === '숙지중' ? '🤔 숙지중' : '✅ 완전숙지'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-2">카테고리 (회독수 유지)</p>
+                <div className="flex gap-2 flex-wrap">
+                  {['오답노트', '완료'].map(s => (
+                    <button key={s} onClick={() => handleCategoryChange(s)}
+                      className={`px-3 py-1 rounded-full text-sm transition ${
+                        card.status === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'
+                      }`}>
+                      {s === '오답노트' ? '❌ 오답노트' : '📦 완료'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 4모드 */}
             <div className="flex gap-2 mb-6 flex-wrap">
               {(['full', 'cloze', 'keyword', 'flow'] as Mode[]).map(m => (
                 <button key={m} onClick={() => { setMode(m); setRevealed(new Set()); setRevealedSteps(new Set()) }}
@@ -298,7 +338,7 @@ const renderCloze = () => {
               ))}
             </div>
 
-            <div className="bg-gray-800 rounded-xl p-6">
+            <div className="bg-gray-800 rounded-xl p-6 mb-6">
               {mode === 'full' && (
                 <div className="leading-relaxed prose prose-invert max-w-none"
                   dangerouslySetInnerHTML={{ __html: card.full_solution
@@ -362,6 +402,21 @@ const renderCloze = () => {
                   }
                 </div>
               )}
+            </div>
+
+            {/* 나의 메모 */}
+            <div className="bg-gray-900 rounded-xl p-4">
+              <p className="text-sm text-gray-400 mb-2">📌 나의 메모 / 이해도 코멘트</p>
+              <textarea
+                className="w-full bg-gray-800 rounded-lg p-3 text-white h-24 text-sm"
+                placeholder="이해가 안 된 부분, 실수한 포인트, 관련 개념 등..."
+                value={myNote}
+                onChange={e => setMyNote(e.target.value)}
+              />
+              <button onClick={handleSaveNote} disabled={savingNote}
+                className="mt-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm transition">
+                {savingNote ? '저장 중...' : '💾 메모 저장'}
+              </button>
             </div>
           </>
         )}
