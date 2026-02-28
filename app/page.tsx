@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-2">⚡ 나의 학습 아카이브</h1>
+        <h1 className="text-4xl font-bold mb-2">⚡ Young Choi's Electrical Engineering Gym </h1>
         <p className="text-gray-400 mb-8">덴켄 · 전기기사 · 발송배전기술사 · GATE · 수학/물리</p>
         
         <div className="grid grid-cols-2 gap-4">
