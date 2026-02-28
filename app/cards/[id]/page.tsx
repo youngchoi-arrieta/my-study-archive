@@ -91,15 +91,20 @@ export default function CardDetail() {
 
   const renderLatex = (text: string) => {
     if (!text) return ''
-    return text
-      .replace(/\$\$(.*?)\$\$/gs, (_, math) => {
+    const parts = text.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g)
+    return parts.map(part => {
+      if (part.startsWith('$$') && part.endsWith('$$')) {
+        const math = part.slice(2, -2)
         try { return katex.renderToString(math, { displayMode: true }) }
-        catch { return `$$${math}$$` }
-      })
-      .replace(/\$(.*?)\$/g, (_, math) => {
+        catch { return part }
+      }
+      if (part.startsWith('$') && part.endsWith('$')) {
+        const math = part.slice(1, -1)
         try { return katex.renderToString(math, { displayMode: false }) }
-        catch { return `$${math}$` }
-      })
+        catch { return part }
+      }
+      return part
+    }).join('')
   }
 
   const renderCloze = () => {
