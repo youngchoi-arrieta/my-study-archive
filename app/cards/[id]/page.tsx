@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import RichEditor from '../../components/RichEditor'
 
 type FlowStep = {
   step: number
@@ -22,6 +23,7 @@ type Card = {
   cloze_text: string
   keywords: string[]
   flow_steps: FlowStep[]
+  image_urls: string[]
   created_at: string
 }
 
@@ -38,33 +40,30 @@ export default function CardDetail() {
     title: '', category: '', tags: '', source: '',
     full_solution: '', cloze_text: '', keywords: '', flow_steps: '[]'
   })
-  const [flowSteps, setFlowSteps] = useState<FlowStep[]>([])
   const [revealedSteps, setRevealedSteps] = useState<Set<number>>(new Set())
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchCard = async () => {
       const { data } = await supabase.from('cards').select('*').eq('id', id).single()
       setCard(data)
-      if (data) {
-        setForm({
-          title: data.title || '',
-          category: data.category || '',
-          tags: (data.tags || []).join(', '),
-          source: data.source || '',
-          full_solution: data.full_solution || '',
-          cloze_text: data.cloze_text || '',
-          keywords: (data.keywords || []).join(', '),
-          flow_steps: JSON.stringify(data.flow_steps || [], null, 2)
-        })
-        setFlowSteps(data.flow_steps || [])
-      }
+      if (data) setForm({
+        title: data.title || '',
+        category: data.category || '',
+        tags: (data.tags || []).join(', '),
+        source: data.source || '',
+        full_solution: data.full_solution || '',
+        cloze_text: data.cloze_text || '',
+        keywords: (data.keywords || []).join(', '),
+        flow_steps: JSON.stringify(data.flow_steps || [], null, 2),
+      })
     }
-    fetch()
+    fetchCard()
   }, [id])
 
   const handleSave = async () => {
     let parsedFlow = []
     try { parsedFlow = JSON.parse(form.flow_steps) } catch { parsedFlow = [] }
+
     const { error } = await supabase.from('cards').update({
       title: form.title,
       category: form.category,
@@ -75,10 +74,10 @@ export default function CardDetail() {
       keywords: form.keywords.split(',').map(k => k.trim()).filter(Boolean),
       flow_steps: parsedFlow,
     }).eq('id', id)
+
     if (!error) {
       const { data } = await supabase.from('cards').select('*').eq('id', id).single()
       setCard(data)
-      setFlowSteps(data.flow_steps || [])
       setEditing(false)
     } else alert('저장 실패: ' + error.message)
   }
@@ -107,33 +106,57 @@ export default function CardDetail() {
     }).join('')
   }
 
-  const renderCloze = () => {
+  const renderContent = (html: string) => {
+    if (!html) return ''
+    return html.replace(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g, match => {
+      const isDisplay = match.startsWith('$$')
+      const math = isDisplay ? match.slice(2, -2) : match.slice(1, -1)
+      try { return katex.renderToString(math, { displayMode: isDisplay }) }
+      catch { return match }
+    })
+  }
+  
+const renderCloze = () => {
     if (!card?.cloze_text) return <p className="text-gray-400">Cloze 텍스트가 없습니다.</p>
-    const parts = card.cloze_text.split(/(\{\{.*?\}\})/g)
+    
+    // 이미지 태그 추출
+    const imgTags = Array.from(card.cloze_text.matchAll(/<img[^>]+>/g)).map(m => m[0])
+    
+    // 텍스트만 추출해서 빈칸 처리
+    const stripped = card.cloze_text.replace(/<img[^>]+>/g, '').replace(/<[^>]+>/g, '')
+    const parts = stripped.split(/(\{\{.*?\}\})/g)
     let idx = 0
+
     return (
-      <p className="text-lg leading-relaxed">
-        {parts.map((part, i) => {
-          const match = part.match(/^\{\{(.*?)\}\}$/)
-          if (match) {
-            const answerIdx = idx++
-            const isRevealed = revealed.has(answerIdx)
-            return (
-              <button key={i} onClick={() => setRevealed(prev => new Set([...prev, answerIdx]))}
-                className={`mx-1 px-3 py-1 rounded font-bold transition ${
-                  isRevealed ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-700 hover:bg-gray-600 hover:text-gray-400'
-                }`}>
-                {isRevealed ? match[1] : '　　　'}
-              </button>
-            )
-          }
-          return <span key={i}>{part}</span>
-        })}
-      </p>
+      <div>
+        {/* 이미지 먼저 표시 */}
+        {imgTags.length > 0 && (
+          <div className="flex flex-wrap gap-3 mb-4"
+            dangerouslySetInnerHTML={{ __html: imgTags.join('') }} />
+        )}
+        {/* 빈칸 텍스트 */}
+        <p className="text-lg leading-relaxed">
+          {parts.map((part, i) => {
+            const match = part.match(/^\{\{(.*?)\}\}$/)
+            if (match) {
+              const answerIdx = idx++
+              const isRevealed = revealed.has(answerIdx)
+              return (
+                <button key={i} onClick={() => setRevealed(prev => new Set([...prev, answerIdx]))}
+                  className={`mx-1 px-3 py-1 rounded font-bold transition ${
+                    isRevealed ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-700 hover:bg-gray-600 hover:text-gray-400'
+                  }`}>
+                  {isRevealed ? match[1] : '　　　'}
+                </button>
+              )
+            }
+            return <span key={i}>{part}</span>
+          })}
+        </p>
+      </div>
     )
   }
 
-  // Flow 모드에서 스텝 추가/삭제 (수정 폼용)
   const addFlowStep = () => {
     try {
       const steps = JSON.parse(form.flow_steps)
@@ -163,7 +186,8 @@ export default function CardDetail() {
         </div>
 
         {editing ? (
-          <div className="space-y-3 mt-4">
+          <div className="space-y-4 mt-4">
+            <p className="text-xs text-gray-500">💡 각 에디터에서 Ctrl+V로 이미지 붙여넣기 가능</p>
             <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
               placeholder="제목" value={form.title}
               onChange={e => setForm({...form, title: e.target.value})} />
@@ -176,17 +200,34 @@ export default function CardDetail() {
             <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
               placeholder="출처" value={form.source}
               onChange={e => setForm({...form, source: e.target.value})} />
-            <textarea className="w-full bg-gray-800 rounded-lg p-3 text-white h-40"
-              placeholder="전체 풀이 / 증명" value={form.full_solution}
-              onChange={e => setForm({...form, full_solution: e.target.value})} />
-            <textarea className="w-full bg-gray-800 rounded-lg p-3 text-white h-24"
-              placeholder="Cloze 텍스트 (빈칸: {{답}})" value={form.cloze_text}
-              onChange={e => setForm({...form, cloze_text: e.target.value})} />
-            <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-              placeholder="키워드 (쉼표 구분)" value={form.keywords}
-              onChange={e => setForm({...form, keywords: e.target.value})} />
 
-            {/* Flow 스텝 편집 */}
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">📝 전체 풀이 / 증명</label>
+              <RichEditor
+                content={form.full_solution}
+                onChange={val => setForm({...form, full_solution: val})}
+                placeholder="전체 풀이 또는 증명 입력 (LaTeX: $$ ... $$)"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">🔲 Cloze 텍스트 (빈칸: 중괄호 두 개로 답 감싸기)</label>
+              <RichEditor
+                content={form.cloze_text}
+                onChange={val => setForm({...form, cloze_text: val})}
+                placeholder="예: 테브난 등가회로의 개방전압을 Vth, 등가저항을 Rth라 한다."
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">🔑 키워드 (쉼표 구분)</label>
+              <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
+                placeholder="예: 개방전압, 독립전원 제거, 등가저항"
+                value={form.keywords}
+                onChange={e => setForm({...form, keywords: e.target.value})} />
+            </div>
+
+            {/* Flow 스텝 */}
             <div className="bg-gray-900 rounded-lg p-4">
               <div className="flex justify-between items-center mb-3">
                 <p className="text-sm text-gray-400">🔀 Flow 스텝</p>
@@ -199,28 +240,30 @@ export default function CardDetail() {
                 let steps: FlowStep[] = []
                 try { steps = JSON.parse(form.flow_steps) } catch {}
                 return steps.map((s, i) => (
-                  <div key={i} className="mb-3 space-y-2">
+                  <div key={i} className="mb-4 space-y-2">
                     <p className="text-xs text-gray-500">Step {i + 1}</p>
-                    <input className="w-full bg-gray-800 rounded p-2 text-white text-sm"
+                    <RichEditor
+                      content={s.prompt}
+                      onChange={val => {
+                        try {
+                          const steps = JSON.parse(form.flow_steps)
+                          steps[i].prompt = val
+                          setForm({ ...form, flow_steps: JSON.stringify(steps, null, 2) })
+                        } catch {}
+                      }}
                       placeholder="질문 / 증명할 것"
-                      value={s.prompt}
-                      onChange={e => {
+                    />
+                    <RichEditor
+                      content={s.answer}
+                      onChange={val => {
                         try {
                           const steps = JSON.parse(form.flow_steps)
-                          steps[i].prompt = e.target.value
+                          steps[i].answer = val
                           setForm({ ...form, flow_steps: JSON.stringify(steps, null, 2) })
                         } catch {}
-                      }} />
-                    <input className="w-full bg-gray-800 rounded p-2 text-white text-sm"
+                      }}
                       placeholder="정답 / 풀이"
-                      value={s.answer}
-                      onChange={e => {
-                        try {
-                          const steps = JSON.parse(form.flow_steps)
-                          steps[i].answer = e.target.value
-                          setForm({ ...form, flow_steps: JSON.stringify(steps, null, 2) })
-                        } catch {}
-                      }} />
+                    />
                   </div>
                 ))
               })()}
@@ -237,7 +280,7 @@ export default function CardDetail() {
             {card.category && <p className="text-blue-400 mb-1">{card.category}</p>}
             {card.source && <p className="text-gray-500 text-sm mb-3">{card.source}</p>}
             {card.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-6">
+              <div className="flex flex-wrap gap-2 mb-4">
                 {card.tags.map(tag => (
                   <span key={tag} className="bg-gray-700 text-xs px-2 py-1 rounded-full">{tag}</span>
                 ))}
@@ -257,13 +300,12 @@ export default function CardDetail() {
 
             <div className="bg-gray-800 rounded-xl p-6">
               {mode === 'full' && (
-                <div className="leading-relaxed"
+                <div className="leading-relaxed prose prose-invert max-w-none"
                   dangerouslySetInnerHTML={{ __html: card.full_solution
-                    ? renderLatex(card.full_solution)
+                    ? renderContent(card.full_solution)
                     : '<span class="text-gray-400">전체 풀이가 없습니다.</span>'
                   }} />
               )}
-
               {mode === 'cloze' && (
                 <div>
                   {renderCloze()}
@@ -273,7 +315,6 @@ export default function CardDetail() {
                   </button>
                 </div>
               )}
-
               {mode === 'keyword' && (
                 <div>
                   <p className="text-gray-400 text-sm mb-4">키워드만 보고 전체 증명을 재구성해보세요</p>
@@ -289,22 +330,21 @@ export default function CardDetail() {
                   </div>
                 </div>
               )}
-
               {mode === 'flow' && (
                 <div>
-                  {flowSteps.length === 0
+                  {(!card.flow_steps || card.flow_steps.length === 0)
                     ? <p className="text-gray-400">Flow 스텝이 없습니다. 수정에서 추가해주세요.</p>
                     : (
                       <div className="space-y-4">
                         <p className="text-gray-400 text-sm mb-2">각 스텝을 클릭하면 정답이 나와요</p>
-                        {flowSteps.map((s, i) => (
+                        {card.flow_steps.map((s, i) => (
                           <div key={i} className="border border-gray-700 rounded-lg p-4">
                             <p className="text-sm text-gray-400 mb-1">Step {s.step}</p>
-                            <p className="font-semibold mb-3"
-                              dangerouslySetInnerHTML={{ __html: renderLatex(s.prompt) }} />
+                            <div className="font-semibold mb-3 prose prose-invert max-w-none"
+                              dangerouslySetInnerHTML={{ __html: renderContent(s.prompt) }} />
                             {revealedSteps.has(i) ? (
-                              <div className="bg-green-900 rounded-lg p-3 text-sm"
-                                dangerouslySetInnerHTML={{ __html: renderLatex(s.answer) }} />
+                              <div className="bg-green-900 rounded-lg p-3 prose prose-invert max-w-none"
+                                dangerouslySetInnerHTML={{ __html: renderContent(s.answer) }} />
                             ) : (
                               <button onClick={() => setRevealedSteps(prev => new Set([...prev, i]))}
                                 className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm transition">

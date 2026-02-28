@@ -30,10 +30,8 @@ export default function CardList() {
     fetchCards()
   }, [])
 
-  // 전체 태그 목록 추출
   const allTags = Array.from(new Set(cards.flatMap(c => c.tags || [])))
 
-  // 필터링
   const filtered = cards.filter(card => {
     const matchSearch = search === '' ||
       card.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -54,7 +52,6 @@ export default function CardList() {
           </Link>
         </div>
 
-        {/* 검색창 */}
         <input
           className="w-full bg-gray-800 rounded-lg p-3 mb-4 text-white placeholder-gray-500"
           placeholder="🔍 제목, 카테고리, 태그, 출처 검색..."
@@ -62,19 +59,16 @@ export default function CardList() {
           onChange={e => setSearch(e.target.value)}
         />
 
-        {/* 태그 필터 */}
         {allTags.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-6">
-            <button
-              onClick={() => setSelectedTag('')}
+            <button onClick={() => setSelectedTag('')}
               className={`px-3 py-1 rounded-full text-sm transition ${
                 selectedTag === '' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
               }`}>
               전체
             </button>
             {allTags.map(tag => (
-              <button key={tag}
-                onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
+              <button key={tag} onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
                 className={`px-3 py-1 rounded-full text-sm transition ${
                   selectedTag === tag ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
                 }`}>
@@ -84,10 +78,7 @@ export default function CardList() {
           </div>
         )}
 
-        {/* 결과 수 */}
-        <p className="text-gray-500 text-sm mb-4">
-          {filtered.length}개 카드
-        </p>
+        <p className="text-gray-500 text-sm mb-4">{filtered.length}개 카드</p>
 
         {loading && <p className="text-gray-400">불러오는 중...</p>}
 
@@ -113,9 +104,7 @@ export default function CardList() {
                   {new Date(card.created_at).toLocaleDateString('ko-KR')}
                 </span>
               </div>
-              {card.category && (
-                <p className="text-blue-400 text-sm mt-1">{card.category}</p>
-              )}
+              {card.category && <p className="text-blue-400 text-sm mt-1">{card.category}</p>}
               {card.tags?.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {card.tags.map(tag => (
@@ -127,9 +116,7 @@ export default function CardList() {
                   ))}
                 </div>
               )}
-              {card.source && (
-                <p className="text-gray-500 text-xs mt-2">{card.source}</p>
-              )}
+              {card.source && <p className="text-gray-500 text-xs mt-2">{card.source}</p>}
             </Link>
           ))}
         </div>
