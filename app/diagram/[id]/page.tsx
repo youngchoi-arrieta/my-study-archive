@@ -44,9 +44,33 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 function renderLatexText(html: string): React.ReactNode[] {
-  const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
-  const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g)
+  if (!html) return []
+
+  // img 태그는 보존, 나머지 HTML 태그 제거
+  // 먼저 img 태그를 플레이스홀더로 치환
+  const imgPlaceholders: string[] = []
+  const withPlaceholders = html.replace(/<img[^>]+>/g, (match) => {
+    imgPlaceholders.push(match)
+    return `%%IMG${imgPlaceholders.length - 1}%%`
+  })
+
+  // 나머지 HTML 태그 제거
+  const plain = withPlaceholders
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // LaTeX, 이미지 플레이스홀더, 일반 텍스트 파싱
+  const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
+
   return parts.map((part, i) => {
+    // 이미지 플레이스홀더
+    const imgMatch = part.match(/^%%IMG(\d+)%%$/)
+    if (imgMatch) {
+      const imgHtml = imgPlaceholders[parseInt(imgMatch[1])]
+      return <span key={i} dangerouslySetInnerHTML={{ __html: imgHtml }} className="inline-block my-2" />
+    }
     if (part.startsWith('$$') && part.endsWith('$$')) {
       const math = part.slice(2, -2).trim()
       try {
