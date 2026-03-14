@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { supabase } from '../lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Home() {
   const { data: cards } = await supabase.from('cards').select('status')
   const { data: diagrams } = await supabase.from('diagram_cards').select('status')

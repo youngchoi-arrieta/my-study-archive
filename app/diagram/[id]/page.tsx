@@ -452,8 +452,17 @@ export default function DiagramCardDetail() {
                         {renderCloze(q.question, i)}
                       </div>
                       {revealed.has(i * 100 + 1000) ? (
-                        <div className="bg-green-900 rounded-lg p-3 text-sm leading-relaxed">
-                          {renderLatexText(q.answer)}
+                        <div>
+                          <div className="bg-green-900 rounded-lg p-3 text-sm leading-relaxed mb-2">
+                            {renderLatexText(q.answer)}
+                          </div>
+                          <button onClick={() => setRevealed(prev => {
+                            const next = new Set(prev)
+                            next.delete(i * 100 + 1000)
+                            return next
+                          })} className="text-xs text-gray-400 hover:text-white underline">
+                            숨기기
+                          </button>
                         </div>
                       ) : (
                         <button onClick={() => setRevealed(prev => new Set([...prev, i * 100 + 1000]))}

@@ -87,6 +87,7 @@ export default function NewDiagramCard() {
       diagram_urls: diagramUrls,
       table_content: tableContent,
       subquestions,
+      status: '새 카드',
     })
     if (!error) router.push('/diagram')
     else { alert('저장 실패: ' + error.message); setSaving(false) }
