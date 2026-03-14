@@ -21,6 +21,7 @@ type DiagramCard = {
   source: string
   card_type: string
   diagram_url: string
+  diagram_urls: string[]
   table_content: string
   subquestions: SubQuestion[]
   status: string
@@ -42,7 +43,6 @@ const TYPE_COLORS: Record<string, string> = {
   '시퀀스회로도': 'bg-teal-700',
 }
 
-// HTML 태그 제거 후 LaTeX + 일반 텍스트 파싱
 function renderLatexText(html: string): React.ReactNode[] {
   const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
   const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g)
@@ -71,16 +71,17 @@ export default function DiagramCardDetail() {
   const [editing, setEditing] = useState(false)
   const [myNote, setMyNote] = useState('')
   const [savingNote, setSavingNote] = useState(false)
+  const [currentPage, setCurrentPage] = useState(0)
 
   const [formTitle, setFormTitle] = useState('')
   const [formCategory, setFormCategory] = useState('')
   const [formTags, setFormTags] = useState('')
   const [formSource, setFormSource] = useState('')
   const [formCardType, setFormCardType] = useState('도면해석')
-  const [formDiagramUrl, setFormDiagramUrl] = useState('')
-  const [formDiagramPreview, setFormDiagramPreview] = useState('')
+  const [formDiagramUrls, setFormDiagramUrls] = useState<string[]>([])
   const [formTableContent, setFormTableContent] = useState('')
   const [formSubquestions, setFormSubquestions] = useState<SubQuestion[]>([])
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     const fetchCard = async () => {
@@ -93,14 +94,20 @@ export default function DiagramCardDetail() {
         setFormTags((data.tags || []).join(', '))
         setFormSource(data.source || '')
         setFormCardType(data.card_type || '도면해석')
-        setFormDiagramUrl(data.diagram_url || '')
-        setFormDiagramPreview(data.diagram_url || '')
+        // diagram_urls 우선, 없으면 diagram_url로 폴백
+        const urls = data.diagram_urls?.length ? data.diagram_urls : (data.diagram_url ? [data.diagram_url] : [])
+        setFormDiagramUrls(urls)
         setFormTableContent(data.table_content || '')
         setFormSubquestions(data.subquestions || [])
       }
     }
     fetchCard()
   }, [id])
+
+  // 현재 카드의 이미지 목록
+  const imageUrls = card?.diagram_urls?.length
+    ? card.diagram_urls
+    : (card?.diagram_url ? [card.diagram_url] : [])
 
   const handleStatusChange = async (status: string) => {
     const newCount = status === '새 카드' ? 0 : (card?.review_count || 0) + 1
@@ -118,33 +125,36 @@ export default function DiagramCardDetail() {
     setSavingNote(false)
   }
 
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const ext = file.type.split('/')[1]
+    const path = `diagram-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('card-images').upload(path, file)
+    if (error) return null
+    const { data } = supabase.storage.from('card-images').getPublicUrl(path)
+    return data.publicUrl
+  }
+
   const handleDiagramPaste = async (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items)
     const imageItem = items.find(item => item.type.startsWith('image'))
     if (!imageItem) return
     const file = imageItem.getAsFile()
     if (!file) return
-    const ext = file.type.split('/')[1]
-    const path = `diagram-${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('card-images').upload(path, file)
-    if (!error) {
-      const { data } = supabase.storage.from('card-images').getPublicUrl(path)
-      setFormDiagramUrl(data.publicUrl)
-      setFormDiagramPreview(data.publicUrl)
-    }
+    setUploading(true)
+    const url = await uploadImage(file)
+    if (url) setFormDiagramUrls(prev => [...prev, url])
+    setUploading(false)
   }
 
   const handleDiagramFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const ext = file.name.split('.').pop()
-    const path = `diagram-${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('card-images').upload(path, file)
-    if (!error) {
-      const { data } = supabase.storage.from('card-images').getPublicUrl(path)
-      setFormDiagramUrl(data.publicUrl)
-      setFormDiagramPreview(data.publicUrl)
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setUploading(true)
+    for (const file of files) {
+      const url = await uploadImage(file)
+      if (url) setFormDiagramUrls(prev => [...prev, url])
     }
+    setUploading(false)
   }
 
   const handleSave = async () => {
@@ -154,7 +164,8 @@ export default function DiagramCardDetail() {
       tags: formTags.split(',').map(t => t.trim()).filter(Boolean),
       source: formSource,
       card_type: formCardType,
-      diagram_url: formDiagramUrl,
+      diagram_url: formDiagramUrls[0] || '',
+      diagram_urls: formDiagramUrls,
       table_content: formTableContent,
       subquestions: formSubquestions,
     }).eq('id', id)
@@ -162,6 +173,7 @@ export default function DiagramCardDetail() {
       const { data } = await supabase.from('diagram_cards').select('*').eq('id', id).single()
       setCard(data)
       setEditing(false)
+      setCurrentPage(0)
     } else alert('저장 실패: ' + error.message)
   }
 
@@ -171,7 +183,6 @@ export default function DiagramCardDetail() {
     router.push('/diagram')
   }
 
-  // Cloze 렌더링 (LaTeX + 빈칸)
   const renderCloze = (html: string, qIdx: number) => {
     if (!html) return null
     const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
@@ -258,23 +269,41 @@ export default function DiagramCardDetail() {
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="출처" value={formSource} onChange={e => setFormSource(e.target.value)} />
 
+          {/* 다중 이미지 */}
           <div>
-            <label className="text-sm text-gray-400 mb-2 block">🖼️ 메인 이미지</label>
+            <label className="text-sm text-gray-400 mb-2 block">🖼️ 이미지 ({formDiagramUrls.length}장)</label>
+            {formDiagramUrls.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {formDiagramUrls.map((url, idx) => (
+                  <div key={idx} className="bg-gray-800 rounded-lg p-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs text-gray-400">페이지 {idx + 1}</span>
+                      <button onClick={() => setFormDiagramUrls(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-xs text-red-400 hover:text-red-300">✕ 삭제</button>
+                      {idx > 0 && (
+                        <button onClick={() => {
+                          const newUrls = [...formDiagramUrls]
+                          ;[newUrls[idx - 1], newUrls[idx]] = [newUrls[idx], newUrls[idx - 1]]
+                          setFormDiagramUrls(newUrls)
+                        }} className="text-xs text-gray-400 hover:text-white">↑ 위로</button>
+                      )}
+                    </div>
+                    <img src={url} alt={`페이지 ${idx + 1}`} className="max-w-full rounded max-h-32 object-contain" />
+                  </div>
+                ))}
+              </div>
+            )}
             <div onPaste={handleDiagramPaste}
-              className="w-full bg-gray-800 border-2 border-dashed border-gray-600 rounded-lg p-4 focus:outline-none focus:border-blue-500"
+              className="w-full bg-gray-800 border-2 border-dashed border-gray-600 rounded-lg p-4 focus:outline-none focus:border-blue-500 text-center"
               tabIndex={0}>
-              {formDiagramPreview ? (
-                <div className="relative">
-                  <img src={formDiagramPreview} alt="이미지" className="max-w-full rounded-lg" />
-                  <button onClick={() => { setFormDiagramUrl(''); setFormDiagramPreview('') }}
-                    className="absolute top-2 right-2 bg-red-600 px-2 py-1 rounded text-xs">✕ 삭제</button>
-                </div>
+              {uploading ? (
+                <p className="text-gray-400 py-2">업로드 중...</p>
               ) : (
-                <div className="text-center text-gray-500 py-4">
-                  <p>클릭 후 Ctrl+V 붙여넣기</p>
+                <div className="text-gray-500 py-2">
+                  <p>클릭 후 Ctrl+V 붙여넣기 (페이지 추가)</p>
                   <label className="mt-2 inline-block bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg cursor-pointer text-sm">
-                    파일 선택
-                    <input type="file" accept="image/*" className="hidden" onChange={handleDiagramFile} />
+                    파일 선택 (여러 장 가능)
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleDiagramFile} />
                   </label>
                 </div>
               )}
@@ -284,8 +313,7 @@ export default function DiagramCardDetail() {
           {formCardType === 'Table spec' && (
             <div>
               <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
-              <RichEditor content={formTableContent}
-                onChange={val => setFormTableContent(val)}
+              <RichEditor content={formTableContent} onChange={val => setFormTableContent(val)}
                 placeholder="표 내용 직접 입력 (LaTeX: $$ ... $$)" />
             </div>
           )}
@@ -308,7 +336,7 @@ export default function DiagramCardDetail() {
                   <RichEditor content={q.question}
                     onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, question: val } : fq))}
                     placeholder="소문제 내용" />
-                  <label className="text-xs text-gray-500 mt-3 mb-1 block">정답 (LaTeX: $$ ... $$)</label>
+                  <label className="text-xs text-gray-500 mt-3 mb-1 block">정답</label>
                   <RichEditor content={q.answer}
                     onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, answer: val } : fq))}
                     placeholder="정답" />
@@ -350,16 +378,38 @@ export default function DiagramCardDetail() {
           {/* 2단 학습 뷰 */}
           <div className="flex h-[calc(100vh-130px)]">
             {/* 왼쪽: 도면/표/회로도 */}
-            <div className="w-1/2 border-r border-gray-800 overflow-auto p-4">
-              {card.diagram_url && (
-                <img src={card.diagram_url} alt="이미지" className="w-full rounded-lg mb-4" />
-              )}
-              {card.card_type === 'Table spec' && card.table_content && (
-                <div className="text-sm leading-relaxed">
+            <div className="w-1/2 border-r border-gray-800 overflow-auto flex flex-col">
+              {imageUrls.length > 0 ? (
+                <>
+                  {/* 페이지 네비게이션 */}
+                  {imageUrls.length > 1 && (
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                        disabled={currentPage === 0}
+                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-30 transition">
+                        ← 이전
+                      </button>
+                      <span className="text-sm text-gray-400">
+                        {currentPage + 1} / {imageUrls.length}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(imageUrls.length - 1, p + 1))}
+                        disabled={currentPage === imageUrls.length - 1}
+                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-30 transition">
+                        다음 →
+                      </button>
+                    </div>
+                  )}
+                  <div className="overflow-auto p-4 flex-1">
+                    <img src={imageUrls[currentPage]} alt={`페이지 ${currentPage + 1}`} className="w-full rounded-lg" />
+                  </div>
+                </>
+              ) : card.card_type === 'Table spec' && card.table_content ? (
+                <div className="p-4 text-sm leading-relaxed overflow-auto">
                   {renderLatexText(card.table_content)}
                 </div>
-              )}
-              {!card.diagram_url && !(card.card_type === 'Table spec' && card.table_content) && (
+              ) : (
                 <div className="flex items-center justify-center h-full text-gray-500">
                   <p>이미지가 없습니다</p>
                 </div>
@@ -393,7 +443,6 @@ export default function DiagramCardDetail() {
                     className="text-xs text-gray-400 hover:text-white underline">
                     전체 다시 숨기기
                   </button>
-
                   <div className="bg-gray-900 rounded-xl p-4">
                     <p className="text-sm text-gray-400 mb-2">📌 나의 메모</p>
                     <textarea

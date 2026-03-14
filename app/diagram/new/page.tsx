@@ -18,13 +18,22 @@ export default function NewDiagramCard() {
   const [category, setCategory] = useState('')
   const [tags, setTags] = useState('')
   const [source, setSource] = useState('')
-  const [diagramUrl, setDiagramUrl] = useState('')
-  const [diagramPreview, setDiagramPreview] = useState('')
+  const [diagramUrls, setDiagramUrls] = useState<string[]>([])
   const [tableContent, setTableContent] = useState('')
   const [subquestions, setSubquestions] = useState<SubQuestion[]>([
     { id: 1, question: '', answer: '' }
   ])
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const ext = file.type.split('/')[1]
+    const path = `diagram-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('card-images').upload(path, file)
+    if (error) return null
+    const { data } = supabase.storage.from('card-images').getPublicUrl(path)
+    return data.publicUrl
+  }
 
   const handleDiagramPaste = async (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items)
@@ -32,27 +41,25 @@ export default function NewDiagramCard() {
     if (!imageItem) return
     const file = imageItem.getAsFile()
     if (!file) return
-    const ext = file.type.split('/')[1]
-    const path = `diagram-${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('card-images').upload(path, file)
-    if (!error) {
-      const { data } = supabase.storage.from('card-images').getPublicUrl(path)
-      setDiagramUrl(data.publicUrl)
-      setDiagramPreview(data.publicUrl)
-    }
+    setUploading(true)
+    const url = await uploadImage(file)
+    if (url) setDiagramUrls(prev => [...prev, url])
+    setUploading(false)
   }
 
   const handleDiagramFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const ext = file.name.split('.').pop()
-    const path = `diagram-${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('card-images').upload(path, file)
-    if (!error) {
-      const { data } = supabase.storage.from('card-images').getPublicUrl(path)
-      setDiagramUrl(data.publicUrl)
-      setDiagramPreview(data.publicUrl)
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setUploading(true)
+    for (const file of files) {
+      const url = await uploadImage(file)
+      if (url) setDiagramUrls(prev => [...prev, url])
     }
+    setUploading(false)
+  }
+
+  const removeImage = (idx: number) => {
+    setDiagramUrls(prev => prev.filter((_, i) => i !== idx))
   }
 
   const addSubQuestion = () => {
@@ -76,7 +83,8 @@ export default function NewDiagramCard() {
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
       source,
       card_type: cardType,
-      diagram_url: diagramUrl,
+      diagram_url: diagramUrls[0] || '',
+      diagram_urls: diagramUrls,
       table_content: tableContent,
       subquestions,
     })
@@ -93,7 +101,7 @@ export default function NewDiagramCard() {
         </div>
 
         <div className="space-y-4">
-          {/* 카드 타입 선택 */}
+          {/* 카드 타입 */}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">카드 타입</label>
             <div className="flex gap-3 flex-wrap">
@@ -109,59 +117,71 @@ export default function NewDiagramCard() {
           </div>
 
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="제목" value={title}
-            onChange={e => setTitle(e.target.value)} />
+            placeholder="제목" value={title} onChange={e => setTitle(e.target.value)} />
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="카테고리 (예: 전력공학)" value={category}
-            onChange={e => setCategory(e.target.value)} />
+            placeholder="카테고리 (예: 전력공학)" value={category} onChange={e => setCategory(e.target.value)} />
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="태그 (쉼표 구분)" value={tags}
-            onChange={e => setTags(e.target.value)} />
+            placeholder="태그 (쉼표 구분)" value={tags} onChange={e => setTags(e.target.value)} />
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="출처 (예: 2023년 1회 기사 실기 29번)" value={source}
-            onChange={e => setSource(e.target.value)} />
+            placeholder="출처 (예: 2023년 1회 기사 실기 29번)" value={source} onChange={e => setSource(e.target.value)} />
 
-          {/* 이미지 입력 (공통) */}
+          {/* 이미지 업로드 - 다중 지원 */}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">
-              {cardType === 'Table spec' ? '📊 표 이미지' : cardType === '시퀀스회로도' ? '⚡ 회로도 이미지' : '🖼️ 도면 이미지'}
+              🖼️ 이미지 ({diagramUrls.length}장) — 여러 장 추가 가능
             </label>
+
+            {/* 업로드된 이미지 목록 */}
+            {diagramUrls.length > 0 && (
+              <div className="space-y-3 mb-3">
+                {diagramUrls.map((url, idx) => (
+                  <div key={idx} className="relative bg-gray-800 rounded-lg p-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs text-gray-400">페이지 {idx + 1}</span>
+                      <button onClick={() => removeImage(idx)}
+                        className="text-xs text-red-400 hover:text-red-300">✕ 삭제</button>
+                      {idx > 0 && (
+                        <button onClick={() => {
+                          const newUrls = [...diagramUrls]
+                          ;[newUrls[idx - 1], newUrls[idx]] = [newUrls[idx], newUrls[idx - 1]]
+                          setDiagramUrls(newUrls)
+                        }} className="text-xs text-gray-400 hover:text-white">↑ 위로</button>
+                      )}
+                    </div>
+                    <img src={url} alt={`페이지 ${idx + 1}`} className="max-w-full rounded-lg max-h-48 object-contain" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 붙여넣기 / 파일 선택 */}
             <div
               onPaste={handleDiagramPaste}
               className="w-full bg-gray-800 border-2 border-dashed border-gray-600 rounded-lg p-6 text-center focus:outline-none focus:border-blue-500"
               tabIndex={0}
             >
-              {diagramPreview ? (
-                <div className="relative">
-                  <img src={diagramPreview} alt="이미지" className="max-w-full rounded-lg mx-auto" />
-                  <button onClick={() => { setDiagramUrl(''); setDiagramPreview('') }}
-                    className="absolute top-2 right-2 bg-red-600 hover:bg-red-500 px-2 py-1 rounded text-xs">
-                    ✕ 삭제
-                  </button>
-                </div>
+              {uploading ? (
+                <p className="text-gray-400">업로드 중...</p>
               ) : (
                 <div className="text-gray-500">
-                  <p className="text-4xl mb-2">📋</p>
-                  <p>여기 클릭 후 Ctrl+V로 붙여넣기</p>
-                  <p className="text-sm mt-1">또는</p>
+                  <p className="text-3xl mb-2">📋</p>
+                  <p>클릭 후 Ctrl+V로 이미지 붙여넣기</p>
+                  <p className="text-sm text-gray-600 mt-1">또는</p>
                   <label className="mt-2 inline-block bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg cursor-pointer text-sm">
-                    파일 선택
-                    <input type="file" accept="image/*" className="hidden" onChange={handleDiagramFile} />
+                    파일 선택 (여러 장 가능)
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleDiagramFile} />
                   </label>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 표 텍스트 입력 (Table spec만) */}
+          {/* 표 텍스트 (Table spec) */}
           {cardType === 'Table spec' && (
             <div>
               <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
-              <RichEditor
-                content={tableContent}
-                onChange={val => setTableContent(val)}
-                placeholder="표 내용 직접 입력 (사양, 조건, 계통도 등)"
-              />
+              <RichEditor content={tableContent} onChange={val => setTableContent(val)}
+                placeholder="표 내용 직접 입력 (LaTeX: $$ ... $$)" />
             </div>
           )}
 
@@ -181,25 +201,17 @@ export default function NewDiagramCard() {
                     <span className="text-blue-400 font-semibold">({i + 1})</span>
                     {subquestions.length > 1 && (
                       <button onClick={() => removeSubQuestion(q.id)}
-                        className="text-red-400 hover:text-red-300 text-sm">
-                        ✕ 삭제
-                      </button>
+                        className="text-red-400 hover:text-red-300 text-sm">✕ 삭제</button>
                     )}
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-gray-500">문항</label>
-                    <RichEditor
-                      content={q.question}
-                      onChange={val => updateSubQuestion(q.id, 'question', val)}
-                      placeholder="소문제 내용 입력 (빈칸: 중괄호 두 개로 답 감싸기)"
-                    />
-                    <label className="text-xs text-gray-500 mt-2 block">정답</label>
-                    <RichEditor
-                      content={q.answer}
-                      onChange={val => updateSubQuestion(q.id, 'answer', val)}
-                      placeholder="정답 입력"
-                    />
-                  </div>
+                  <label className="text-xs text-gray-500 mb-1 block">문항 (LaTeX: $$ ... $$, 빈칸: 중괄호 두 개)</label>
+                  <RichEditor content={q.question}
+                    onChange={val => updateSubQuestion(q.id, 'question', val)}
+                    placeholder="소문제 내용" />
+                  <label className="text-xs text-gray-500 mt-3 mb-1 block">정답</label>
+                  <RichEditor content={q.answer}
+                    onChange={val => updateSubQuestion(q.id, 'answer', val)}
+                    placeholder="정답" />
                 </div>
               ))}
             </div>
