@@ -34,9 +34,7 @@ type Card = {
 type Mode = 'full' | 'cloze' | 'keyword' | 'flow'
 
 const STATUS_COLORS: Record<string, string> = {
-  '미숙지': 'bg-red-700',
-  '숙지중': 'bg-yellow-600',
-  '완전숙지': 'bg-green-600',
+  '새 카드': 'bg-gray-600',
   '오답노트': 'bg-red-600',
   '완료': 'bg-blue-600',
 }
@@ -76,19 +74,11 @@ export default function CardDetail() {
   }, [id])
 
   const handleStatusChange = async (status: string) => {
-    const newCount = status === '미숙지' ? 0 : (card?.review_count || 0) + 1
+    const newCount = status === '새 카드' ? 0 : (card?.review_count || 0) + 1
     const { data } = await supabase.from('cards').update({
       status,
       review_count: newCount,
       last_reviewed: new Date().toISOString(),
-    }).eq('id', id).select().single()
-    if (data) setCard(data)
-  }
-
-  const handleCategoryChange = async (status: string) => {
-    const newStatus = card?.status === status ? '미숙지' : status
-    const { data } = await supabase.from('cards').update({
-      status: newStatus,
     }).eq('id', id).select().single()
     if (data) setCard(data)
   }
@@ -182,7 +172,6 @@ export default function CardDetail() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-3xl mx-auto">
-
         <div className="flex justify-between items-center mb-4">
           <Link href="/cards" className="text-gray-400 hover:text-white">← 목록</Link>
           <div className="flex gap-2">
@@ -286,40 +275,26 @@ export default function CardDetail() {
             )}
 
             {/* 학습 상태 */}
-            <div className="bg-gray-900 rounded-xl p-4 mb-6 space-y-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[card.status || '미숙지'] || 'bg-gray-600'}`}>
-                  {card.status || '미숙지'}
-                </span>
-                <span className="text-gray-400 text-sm">회독 {card.review_count || 0}회</span>
-                {card.last_reviewed && (
-                  <span className="text-gray-500 text-xs">
-                    마지막: {new Date(card.last_reviewed).toLocaleDateString('ko-KR')}
+            <div className="bg-gray-900 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[card.status || '새 카드']}`}>
+                    {card.status || '새 카드'}
                   </span>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-2">숙지도 (회독수 변경)</p>
-                <div className="flex gap-2 flex-wrap">
-                  {['미숙지', '숙지중', '완전숙지'].map(s => (
+                  <span className="text-gray-400 text-sm">회독 {card.review_count || 0}회</span>
+                  {card.last_reviewed && (
+                    <span className="text-gray-500 text-xs">
+                      마지막: {new Date(card.last_reviewed).toLocaleDateString('ko-KR')}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {['새 카드', '오답노트', '완료'].map(s => (
                     <button key={s} onClick={() => handleStatusChange(s)}
                       className={`px-3 py-1 rounded-full text-sm transition ${
                         card.status === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'
                       }`}>
-                      {s === '미숙지' ? '😅 미숙지' : s === '숙지중' ? '🤔 숙지중' : '✅ 완전숙지'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-2">카테고리 (회독수 유지)</p>
-                <div className="flex gap-2 flex-wrap">
-                  {['오답노트', '완료'].map(s => (
-                    <button key={s} onClick={() => handleCategoryChange(s)}
-                      className={`px-3 py-1 rounded-full text-sm transition ${
-                        card.status === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'
-                      }`}>
-                      {s === '오답노트' ? '❌ 오답노트' : '📦 완료'}
+                      {s === '새 카드' ? '🆕' : s === '오답노트' ? '❌' : '✅'} {s}
                     </button>
                   ))}
                 </div>
@@ -406,7 +381,7 @@ export default function CardDetail() {
 
             {/* 나의 메모 */}
             <div className="bg-gray-900 rounded-xl p-4">
-              <p className="text-sm text-gray-400 mb-2">📌 나의 메모 / 이해도 코멘트</p>
+              <p className="text-sm text-gray-400 mb-2">📌 나의 메모</p>
               <textarea
                 className="w-full bg-gray-800 rounded-lg p-3 text-white h-24 text-sm"
                 placeholder="이해가 안 된 부분, 실수한 포인트, 관련 개념 등..."
