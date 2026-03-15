@@ -63,6 +63,16 @@ export default async function Home() {
               </div>
             </div>
           </Link>
+
+          <Link href="/tools" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">인터랙티브</p>
+                <h2 className="text-2xl font-bold mb-1">🔧 전공 도구</h2>
+                <p className="text-gray-400 text-sm">대칭좌표법 · 고장전류 · 변압기 벡터도</p>
+              </div>
+            </div>
+          </Link>
         </div>
       </div>
     </main>
