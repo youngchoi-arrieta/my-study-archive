@@ -64,6 +64,16 @@ export default async function Home() {
             </div>
           </Link>
 
+          <Link href="/dashboard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">기출문제</p>
+                <h2 className="text-2xl font-bold mb-1">📊 풀이 대시보드</h2>
+                <p className="text-gray-400 text-sm">합격률 낮은 순 · 회차별 점수 · 영역별 메모</p>
+              </div>
+            </div>
+          </Link>
+
           <Link href="/tools" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
             <div className="flex justify-between items-start">
               <div>
