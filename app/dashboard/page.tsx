@@ -194,11 +194,12 @@ export default function Dashboard() {
                         onClick={() => setExpanded(expanded === s.id ? null : s.id)}
                       >
                         <div className="flex items-center gap-4">
-                          <span className="font-bold text-white w-16">{s.year}년 {s.session}회</span>
-                          <span className="text-xs text-gray-500">합격률 {s.pass_rate}%</span>
-                          {/* 영역 메모 있는 개수 */}
+                          <span className="font-bold text-white whitespace-nowrap">{s.year}년 {s.session}회</span>
+                          <span className={`text-base font-semibold whitespace-nowrap ${getGroup(s.pass_rate).color}`}>
+                            합격률 {s.pass_rate}%
+                          </span>
                           {MEMO_FIELDS.some(f => s[f.key]) && (
-                            <span className="text-xs text-blue-400">
+                            <span className="text-xs text-blue-400 whitespace-nowrap">
                               📌 {MEMO_FIELDS.filter(f => s[f.key]).length}개 메모
                             </span>
                           )}
