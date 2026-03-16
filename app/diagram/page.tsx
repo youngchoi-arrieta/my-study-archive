@@ -69,7 +69,7 @@ function DiagramListInner() {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
-            <h1 className="text-3xl font-bold">🗺️ 실기 문제</h1>
+            <h1 className="text-3xl font-bold">🗺️ 자료해석형 문제</h1>
           </div>
           <Link href="/diagram/new" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg transition">
             + 새 카드

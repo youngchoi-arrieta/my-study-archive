@@ -7,7 +7,7 @@ export default function ToolsPage() {
         <div className="flex items-center gap-3 mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
         </div>
-        <h1 className="text-3xl font-bold mb-1">🔧 전공 도구</h1>
+        <h1 className="text-3xl font-bold mb-1">🎮 디지털 토이</h1>
         <p className="text-gray-500 mb-8">전기공학 직관 훈련용 인터랙티브 시뮬레이터</p>
 
         <div className="space-y-4">
