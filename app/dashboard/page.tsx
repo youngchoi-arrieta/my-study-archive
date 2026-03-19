@@ -47,6 +47,30 @@ export default function DashboardHome() {
               <span className="text-xs text-gray-600 bg-gray-800 px-2 py-1 rounded-full">준비 중</span>
             </div>
           </div>
+
+          {/* GATE - 비활성화 */}
+          <div className="block bg-gray-900 rounded-2xl p-6 opacity-40 cursor-not-allowed">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">IIT · 준비 중</p>
+                <h2 className="text-2xl font-bold mb-1">🇮🇳 GATE (EE)</h2>
+                <p className="text-gray-400 text-sm">Graduate Aptitude Test in Engineering — Electrical</p>
+              </div>
+              <span className="text-xs text-gray-600 bg-gray-800 px-2 py-1 rounded-full">준비 중</span>
+            </div>
+          </div>
+
+          {/* 캐나다 Technical Exam - 비활성화 */}
+          <div className="block bg-gray-900 rounded-2xl p-6 opacity-40 cursor-not-allowed">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">APEGS / PEO · 준비 중</p>
+                <h2 className="text-2xl font-bold mb-1">🇨🇦 Technical Exam (EE)</h2>
+                <p className="text-gray-400 text-sm">Canadian Professional Engineer — Electrical Engineering</p>
+              </div>
+              <span className="text-xs text-gray-600 bg-gray-800 px-2 py-1 rounded-full">준비 중</span>
+            </div>
+          </div>
         </div>
       </div>
     </main>
