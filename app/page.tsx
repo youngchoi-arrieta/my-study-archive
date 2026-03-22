@@ -2,36 +2,41 @@ import Link from 'next/link'
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-8">
-      <div className="max-w-2xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
+      <div className="max-w-3xl mx-auto">
         <h1 className="text-4xl font-bold mb-1">⚡ 나의 전기공학 도장</h1>
         <p className="text-gray-500 mb-10">電気工学 · 수학 · 물리 학습 아카이브</p>
 
-        <div className="space-y-4">
-          <Link href="/cards" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
-            <div className="text-3xl mb-2">📚</div>
-            <h2 className="text-2xl font-bold mb-1">증명형 문제</h2>
-            <p className="text-gray-400 text-sm">정리 · 증명 · 공식 · LaTeX · Cloze · Flow</p>
-          </Link>
+        <div className="grid grid-cols-2 gap-4">
+          {/* 왼쪽: 문제 데이터베이스 */}
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">📚 문제 데이터베이스</p>
+            <Link href="/cards" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
+              <div className="text-2xl mb-2">📚</div>
+              <h2 className="text-lg font-bold mb-1">증명형 문제</h2>
+              <p className="text-gray-400 text-xs">정리 · 증명 · 공식 · LaTeX · Cloze · Flow</p>
+            </Link>
+            <Link href="/diagram" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
+              <div className="text-2xl mb-2">🗺️</div>
+              <h2 className="text-lg font-bold mb-1">자료해석형 문제</h2>
+              <p className="text-gray-400 text-xs">도면해석 · Table spec · 시퀀스회로도</p>
+            </Link>
+          </div>
 
-          <Link href="/diagram" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
-            <div className="text-3xl mb-2">🗺️</div>
-            <h2 className="text-2xl font-bold mb-1">자료해석형 문제</h2>
-            <p className="text-gray-400 text-sm">도면해석 · Table spec · 시퀀스회로도</p>
-          </Link>
-
-          <Link href="/dashboard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
-            <div className="text-3xl mb-2">📊</div>
-            <h2 className="text-2xl font-bold mb-1">시험별 기출문제 풀이 현황 Dashboard</h2>
-            <p className="text-gray-400 text-sm">전기기사 실기 · 電験 · 기술고시</p>
-          </Link>
-
-
-          <Link href="/jobs" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
-            <div className="text-3xl mb-2">💼</div>
-            <h2 className="text-2xl font-bold mb-1">구직 대시보드</h2>
-            <p className="text-gray-400 text-sm">채용공고 칸반 · 마감일 타임라인 · AI 파싱</p>
-          </Link>
+          {/* 오른쪽: 대시보드 */}
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">📊 대시보드</p>
+            <Link href="/dashboard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
+              <div className="text-2xl mb-2">📊</div>
+              <h2 className="text-lg font-bold mb-1">시험별 기출문제</h2>
+              <p className="text-gray-400 text-xs">전기기사 · 電験 · 기술고시 · GATE</p>
+            </Link>
+            <Link href="/jobs" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
+              <div className="text-2xl mb-2">💼</div>
+              <h2 className="text-lg font-bold mb-1">구직 대시보드</h2>
+              <p className="text-gray-400 text-xs">채용공고 칸반 · 마감일 타임라인 · AI 파싱</p>
+            </Link>
+          </div>
         </div>
       </div>
     </main>
