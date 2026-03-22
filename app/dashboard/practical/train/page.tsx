@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_STEPS, STORAGE_USER_KEY, fmtTime, type User, type Step, type StepLog } from '@/lib/constants-practical'
-import DiagramViewer from '../../DiagramViewer'
+import DiagramViewer from '../DiagramViewer'
 import styles from './page.module.css'
 
 function TrainContent() {
