@@ -23,6 +23,12 @@
   --radius-sm: 8px;
 }
 
+/* practical 로딩 화면 흰 배경 방지 */
+[class*="loading"] {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

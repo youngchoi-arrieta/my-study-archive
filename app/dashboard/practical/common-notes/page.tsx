@@ -69,7 +69,7 @@ export default function CommonNotesPage() {
     saveItems(next)
   }
 
-  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',fontSize:48}}>⚡</div>
+  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',fontSize:48,background:'#050d1a'}}>⚡</div>
 
   const color = CATEGORY_COLORS[activeTab]
 

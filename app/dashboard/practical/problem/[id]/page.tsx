@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_STEPS, STORAGE_USER_KEY, fmtTime, fmtTimeLabel, type User, type Session, type Step } from '@/lib/constants-practical'
-import DiagramViewer from '../../DiagramViewer'
+import DiagramViewer from '../DiagramViewer'
 import styles from './page.module.css'
 
 export default function ProblemPage() {

@@ -55,7 +55,7 @@ export default function DisqualifyPage() {
     if (confirm('기본 목록으로 초기화할까요?')) saveItems(DEFAULT_DISQUALIFY, user.id)
   }
 
-  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',fontSize:48}}>⚡</div>
+  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',fontSize:48,background:'#050d1a'}}>⚡</div>
 
   return (
     <main className={styles.main}>

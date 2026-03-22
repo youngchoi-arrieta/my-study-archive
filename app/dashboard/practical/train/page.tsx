@@ -249,7 +249,7 @@ function TrainContent() {
 
 export default function TrainPage() {
   return (
-    <Suspense fallback={<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',fontSize:48}}>⚡</div>}>
+    <Suspense fallback={<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',fontSize:48,background:'#050d1a'}}>⚡</div>}>
       <TrainContent />
     </Suspense>
   )
