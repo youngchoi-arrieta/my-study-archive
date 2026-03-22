@@ -210,6 +210,10 @@ export default function HomePage() {
       <main className={styles.main}>
         <div className={styles.bg} />
         <div className={styles.inner}>
+          <nav className={styles.nav}>
+            <button className={styles.backBtn} onClick={() => router.push('/dashboard')}>← 대시보드</button>
+            <span />
+          </nav>
           <header className={styles.header}>
             <div className={styles.badge}>⚡ 전기기능사 실기</div>
             <h1 className={styles.title}>실기 트레이너</h1>
@@ -257,6 +261,10 @@ export default function HomePage() {
     <main className={styles.main}>
       <div className={styles.bg} />
       <div className={styles.inner}>
+        <nav className={styles.nav}>
+          <button className={styles.backBtn} onClick={() => router.push('/dashboard')}>← 대시보드</button>
+          <span />
+        </nav>
         <header className={styles.header}>
           <div className={styles.badge}>⚡ 전기기능사 실기</div>
           <h1 className={styles.title}>실기 트레이너</h1>
