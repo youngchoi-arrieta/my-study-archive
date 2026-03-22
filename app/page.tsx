@@ -26,11 +26,6 @@ export default function Home() {
             <p className="text-gray-400 text-sm">전기기사 실기 · 電験 · 기술고시</p>
           </Link>
 
-          <Link href="/tools" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
-            <div className="text-3xl mb-2">🎮</div>
-            <h2 className="text-2xl font-bold mb-1">디지털 토이</h2>
-            <p className="text-gray-400 text-sm">대칭좌표법 · 고장전류 · 변압기 벡터도</p>
-          </Link>
 
           <Link href="/jobs" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
             <div className="text-3xl mb-2">💼</div>
