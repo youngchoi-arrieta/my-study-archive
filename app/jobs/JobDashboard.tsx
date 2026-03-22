@@ -83,7 +83,7 @@ export default function JobDashboard() {
             <h1 className="text-3xl font-bold">💼 구직 대시보드</h1>
           </div>
           <button
-            onClick={() => { setEditJob(null); setDefaultStage('watch'); setModalOpen(true) }}
+            onClick={() => { setEditJob(null); setModalOpen(true) }}
             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm transition"
           >
             + 공고 추가
