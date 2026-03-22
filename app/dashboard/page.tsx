@@ -24,6 +24,19 @@ export default function DashboardHome() {
             </div>
           </Link>
 
+          {/* 전기기능사 실기 트레이너 - 활성화 */}
+          <Link href="/dashboard/practical"
+            className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">한국산업인력공단</p>
+                <h2 className="text-2xl font-bold mb-1">🔧 전기기능사 실기 트레이너</h2>
+                <p className="text-gray-400 text-sm">작업형 실기 · 공정별 타이머 · 훈련 통계</p>
+              </div>
+              <span className="text-gray-400 text-lg">→</span>
+            </div>
+          </Link>
+
           {/* 電験 - 비활성화 */}
           <div className="block bg-gray-900 rounded-2xl p-6 opacity-40 cursor-not-allowed">
             <div className="flex justify-between items-start">

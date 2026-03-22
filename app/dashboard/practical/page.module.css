@@ -1,0 +1,199 @@
+.main { min-height: 100dvh; position: relative; overflow: hidden; }
+.bg {
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse at 20% 20%, #0d1f3c 0%, #050d1a 60%);
+  z-index: 0;
+}
+.loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 100dvh; font-size: 48px;
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.inner {
+  position: relative; z-index: 1;
+  max-width: 680px; margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+.header { text-align: center; margin-bottom: 32px; }
+.badge {
+  display: inline-block;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 6px 16px;
+  color: var(--text2); font-size: 12px; letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.title {
+  font-size: clamp(32px, 8vw, 52px);
+  font-weight: 900; color: var(--text);
+  letter-spacing: -1.5px; margin-bottom: 8px;
+}
+.sub { color: var(--text3); font-size: 14px; }
+
+/* 유저 그리드 */
+.section { margin-bottom: 24px; }
+.sectionLabel { color: var(--text3); font-size: 13px; margin-bottom: 12px; }
+
+.userGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+}
+.userCard {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  transition: all 0.15s;
+}
+.userCard:hover, .userCard:active {
+  background: var(--surface2); border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.userAvatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent2), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800; color: #fff;
+}
+.userCardName { font-size: 13px; font-weight: 600; color: var(--text2); }
+
+/* 새 유저 */
+.newUserBox {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+  margin-bottom: 24px;
+}
+.loginRow { display: flex; gap: 10px; }
+.nameInput {
+  flex: 1; background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); padding: 13px 14px;
+  color: var(--text); font-size: 16px; outline: none;
+  transition: border-color 0.2s;
+}
+.nameInput:focus { border-color: var(--accent); }
+.loginBtn {
+  background: var(--accent); border-radius: var(--radius-sm);
+  padding: 13px 20px; color: #fff; font-size: 15px; font-weight: 700;
+  white-space: nowrap; transition: background 0.2s;
+}
+.loginBtn:hover { background: var(--accent2); }
+.loginBtn:disabled { opacity: 0.5; }
+.error { color: var(--red); font-size: 13px; margin-top: 8px; }
+
+/* 문제 선택 */
+.userRow {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px; padding: 0 2px;
+}
+.userNameWrap { display: flex; align-items: center; gap: 8px; }
+.userName { font-size: 18px; font-weight: 700; color: var(--text); }
+.logoutBtn {
+  font-size: 13px; color: var(--text3);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px;
+}
+
+.groupHeader {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.groupBadge {
+  font-size: 12px; font-weight: 800; letter-spacing: 1px;
+  padding: 4px 12px; border-radius: 20px;
+}
+.groupSub { font-size: 13px; color: var(--text3); }
+
+.problemGrid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .problemGrid { grid-template-columns: repeat(5, 1fr); gap: 8px; }
+}
+
+.problemCard {
+  aspect-ratio: 1;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.problemCard:hover, .problemCard:active {
+  background: var(--surface2); border-color: var(--accent);
+  transform: scale(1.06);
+}
+.problemNo {
+  font-size: clamp(16px, 3vw, 22px);
+  font-weight: 900; color: var(--text);
+}
+
+.quickLinks { display: flex; justify-content: center; margin-top: 8px; }
+.quickBtn {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 28px;
+  color: var(--text2); font-size: 14px; font-weight: 600;
+  transition: all 0.15s;
+}
+.quickBtn:hover { border-color: var(--border2); color: var(--text); }
+
+/* 유저 편집 모드 */
+.sectionRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.editModeBtn { font-size: 13px; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 12px; }
+.userCardWrap { position: relative; }
+.deleteUserBtn {
+  position: absolute; top: -6px; right: -6px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--red); color: #fff;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--bg);
+  z-index: 2;
+}
+
+/* 공정 설정 화면 */
+.nav { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.backBtn { font-size: 14px; color: var(--text3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; }
+.navTitle { font-size: 18px; font-weight: 800; color: var(--text); flex: 1; }
+.navSub { font-size: 12px; color: var(--text3); }
+.savingNote { text-align: center; color: var(--text3); font-size: 13px; margin-top: 12px; }
+
+.stepAccordion { display: flex; flex-direction: column; gap: 6px; }
+.stepItem { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.stepItemHeader { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 16px; transition: background 0.15s; }
+.stepItemHeader:hover { background: var(--surface2); }
+.stepItemHeaderOpen { background: var(--surface2); border-bottom: 1px solid var(--border); }
+.stepItemNum { font-size: 12px; color: var(--text3); min-width: 18px; }
+.stepItemName { flex: 1; font-size: 14px; font-weight: 600; color: var(--text); text-align: left; }
+.stepItemTarget { font-size: 13px; color: var(--accent); font-weight: 700; }
+.stepItemArrow { font-size: 11px; color: var(--text3); }
+.stepItemBody { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.editTabs { display: flex; gap: 6px; }
+.editTab { flex: 1; padding: 8px 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; color: var(--text3); font-size: 12px; font-weight: 600; }
+.editTabActive { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+.targetEdit { display: flex; align-items: center; gap: 8px; }
+.targetLabel { font-size: 13px; color: var(--text2); flex: 1; }
+.timeInput { width: 52px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 15px; font-weight: 700; text-align: center; outline: none; }
+.timeInput:focus { border-color: var(--accent); }
+.timeUnit { font-size: 12px; color: var(--text3); }
+.divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+.listEdit { display: flex; flex-direction: column; gap: 8px; }
+.listEditRow { display: flex; gap: 8px; align-items: center; }
+.listInput { flex: 1; background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 13px; outline: none; }
+.listInput:focus { border-color: var(--accent); }
+.listDelBtn { color: var(--text3); font-size: 13px; padding: 4px 8px; border-radius: 4px; flex-shrink: 0; }
+.listDelBtn:hover { color: var(--red); }
+.addItemBtn { background: none; border: 1px dashed var(--border); border-radius: 6px; padding: 8px; color: var(--text3); font-size: 13px; width: 100%; }
+.addItemBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 문제 선택 화면 - 유저 행 버튼 */
+.userRowBtns { display: flex; align-items: center; gap: 8px; }
+.settingsBtn { font-size: 13px; color: var(--text2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; transition: all 0.15s; }
+.settingsBtn:hover { border-color: var(--accent); color: var(--accent); }
+.disqualifyBtn { font-size: 13px; color: #fbbf24; border: 1px solid #92400e; border-radius: 6px; padding: 6px 12px; transition: all 0.15s; }
+.disqualifyBtn:hover { background: #92400e33; }
+.commonNotesBtn { font-size: 13px; color: #60a5fa; border: 1px solid #1e3a5f; border-radius: 6px; padding: 6px 12px; transition: all 0.15s; }
+.commonNotesBtn:hover { background: #1e3a5f33; }
