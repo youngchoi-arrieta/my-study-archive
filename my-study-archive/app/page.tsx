@@ -31,12 +31,6 @@ export default function Home() {
             <h2 className="text-2xl font-bold mb-1">디지털 토이</h2>
             <p className="text-gray-400 text-sm">대칭좌표법 · 고장전류 · 변압기 벡터도</p>
           </Link>
-
-          <Link href="/jobs" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-6 transition">
-            <div className="text-3xl mb-2">💼</div>
-            <h2 className="text-2xl font-bold mb-1">구직 대시보드</h2>
-            <p className="text-gray-400 text-sm">채용공고 칸반 · 마감일 타임라인 · AI 파싱</p>
-          </Link>
         </div>
       </div>
     </main>
