@@ -359,7 +359,7 @@ export default function DeckEditPage() {
                         : card.card_type === 'occlusion'
                           ? <div className="bg-gray-800 rounded-xl p-2">
                               {card.occlusion?.imageUrl
-                                ? <OcclusionView data={card.occlusion} mode="edit" />
+                                ? <OcclusionView data={card.occlusion} />
                                 : <p className="text-gray-500 text-xs text-center py-4">이미지 없음</p>}
                             </div>
                           : (
