@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { OcclusionView, type OcclusionData } from '../OcclusionEditor'
+import { OcclusionView, type OcclusionData } from '../../OcclusionEditor'
 
 type CardType = 'basic' | 'multi' | 'cloze' | 'occlusion'
 type Field = { name: string; value: string; type: 'text' | 'image' | 'rich'; canBeGiven?: boolean; images?: {url: string; x: number; y: number; w: number; h: number}[] }

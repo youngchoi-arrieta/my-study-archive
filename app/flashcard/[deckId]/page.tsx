@@ -53,6 +53,9 @@ export default function DeckEditPage() {
   // 카드 이동
   const [movingCard, setMovingCard] = useState<string | null>(null)
   const [page, setPage] = useState(0)
+  // 검색/필터
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterType, setFilterType] = useState<CardType | 'all'>('all')
 
   useEffect(() => { loadData() }, [deckId])
 
@@ -255,11 +258,38 @@ export default function DeckEditPage() {
         {cards.length === 0
           ? <div className="text-gray-500 text-center py-16">카드가 없어요!</div>
           : (() => {
+            const filtered = cards.filter(card => {
+              const matchType = filterType === 'all' || card.card_type === filterType
+              if (!matchType) return false
+              if (!searchQuery.trim()) return true
+              const q = searchQuery.toLowerCase()
+              return card.fields.some(f => f.value?.toLowerCase().includes(q) || f.name?.toLowerCase().includes(q))
+            })
             const PAGE = 15
-            const pageCount = Math.ceil(cards.length / PAGE)
-            const paginated = cards.slice(page * PAGE, (page + 1) * PAGE)
+            const pageCount = Math.ceil(filtered.length / PAGE)
+            const paginated = filtered.slice(page * PAGE, (page + 1) * PAGE)
             return (
             <div>
+              {/* 검색 + 타입 필터 */}
+              <div className="flex gap-2 mb-4 flex-wrap">
+                <input
+                  className="flex-1 min-w-0 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="🔍 카드 내용 검색..."
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); setPage(0) }}
+                />
+                <div className="flex gap-1 flex-wrap">
+                  {(['all', 'basic', 'multi', 'cloze', 'occlusion'] as const).map(t => (
+                    <button key={t} onClick={() => { setFilterType(t); setPage(0) }}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${filterType === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                      {t === 'all' ? '전체' : TYPE_LABELS[t]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {filtered.length === 0
+                ? <div className="text-gray-500 text-center py-12 text-sm">검색 결과가 없어요</div>
+                : <>
               <div className="space-y-3">
               {paginated.map((card, ci) => {
                 const isEditing = editingCard === card.id
@@ -364,6 +394,7 @@ export default function DeckEditPage() {
                     className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-30 transition">다음 →</button>
                 </div>
               )}
+              </>}
             </div>
             )
           })()
