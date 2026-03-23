@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { compressToBase64 } from '@/lib/imageUtils'
 
 export type OcclusionBlock = { id: string; x: number; y: number; w: number; h: number; color: string }
 export type OcclusionData = { imageUrl: string; blocks: OcclusionBlock[] }
@@ -34,12 +34,8 @@ export function OcclusionEditor({ data, onChange }: {
 
   const uploadImage = async (file: File) => {
     setUploading(true)
-    const ext = file.name.split('.').pop() || 'png'
-    const path = `occlusion/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('card-images').upload(path, file, { upsert: true })
-    if (error) { alert('업로드 실패'); setUploading(false); return }
-    const { data: urlData } = supabase.storage.from('card-images').getPublicUrl(path)
-    onChange({ ...data, imageUrl: urlData.publicUrl })
+    const base64 = await compressToBase64(file, 1600, 0.85)
+    onChange({ ...data, imageUrl: base64 })
     setUploading(false)
   }
 

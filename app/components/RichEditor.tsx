@@ -4,7 +4,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Placeholder from '@tiptap/extension-placeholder'
 import ResizeImage from 'tiptap-extension-resize-image'
-import { supabase } from '../../lib/supabase'
+import { compressToBase64 } from '@/lib/imageUtils'
 
 type Props = {
   content: string
@@ -30,13 +30,8 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
         if (imageItem) {
           const file = imageItem.getAsFile()
           if (!file) return false
-          const ext = file.type.split('/')[1]
-          const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-          supabase.storage.from('card-images').upload(path, file).then(({ error }) => {
-            if (!error) {
-              const { data } = supabase.storage.from('card-images').getPublicUrl(path)
-              editor?.chain().focus().setImage({ src: data.publicUrl }).run()
-            }
+          compressToBase64(file).then(base64 => {
+            editor?.chain().focus().setImage({ src: base64 }).run()
           })
           return true
         }
@@ -48,13 +43,9 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
   const insertImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const ext = file.name.split('.').pop()
-    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error } = await supabase.storage.from('card-images').upload(path, file)
-    if (!error) {
-      const { data } = supabase.storage.from('card-images').getPublicUrl(path)
-      editor?.chain().focus().setImage({ src: data.publicUrl }).run()
-    }
+    const base64 = await compressToBase64(file)
+    editor?.chain().focus().setImage({ src: base64 }).run()
+    e.target.value = ''
   }
 
   if (!editor) return null
@@ -63,25 +54,15 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
     <div className="border border-gray-600 rounded-lg overflow-hidden">
       <div className="flex gap-1 p-2 bg-gray-900 border-b border-gray-600 flex-wrap">
         <button type="button" onClick={() => editor.chain().focus().toggleBold().run()}
-          className={`px-2 py-1 rounded text-sm font-bold ${editor.isActive('bold') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-          B
-        </button>
+          className={`px-2 py-1 rounded text-sm font-bold ${editor.isActive('bold') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>B</button>
         <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={`px-2 py-1 rounded text-sm italic ${editor.isActive('italic') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-          I
-        </button>
+          className={`px-2 py-1 rounded text-sm italic ${editor.isActive('italic') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>I</button>
         <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className={`px-2 py-1 rounded text-sm ${editor.isActive('bulletList') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-          • 목록
-        </button>
+          className={`px-2 py-1 rounded text-sm ${editor.isActive('bulletList') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>• 목록</button>
         <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          className={`px-2 py-1 rounded text-sm ${editor.isActive('orderedList') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-          1. 목록
-        </button>
+          className={`px-2 py-1 rounded text-sm ${editor.isActive('orderedList') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>1. 목록</button>
         <button type="button" onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-          className={`px-2 py-1 rounded text-sm ${editor.isActive('codeBlock') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
-          {'</>'}
-        </button>
+          className={`px-2 py-1 rounded text-sm ${editor.isActive('codeBlock') ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>{'</>'}</button>
         <label className="px-2 py-1 rounded text-sm bg-gray-700 hover:bg-gray-600 cursor-pointer">
           🖼️ 사진
           <input type="file" accept="image/*" className="hidden" onChange={insertImage} />
