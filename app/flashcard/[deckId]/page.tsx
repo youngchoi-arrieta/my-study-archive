@@ -31,6 +31,7 @@ export default function DeckEditPage() {
   const { deckId } = useParams() as { deckId: string }
   const [deck, setDeck] = useState<Deck | null>(null)
   const [cards, setCards] = useState<Card[]>([])
+  const [allDecks, setAllDecks] = useState<Deck[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddCard, setShowAddCard] = useState(false)
   const [editingCard, setEditingCard] = useState<string | null>(null)
@@ -38,10 +39,16 @@ export default function DeckEditPage() {
   const [saving, setSaving] = useState(false)
   const [newType, setNewType] = useState<CardType>('basic')
   const [newFields, setNewFields] = useState<Field[]>([
-    { name: '앞면', value: '', type: 'text' },
-    { name: '뒷면', value: '', type: 'text' },
+    { name: '앞면', value: '', type: 'rich' },
+    { name: '뒷면', value: '', type: 'rich' },
   ])
   const [newClozeText, setNewClozeText] = useState('')
+  // 덱 이름/설명 편집
+  const [editingDeck, setEditingDeck] = useState(false)
+  const [deckName, setDeckName] = useState('')
+  const [deckDesc, setDeckDesc] = useState('')
+  // 카드 이동
+  const [movingCard, setMovingCard] = useState<string | null>(null)
 
   useEffect(() => { loadData() }, [deckId])
 
@@ -54,10 +61,25 @@ export default function DeckEditPage() {
 
   const loadData = async () => {
     const { data: d } = await supabase.from('flashcard_decks').select('*').eq('id', deckId).single()
-    if (d) setDeck(d)
+    if (d) { setDeck(d); setDeckName(d.name); setDeckDesc(d.description ?? '') }
     const { data: c } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId).order('created_at')
     if (c) setCards(c)
+    const { data: allD } = await supabase.from('flashcard_decks').select('id, name, description').neq('id', deckId)
+    if (allD) setAllDecks(allD)
     setLoading(false)
+  }
+
+  const saveDeckInfo = async () => {
+    if (!deckName.trim()) return
+    await supabase.from('flashcard_decks').update({ name: deckName.trim(), description: deckDesc.trim() || null }).eq('id', deckId)
+    setDeck(prev => prev ? { ...prev, name: deckName.trim(), description: deckDesc.trim() || null } : prev)
+    setEditingDeck(false)
+  }
+
+  const moveCard = async (cardId: string, targetDeckId: string) => {
+    await supabase.from('flashcard_cards').update({ deck_id: targetDeckId }).eq('id', cardId)
+    setCards(prev => prev.filter(c => c.id !== cardId))
+    setMovingCard(null)
   }
 
   const updateNewField = (idx: number, updated: Partial<Field>) =>
@@ -131,12 +153,31 @@ export default function DeckEditPage() {
       <div className="max-w-2xl mx-auto">
         <button onClick={() => router.push('/flashcard')} className="text-gray-400 hover:text-white text-sm mb-4 block">← 덱 목록</button>
         <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">{deck?.name}</h1>
-            {deck?.description && <p className="text-gray-500 text-sm mt-1">{deck.description}</p>}
-            <p className="text-gray-600 text-xs mt-1">{cards.length}장</p>
+          <div className="flex-1 mr-4">
+            {editingDeck ? (
+              <div className="space-y-2">
+                <input className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white font-bold text-xl outline-none"
+                  value={deckName} onChange={e => setDeckName(e.target.value)} />
+                <input className="w-full bg-gray-800 rounded-lg px-3 py-2 text-gray-400 text-sm outline-none"
+                  placeholder="설명 (선택)" value={deckDesc} onChange={e => setDeckDesc(e.target.value)} />
+                <div className="flex gap-2">
+                  <button onClick={saveDeckInfo} className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-sm transition">저장</button>
+                  <button onClick={() => setEditingDeck(false)} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm transition">취소</button>
+                </div>
+              </div>
+            ) : (
+              <div className="group/deck flex items-start gap-2">
+                <div>
+                  <h1 className="text-2xl font-bold">{deck?.name}</h1>
+                  {deck?.description && <p className="text-gray-500 text-sm mt-1">{deck.description}</p>}
+                  <p className="text-gray-600 text-xs mt-1">{cards.length}장</p>
+                </div>
+                <button onClick={() => setEditingDeck(true)}
+                  className="text-gray-600 hover:text-gray-300 text-xs mt-1 opacity-0 group-hover/deck:opacity-100 transition">✏️</button>
+              </div>
+            )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0">
             {cards.length > 0 && (
               <button onClick={() => router.push(`/flashcard/${deckId}/quiz`)}
                 className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition">▶ 퀴즈</button>
@@ -214,6 +255,22 @@ export default function DeckEditPage() {
                         ) : (
                           <>
                             <button onClick={() => startEdit(card)} className="text-gray-400 hover:text-white px-2 py-1 rounded text-xs">편집</button>
+                            {allDecks.length > 0 && (
+                              <div className="relative">
+                                <button onClick={() => setMovingCard(movingCard === card.id ? null : card.id)}
+                                  className="text-gray-400 hover:text-blue-400 px-2 py-1 rounded text-xs">이동</button>
+                                {movingCard === card.id && (
+                                  <div className="absolute right-0 top-6 bg-gray-800 border border-gray-700 rounded-lg py-1 z-10 min-w-[140px] shadow-xl">
+                                    {allDecks.map(d => (
+                                      <button key={d.id} onClick={() => moveCard(card.id, d.id)}
+                                        className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition">
+                                        → {d.name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             <button onClick={() => deleteCard(card.id)} className="text-gray-600 hover:text-red-400 px-2 py-1 rounded text-xs">🗑</button>
                           </>
                         )}
