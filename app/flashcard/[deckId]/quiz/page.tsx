@@ -5,9 +5,13 @@ import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type CardType = 'basic' | 'multi' | 'cloze'
-type Field = { name: string; value: string; type: 'text' | 'image'; images?: {url: string; x: number; y: number; w: number; h: number}[] }
+type Field = { name: string; value: string; type: 'text' | 'image' | 'rich'; images?: {url: string; x: number; y: number; w: number; h: number}[] }
 
 function renderField(f: Field) {
+  if (f.type === 'rich') return (
+    <div className="prose prose-invert max-w-none [&_img]:max-w-full [&_img]:rounded-xl"
+      dangerouslySetInnerHTML={{ __html: f.value }} />
+  )
   if (f.type === 'image' && f.images?.length) {
     return (
       <div className="relative bg-gray-800 rounded-xl" style={{ height: 220 }}>

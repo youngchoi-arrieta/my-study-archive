@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import RichEditor from '@/app/components/RichEditor'
 
 type CardType = 'basic' | 'multi' | 'cloze'
-type ImageItem = { url: string; x: number; y: number; w: number; h: number }
-type Field = { name: string; value: string; type: 'text' | 'image'; images?: ImageItem[] }
+type Field = { name: string; value: string; type: 'text' | 'rich' }
 type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; created_at: string }
 type Deck = { id: string; name: string; description: string | null }
 
@@ -23,133 +23,6 @@ function ClozePreview({ text }: { text: string }) {
           : <span key={i}>{p}</span>
       )}
     </p>
-  )
-}
-
-const CANVAS_H = 260
-
-function ImageCanvas({ field, fieldIdx, deckId, onUpdate }: {
-  field: Field
-  fieldIdx: number
-  deckId: string
-  onUpdate: (idx: number, updated: Partial<Field>) => void
-}) {
-  const canvasRef = useRef<HTMLDivElement>(null)
-  const [selected, setSelected] = useState<number | null>(null)
-  const [isActive, setIsActive] = useState(false)
-  const images = field.images ?? []
-
-  const uploadAndAdd = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/')) return
-    const ext = file.name.split('.').pop() || 'png'
-    const path = `${deckId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-    const { error } = await supabase.storage.from('flashcard-images').upload(path, file, { upsert: true })
-    if (error) { alert('업로드 실패'); return }
-    const { data } = supabase.storage.from('flashcard-images').getPublicUrl(path)
-    const prev = field.images ?? []
-    const x = Math.max(0, 160 * (prev.length % 3))
-    const y = Math.max(0, 80 * Math.floor(prev.length / 3))
-    onUpdate(fieldIdx, {
-      type: 'image',
-      images: [...prev, { url: data.publicUrl, x, y, w: 150, h: 120 }]
-    })
-  }, [deckId, field.images, fieldIdx, onUpdate])
-
-  // 전역 paste 이벤트 — 캔버스가 활성화됐을 때만 잡기
-  useEffect(() => {
-    const handler = (e: ClipboardEvent) => {
-      if (!isActive) return
-      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type.startsWith('image/'))
-      if (item) { e.preventDefault(); uploadAndAdd(item.getAsFile()!) }
-    }
-    window.addEventListener('paste', handler)
-    return () => window.removeEventListener('paste', handler)
-  }, [isActive, uploadAndAdd])
-
-  const startDrag = (e: React.MouseEvent | React.TouchEvent, imgIdx: number, action: 'move' | 'resize') => {
-    e.preventDefault()
-    e.stopPropagation()
-    setSelected(imgIdx)
-    const isTouch = 'touches' in e
-    const startX = isTouch ? e.touches[0].clientX : (e as React.MouseEvent).clientX
-    const startY = isTouch ? e.touches[0].clientY : (e as React.MouseEvent).clientY
-    const img = images[imgIdx]
-    const origX = img.x, origY = img.y, origW = img.w, origH = img.h
-
-    const onMove = (ev: MouseEvent | TouchEvent) => {
-      const cx = 'touches' in ev ? ev.touches[0].clientX : (ev as MouseEvent).clientX
-      const cy = 'touches' in ev ? ev.touches[0].clientY : (ev as MouseEvent).clientY
-      const dx = cx - startX, dy = cy - startY
-      const updated = [...images]
-      if (action === 'move') {
-        updated[imgIdx] = { ...img, x: Math.max(0, origX + dx), y: Math.max(0, origY + dy) }
-      } else {
-        updated[imgIdx] = { ...img, w: Math.max(40, origW + dx), h: Math.max(40, origH + dy) }
-      }
-      onUpdate(fieldIdx, { images: updated })
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      window.removeEventListener('touchmove', onMove)
-      window.removeEventListener('touchend', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    window.addEventListener('touchmove', onMove, { passive: false })
-    window.addEventListener('touchend', onUp)
-  }
-
-  const deleteImg = (imgIdx: number) => {
-    const updated = images.filter((_, i) => i !== imgIdx)
-    onUpdate(fieldIdx, { images: updated, type: updated.length === 0 ? 'text' : 'image' })
-    setSelected(null)
-  }
-
-  return (
-    <div
-      ref={canvasRef}
-      className={`flex-1 relative rounded-lg bg-gray-800 border-2 transition outline-none cursor-crosshair
-        ${isActive ? 'border-blue-500' : 'border-dashed border-gray-700'}`}
-      style={{ height: CANVAS_H }}
-      tabIndex={0}
-      onFocus={() => setIsActive(true)}
-      onBlur={() => setIsActive(false)}
-      onClick={(e) => { if (e.target === canvasRef.current) { setSelected(null); canvasRef.current?.focus() } }}
-    >
-      {images.length === 0 && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 text-xs pointer-events-none gap-1">
-          <span>클릭으로 활성화 후 Ctrl+V</span>
-          {isActive && <span className="text-blue-400 font-bold">✓ 활성화됨</span>}
-        </div>
-      )}
-      {images.map((img, ii) => (
-        <div
-          key={ii}
-          className={`absolute cursor-move select-none ${selected === ii ? 'ring-2 ring-blue-500' : ''}`}
-          style={{ left: img.x, top: img.y, width: img.w, height: img.h }}
-          onMouseDown={e => startDrag(e, ii, 'move')}
-          onTouchStart={e => startDrag(e, ii, 'move')}
-        >
-          <img src={img.url} className="w-full h-full object-contain rounded" alt="" draggable={false} />
-          {selected === ii && (
-            <>
-              <button
-                className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center z-10"
-                onMouseDown={e => { e.stopPropagation(); deleteImg(ii) }}
-              >✕</button>
-              {/* 리사이즈 핸들 */}
-              <div
-                className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-10"
-                style={{ background: 'linear-gradient(135deg, transparent 50%, #3b82f6 50%)' }}
-                onMouseDown={e => startDrag(e, ii, 'resize')}
-                onTouchStart={e => startDrag(e, ii, 'resize')}
-              />
-            </>
-          )}
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -230,28 +103,31 @@ export default function DeckEditPage() {
   }
 
   const renderFieldRow = (f: Field, i: number, onUpdate: (idx: number, u: Partial<Field>) => void, canDelete = false, onDelete?: () => void) => (
-    <div key={i} className="mb-3 flex gap-2 items-start">
-      <input className="w-24 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none flex-shrink-0"
-        placeholder="필드명" value={f.name}
-        onChange={e => onUpdate(i, { name: e.target.value })} />
-      <div className="flex-1 flex gap-2 items-start">
-        {f.type === 'image'
-          ? <ImageCanvas field={f} fieldIdx={i} deckId={deckId} onUpdate={onUpdate} />
-          : (
-            <div className="flex-1 flex gap-2">
-              <textarea className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none min-h-[40px]"
-                placeholder="내용" value={f.value}
-                onChange={e => onUpdate(i, { value: e.target.value, type: 'text' })} />
-              <button onClick={() => onUpdate(i, { type: 'image', value: '', images: [] })}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm flex-shrink-0 text-gray-400 hover:text-white transition"
-                title="이미지 캔버스로 전환">🖼</button>
-            </div>
-          )
-        }
+    <div key={i} className="mb-4">
+      <div className="flex items-center gap-2 mb-1">
+        <input className="w-28 bg-gray-800 rounded-lg px-3 py-1.5 text-white text-sm outline-none"
+          placeholder="필드명" value={f.name}
+          onChange={e => onUpdate(i, { name: e.target.value })} />
+        <div className="flex gap-1">
+          <button onClick={() => onUpdate(i, { type: 'text', value: f.type === 'rich' ? '' : f.value })}
+            className={`px-2 py-1 rounded text-xs transition ${f.type === 'text' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+            텍스트
+          </button>
+          <button onClick={() => onUpdate(i, { type: 'rich', value: f.type === 'text' ? '' : f.value })}
+            className={`px-2 py-1 rounded text-xs transition ${f.type === 'rich' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+            리치 (이미지)
+          </button>
+        </div>
+        {canDelete && onDelete && (
+          <button onClick={onDelete} className="text-gray-600 hover:text-red-400 text-sm ml-auto">✕</button>
+        )}
       </div>
-      {canDelete && onDelete && (
-        <button onClick={onDelete} className="text-gray-600 hover:text-red-400 py-2 flex-shrink-0">✕</button>
-      )}
+      {f.type === 'rich'
+        ? <RichEditor content={f.value} onChange={v => onUpdate(i, { value: v })} placeholder="내용 입력 (Ctrl+V로 이미지 붙여넣기)" />
+        : <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none min-h-[60px]"
+            placeholder="내용" value={f.value}
+            onChange={e => onUpdate(i, { value: e.target.value })} />
+      }
     </div>
   )
 
@@ -363,16 +239,9 @@ export default function DeckEditPage() {
                             {card.fields.map((f, i) => (
                               <div key={i} className="bg-gray-800 rounded-xl p-3">
                                 <p className="text-xs text-blue-400 font-semibold mb-1">{f.name}</p>
-                                {f.type === 'image' && f.images?.length
-                                  ? (
-                                    <div className="relative bg-gray-900 rounded" style={{ height: 120 }}>
-                                      {f.images.map((img, ii) => (
-                                        <img key={ii} src={img.url}
-                                          style={{ position: 'absolute', left: img.x * 0.5, top: img.y * 0.5, width: img.w * 0.5, height: img.h * 0.5 }}
-                                          className="object-contain rounded" alt="" />
-                                      ))}
-                                    </div>
-                                  )
+                                {f.type === 'rich'
+                                  ? <div className="prose prose-invert prose-sm max-w-none [&_img]:max-w-full [&_img]:rounded"
+                                      dangerouslySetInnerHTML={{ __html: f.value }} />
                                   : <p className="text-sm text-gray-200 whitespace-pre-wrap">{f.value || '—'}</p>
                                 }
                               </div>
