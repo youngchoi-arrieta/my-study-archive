@@ -34,7 +34,7 @@ type QuizItem =
   | { kind: 'basic'; card: Card; direction: 'front' | 'back' }
   | { kind: 'multi'; card: Card; givenIdx: number }
   | { kind: 'cloze'; card: Card; blanks: string[] }
-  | { kind: 'occlusion'; card: Card }
+  | { kind: 'occlusion'; card: Card; activeColor: string }
 
 function parseCloze(text: string): { template: string; blanks: string[] } {
   const blanks: string[] = []
@@ -93,7 +93,10 @@ export default function QuizPage() {
         const { blanks } = parseCloze(card.fields[0]?.value ?? '')
         items.push({ kind: 'cloze', card, blanks })
       } else if (type === 'occlusion') {
-        if (card.occlusion?.imageUrl) items.push({ kind: 'occlusion', card })
+        if (card.occlusion?.imageUrl && card.occlusion.blocks.length > 0) {
+          const colors = [...new Set(card.occlusion.blocks.map((b: any) => b.color))]
+          colors.forEach(color => items.push({ kind: 'occlusion', card, activeColor: color }))
+        }
       }
     }
     const shuffled = items.sort(() => Math.random() - 0.5)
@@ -164,15 +167,19 @@ export default function QuizPage() {
     if (current.kind === 'occlusion') {
       return (
         <div className="bg-gray-900 rounded-2xl p-4 mb-4 border border-red-900">
-          <p className="text-xs text-red-400 font-semibold uppercase tracking-widest mb-3">Image Occlusion · 블록을 클릭해서 공개</p>
-          {current.card.occlusion && <OcclusionView data={current.card.occlusion} mode="quiz" revealed={revealed} />}
+          <p className="text-xs text-red-400 font-semibold uppercase tracking-widest mb-3">
+            Image Occlusion
+            <span className="ml-2 inline-block w-3 h-3 rounded-full align-middle" style={{ background: current.activeColor }} />
+          </p>
+          {current.card.occlusion && (
+            <OcclusionView data={current.card.occlusion} revealed={revealed} activeColor={current.activeColor} />
+          )}
         </div>
       )
     }
   }
 
   const renderAnswer = () => {
-    if (current.kind === 'occlusion') return null  // occlusion은 인라인 공개
     if (!revealed) return (
       <button onClick={() => setRevealed(true)}
         className="w-full bg-gray-800 hover:bg-gray-700 rounded-2xl p-6 text-gray-500 text-lg font-semibold transition border-2 border-dashed border-gray-700 hover:border-gray-500 mb-6">

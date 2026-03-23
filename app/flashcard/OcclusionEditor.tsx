@@ -146,7 +146,7 @@ export function OcclusionEditor({ data, onChange }: {
           {data.blocks.map(block => (
             <div key={block.id}
               className={`absolute border-2 cursor-move ${selectedId === block.id ? 'border-white' : 'border-transparent'}`}
-              style={{ left: `${block.x}%`, top: `${block.y}%`, width: `${block.w}%`, height: `${block.h}%`, background: block.color + 'cc' }}
+              style={{ left: `${block.x}%`, top: `${block.y}%`, width: `${block.w}%`, height: `${block.h}%`, background: block.color }}
               onMouseDown={e => startDragBlock(e, block.id, 'move')}
             >
               {selectedId === block.id && (
@@ -178,40 +178,34 @@ export function OcclusionEditor({ data, onChange }: {
   )
 }
 
-export function OcclusionView({ data, mode, revealed }: {
+export function OcclusionView({ data, revealed, activeColor }: {
   data: OcclusionData
-  mode: 'edit' | 'quiz'
   revealed?: boolean
+  activeColor?: string  // 이 색상만 가림, 나머지는 반투명 힌트
 }) {
-  const [clickRevealed, setClickRevealed] = useState<Set<string>>(new Set())
-
-  // 외부 revealed가 true면 전부 공개
-  const isRevealed = (id: string) => revealed || clickRevealed.has(id)
-  const allRevealed = revealed || clickRevealed.size === data.blocks.length
-
-  const toggleBlock = (id: string) => {
-    if (mode !== 'quiz') return
-    setClickRevealed(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
   return (
-    <div className="space-y-2">
-      <div className="relative rounded-xl overflow-hidden border border-gray-700">
-        <img src={data.imageUrl} className="w-full block" alt="" />
-        {data.blocks.map(block => (
-          !isRevealed(block.id) && (
+    <div className="relative rounded-xl overflow-hidden border border-gray-700">
+      <img src={data.imageUrl} className="w-full block" alt="" />
+      {data.blocks.map(block => {
+        const isActive = !activeColor || block.color === activeColor
+        if (!isActive) {
+          // 다른 그룹: 항상 연하게 표시 (힌트)
+          return (
             <div key={block.id}
-              className={`absolute transition-opacity ${mode === 'quiz' ? 'cursor-pointer hover:opacity-70' : ''}`}
-              style={{ left: `${block.x}%`, top: `${block.y}%`, width: `${block.w}%`, height: `${block.h}%`, background: block.color + 'dd' }}
-              onClick={() => toggleBlock(block.id)}
+              className="absolute"
+              style={{ left: `${block.x}%`, top: `${block.y}%`, width: `${block.w}%`, height: `${block.h}%`, background: block.color + '40' }}
             />
           )
-        ))}
-      </div>
+        }
+        // 현재 그룹: revealed면 사라짐
+        if (revealed) return null
+        return (
+          <div key={block.id}
+            className="absolute"
+            style={{ left: `${block.x}%`, top: `${block.y}%`, width: `${block.w}%`, height: `${block.h}%`, background: block.color }}
+          />
+        )
+      })}
     </div>
   )
 }
