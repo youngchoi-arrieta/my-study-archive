@@ -143,10 +143,7 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
           <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {label}</p>
-          {f?.type === 'image'
-            ? renderField(f as Field)
-            : <p className="text-2xl font-bold whitespace-pre-wrap">{f?.value || '—'}</p>
-          }
+          {renderField(f as Field)}
         </div>
       )
     }
@@ -155,10 +152,7 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
           <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {f.name}</p>
-          {f.type === 'image'
-            ? renderField(f as Field)
-            : <p className="text-2xl font-bold whitespace-pre-wrap">{f.value || '—'}</p>
-          }
+          {renderField(f as Field)}
         </div>
       )
     }
@@ -186,10 +180,7 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-5 border border-green-900 mb-6">
           <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{label}</p>
-          {f?.type === 'image'
-            ? renderField(f as Field)
-            : <p className="text-xl font-semibold whitespace-pre-wrap">{f?.value || '—'}</p>
-          }
+          {renderField(f as Field)}
         </div>
       )
     }
@@ -200,10 +191,7 @@ export default function QuizPage() {
           {current.card.fields.filter((_, i) => i !== current.givenIdx).map((f, i) => (
             <div key={i} className="bg-gray-900 rounded-2xl p-5 border border-green-900">
               <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{f.name}</p>
-              {f.type === 'image'
-                ? renderField(f as Field)
-                : <p className="text-xl font-semibold whitespace-pre-wrap">{f.value || '—'}</p>
-              }
+              {renderField(f as Field)}
             </div>
           ))}
         </div>
