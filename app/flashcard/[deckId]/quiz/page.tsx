@@ -33,7 +33,7 @@ type Card = { id: string; card_type: CardType; fields: Field[] }
 type QuizItem =
   | { kind: 'basic'; card: Card; direction: 'front' | 'back' }
   | { kind: 'multi'; card: Card; givenIdx: number }
-  | { kind: 'cloze'; card: Card; blankIdx: number; blanks: string[] }
+  | { kind: 'cloze'; card: Card; blanks: string[] }
 
 function parseCloze(text: string): { template: string; blanks: string[] } {
   const blanks: string[] = []
@@ -41,22 +41,16 @@ function parseCloze(text: string): { template: string; blanks: string[] } {
   return { template, blanks }
 }
 
-function ClozeDisplay({ text, revealIdx, revealed }: { text: string; revealIdx: number; revealed: boolean }) {
-  let idx = -1
+function ClozeDisplay({ text, revealed }: { text: string; revealed: boolean }) {
   const parts = text.split(/(\{\{[^}]+\}\})/g)
   return (
     <p className="text-xl font-semibold leading-relaxed whitespace-pre-wrap">
       {parts.map((p, i) => {
         if (p.startsWith('{{') && p.endsWith('}}')) {
-          idx++
-          const isTarget = idx === revealIdx
           const word = p.slice(2, -2)
-          if (isTarget) {
-            return revealed
-              ? <span key={i} className="bg-green-800 text-green-200 px-2 py-0.5 rounded mx-0.5">{word}</span>
-              : <span key={i} className="bg-yellow-900 text-yellow-900 px-2 py-0.5 rounded mx-0.5 border border-yellow-700 select-none">{word}</span>
-          }
-          return <span key={i} className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded mx-0.5">{word}</span>
+          return revealed
+            ? <span key={i} className="bg-green-800 text-green-200 px-2 py-0.5 rounded mx-0.5">{word}</span>
+            : <span key={i} className="bg-yellow-900 text-yellow-900 px-2 py-0.5 rounded mx-0.5 border border-yellow-700 select-none min-w-[3rem] inline-block">{word}</span>
         }
         return <span key={i}>{p}</span>
       })}
@@ -96,7 +90,7 @@ export default function QuizPage() {
         givenIndices.forEach((i: number) => items.push({ kind: 'multi', card, givenIdx: i }))
       } else if (type === 'cloze') {
         const { blanks } = parseCloze(card.fields[0]?.value ?? '')
-        blanks.forEach((_, i) => items.push({ kind: 'cloze', card, blankIdx: i, blanks }))
+        items.push({ kind: 'cloze', card, blanks })
       }
     }
     const shuffled = items.sort(() => Math.random() - 0.5)
@@ -160,7 +154,7 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-yellow-900">
           <p className="text-xs text-yellow-500 font-semibold uppercase tracking-widest mb-3">빈칸 채우기</p>
-          <ClozeDisplay text={current.card.fields[0]?.value ?? ''} revealIdx={current.blankIdx} revealed={revealed} />
+          <ClozeDisplay text={current.card.fields[0]?.value ?? ''} revealed={revealed} />
         </div>
       )
     }
@@ -202,7 +196,11 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-5 border border-green-900 mb-6">
           <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">정답</p>
-          <p className="text-2xl font-bold text-green-300">{current.blanks[current.blankIdx]}</p>
+          <div className="flex flex-wrap gap-2">
+            {current.blanks.map((b, i) => (
+              <span key={i} className="bg-green-900 text-green-200 px-3 py-1 rounded-lg text-lg font-bold">{b}</span>
+            ))}
+          </div>
         </div>
       )
     }
