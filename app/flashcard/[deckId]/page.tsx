@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import RichEditor from '@/app/components/RichEditor'
 
 type CardType = 'basic' | 'multi' | 'cloze'
-type Field = { name: string; value: string; type: 'text' | 'rich' }
+type Field = { name: string; value: string; type: 'text' | 'rich'; canBeGiven?: boolean }
 type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; created_at: string }
 type Deck = { id: string; name: string; description: string | null }
 
@@ -102,12 +102,20 @@ export default function DeckEditPage() {
     setCards(prev => prev.filter(c => c.id !== id))
   }
 
-  const renderFieldRow = (f: Field, i: number, onUpdate: (idx: number, u: Partial<Field>) => void, canDelete = false, onDelete?: () => void) => (
+  const renderFieldRow = (f: Field, i: number, onUpdate: (idx: number, u: Partial<Field>) => void, canDelete = false, onDelete?: () => void, showGivenToggle = false) => (
     <div key={i} className="mb-4">
       <div className="flex items-center gap-2 mb-1">
         <input className="w-28 bg-gray-800 rounded-lg px-3 py-1.5 text-white text-sm outline-none"
           placeholder="필드명" value={f.name}
           onChange={e => onUpdate(i, { name: e.target.value })} />
+        {showGivenToggle && (
+          <button
+            onClick={() => onUpdate(i, { canBeGiven: f.canBeGiven === false ? true : false })}
+            className={`px-2 py-1 rounded text-xs font-semibold transition flex-shrink-0 ${f.canBeGiven === false ? 'bg-gray-700 text-gray-500' : 'bg-blue-900 text-blue-300 border border-blue-700'}`}
+            title="Given으로 출제 여부">
+            {f.canBeGiven === false ? 'Given ✕' : 'Given ✓'}
+          </button>
+        )}
         {canDelete && onDelete && (
           <button onClick={onDelete} className="text-gray-600 hover:text-red-400 text-sm ml-auto">✕</button>
         )}
@@ -153,10 +161,11 @@ export default function DeckEditPage() {
               <>
                 {newFields.map((f, i) => renderFieldRow(f, i, updateNewField,
                   newType === 'multi' && newFields.length > 2,
-                  () => setNewFields(prev => prev.filter((_, j) => j !== i))
+                  () => setNewFields(prev => prev.filter((_, j) => j !== i)),
+                  newType === 'multi'
                 ))}
                 {newType === 'multi' && (
-                  <button onClick={() => setNewFields(prev => [...prev, { name: '', value: '', type: 'text' }])}
+                  <button onClick={() => setNewFields(prev => [...prev, { name: '', value: '', type: 'rich', canBeGiven: true }])}
                     className="text-blue-400 text-sm hover:text-blue-300 mb-3">+ 필드 추가</button>
                 )}
               </>
@@ -215,7 +224,7 @@ export default function DeckEditPage() {
                         ? <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
                             value={editFields[0]?.value ?? ''}
                             onChange={e => setEditFields([{ name: 'cloze', value: e.target.value, type: 'text' }])} />
-                        : <div>{editFields.map((f, i) => renderFieldRow(f, i, updateEditField))}</div>
+                        : <div>{editFields.map((f, i) => renderFieldRow(f, i, updateEditField, false, undefined, card.card_type === 'multi'))}</div>
                     ) : (
                       card.card_type === 'cloze'
                         ? <div className="bg-gray-800 rounded-xl p-3"><ClozePreview text={card.fields[0]?.value ?? ''} /></div>
@@ -223,7 +232,11 @@ export default function DeckEditPage() {
                           <div className="grid grid-cols-2 gap-2">
                             {card.fields.map((f, i) => (
                               <div key={i} className="bg-gray-800 rounded-xl p-3">
-                                <p className="text-xs text-blue-400 font-semibold mb-1">{f.name}</p>
+                                <div className="flex items-center gap-1 mb-1">
+                                  <p className="text-xs text-blue-400 font-semibold">{f.name}</p>
+                                  {card.card_type === 'multi' && f.canBeGiven === false &&
+                                    <span className="text-xs text-gray-600">(Given ✕)</span>}
+                                </div>
                                 {f.type === 'rich'
                                   ? <div className="prose prose-invert prose-sm max-w-none [&_img]:max-w-full [&_img]:rounded"
                                       dangerouslySetInnerHTML={{ __html: f.value }} />

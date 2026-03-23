@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type CardType = 'basic' | 'multi' | 'cloze'
-type Field = { name: string; value: string; type: 'text' | 'image' | 'rich'; images?: {url: string; x: number; y: number; w: number; h: number}[] }
+type Field = { name: string; value: string; type: 'text' | 'image' | 'rich'; canBeGiven?: boolean; images?: {url: string; x: number; y: number; w: number; h: number}[] }
 
 function renderField(f: Field) {
   if (f.type === 'rich') return (
@@ -90,7 +90,10 @@ export default function QuizPage() {
         items.push({ kind: 'basic', card, direction: 'front' })
         items.push({ kind: 'basic', card, direction: 'back' })
       } else if (type === 'multi') {
-        card.fields.forEach((_: Field, i: number) => items.push({ kind: 'multi', card, givenIdx: i }))
+        const givenIndices = card.fields
+          .map((_: Field, i: number) => i)
+          .filter((i: number) => card.fields[i].canBeGiven !== false)
+        givenIndices.forEach((i: number) => items.push({ kind: 'multi', card, givenIdx: i }))
       } else if (type === 'cloze') {
         const { blanks } = parseCloze(card.fields[0]?.value ?? '')
         blanks.forEach((_, i) => items.push({ kind: 'cloze', card, blankIdx: i, blanks }))
