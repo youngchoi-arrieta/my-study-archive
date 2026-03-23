@@ -94,7 +94,7 @@ export default function QuizPage() {
         items.push({ kind: 'cloze', card, blanks })
       } else if (type === 'occlusion') {
         if (card.occlusion?.imageUrl && card.occlusion.blocks.length > 0) {
-          const colors = [...new Set(card.occlusion.blocks.map((b: any) => b.color))]
+          const colors = [...new Set(card.occlusion.blocks.map((b: any) => b.color))] as string[]
           colors.forEach(color => items.push({ kind: 'occlusion', card, activeColor: color }))
         }
       }
