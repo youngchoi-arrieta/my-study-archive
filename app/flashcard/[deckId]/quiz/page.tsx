@@ -24,16 +24,6 @@ function renderField(f: Field) {
 }
 
 
-function renderImg(f: Field) {
-  if (f.type !== 'image') return null
-  if (f.images?.length) return (
-    <div className="flex flex-wrap gap-2">
-      {f.images.map((img, i) => <img key={i} src={img.url} style={{width: img.width}} className="object-contain rounded-xl" alt="" />)}
-    </div>
-  )
-  if (f.value) return <img src={f.value} className="max-h-48 object-contain rounded-xl mx-auto" alt="" />
-  return null
-}
 type Card = { id: string; card_type: CardType; fields: Field[] }
 
 type QuizItem =
@@ -147,7 +137,7 @@ export default function QuizPage() {
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
           <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {label}</p>
           {f?.type === 'image'
-            ? renderImg(f as Field)
+            ? renderField(f as Field)
             : <p className="text-2xl font-bold whitespace-pre-wrap">{f?.value || '—'}</p>
           }
         </div>
@@ -159,7 +149,7 @@ export default function QuizPage() {
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
           <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {f.name}</p>
           {f.type === 'image'
-            ? renderImg(f as Field)
+            ? renderField(f as Field)
             : <p className="text-2xl font-bold whitespace-pre-wrap">{f.value || '—'}</p>
           }
         </div>
@@ -190,7 +180,7 @@ export default function QuizPage() {
         <div className="bg-gray-900 rounded-2xl p-5 border border-green-900 mb-6">
           <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{label}</p>
           {f?.type === 'image'
-            ? renderImg(f as Field)
+            ? renderField(f as Field)
             : <p className="text-xl font-semibold whitespace-pre-wrap">{f?.value || '—'}</p>
           }
         </div>
@@ -204,7 +194,7 @@ export default function QuizPage() {
             <div key={i} className="bg-gray-900 rounded-2xl p-5 border border-green-900">
               <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{f.name}</p>
               {f.type === 'image'
-                ? renderImg(f as Field)
+                ? renderField(f as Field)
                 : <p className="text-xl font-semibold whitespace-pre-wrap">{f.value || '—'}</p>
               }
             </div>
