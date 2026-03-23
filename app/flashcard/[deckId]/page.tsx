@@ -4,9 +4,29 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+type CardType = 'basic' | 'multi' | 'cloze'
 type Field = { name: string; value: string; type: 'text' | 'image' }
-type Card = { id: string; deck_id: string; fields: Field[]; created_at: string }
+type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; created_at: string }
 type Deck = { id: string; name: string; description: string | null }
+
+const TYPE_LABELS: Record<CardType, string> = {
+  basic: '🔵 Basic',
+  multi: '🟣 Multi-field',
+  cloze: '🟠 Cloze',
+}
+
+function ClozePreview({ text }: { text: string }) {
+  const parts = text.split(/(\{\{[^}]+\}\})/g)
+  return (
+    <p className="text-sm text-gray-200 whitespace-pre-wrap">
+      {parts.map((p, i) =>
+        p.startsWith('{{') && p.endsWith('}}')
+          ? <span key={i} className="bg-yellow-900 text-yellow-300 px-1 rounded">{p.slice(2, -2)}</span>
+          : <span key={i}>{p}</span>
+      )}
+    </p>
+  )
+}
 
 export default function DeckEditPage() {
   const router = useRouter()
@@ -16,17 +36,29 @@ export default function DeckEditPage() {
   const [loading, setLoading] = useState(true)
   const [showAddCard, setShowAddCard] = useState(false)
   const [editingCard, setEditingCard] = useState<string | null>(null)
-  const [fieldDefs, setFieldDefs] = useState<string[]>(['', ''])
-  const [newFields, setNewFields] = useState<Field[]>([
-    { name: '', value: '', type: 'text' },
-    { name: '', value: '', type: 'text' },
-  ])
+  const [editFields, setEditFields] = useState<Field[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const uploadingFieldIdx = useRef<number>(0)
+  const uploadingFieldIdx = useRef(0)
+  const uploadingTarget = useRef<'new' | 'edit'>('new')
+
+  // 새 카드 상태
+  const [newType, setNewType] = useState<CardType>('basic')
+  const [newFields, setNewFields] = useState<Field[]>([
+    { name: '앞면', value: '', type: 'text' },
+    { name: '뒷면', value: '', type: 'text' },
+  ])
+  const [newClozeText, setNewClozeText] = useState('')
 
   useEffect(() => { loadData() }, [deckId])
+
+  const changeNewType = (t: CardType) => {
+    setNewType(t)
+    if (t === 'basic') setNewFields([{ name: '앞면', value: '', type: 'text' }, { name: '뒷면', value: '', type: 'text' }])
+    else if (t === 'multi') setNewFields([{ name: '', value: '', type: 'text' }, { name: '', value: '', type: 'text' }])
+    else setNewClozeText('')
+  }
 
   const loadData = async () => {
     const { data: d } = await supabase.from('flashcard_decks').select('*').eq('id', deckId).single()
@@ -36,32 +68,43 @@ export default function DeckEditPage() {
     setLoading(false)
   }
 
-  const uploadImage = async (file: File, fieldIdx: number, cardFields: Field[], setFields: (f: Field[]) => void) => {
-    setUploading(fieldIdx)
+  const uploadImage = async (file: File, idx: number, fields: Field[], setFields: (f: Field[]) => void) => {
+    setUploading(idx)
     const ext = file.name.split('.').pop()
     const path = `${deckId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('flashcard-images').upload(path, file, { upsert: true })
     if (error) { alert('업로드 실패'); setUploading(null); return }
     const { data: urlData } = supabase.storage.from('flashcard-images').getPublicUrl(path)
-    const updated = cardFields.map((f, i) => i === fieldIdx ? { ...f, value: urlData.publicUrl, type: 'image' as const } : f)
-    setFields(updated)
+    setFields(fields.map((f, i) => i === idx ? { ...f, value: urlData.publicUrl, type: 'image' } : f))
     setUploading(null)
   }
 
   const addCard = async () => {
-    if (newFields.some(f => !f.name.trim())) { alert('모든 필드 이름을 입력해주세요'); return }
     setSaving(true)
-    await supabase.from('flashcard_cards').insert({ deck_id: deckId, fields: newFields })
-    setNewFields([{ name: '', value: '', type: 'text' }, { name: '', value: '', type: 'text' }])
+    let fields: Field[] = []
+    if (newType === 'cloze') {
+      if (!newClozeText.includes('{{')) { alert('{{빈칸}} 형식으로 빈칸을 표시해주세요'); setSaving(false); return }
+      fields = [{ name: 'cloze', value: newClozeText, type: 'text' }]
+    } else {
+      if (newFields.some(f => !f.name.trim())) { alert('필드명을 입력해주세요'); setSaving(false); return }
+      fields = newFields
+    }
+    await supabase.from('flashcard_cards').insert({ deck_id: deckId, card_type: newType, fields })
+    changeNewType('basic')
     setShowAddCard(false)
     await loadData()
     setSaving(false)
   }
 
-  const saveCard = async (card: Card, fields: Field[]) => {
+  const startEdit = (card: Card) => {
+    setEditingCard(card.id)
+    setEditFields(JSON.parse(JSON.stringify(card.fields)))
+  }
+
+  const saveEdit = async (card: Card) => {
     setSaving(true)
-    await supabase.from('flashcard_cards').update({ fields }).eq('id', card.id)
-    setCards(prev => prev.map(c => c.id === card.id ? { ...c, fields } : c))
+    await supabase.from('flashcard_cards').update({ fields: editFields }).eq('id', card.id)
+    setCards(prev => prev.map(c => c.id === card.id ? { ...c, fields: editFields } : c))
     setEditingCard(null)
     setSaving(false)
   }
@@ -78,16 +121,11 @@ export default function DeckEditPage() {
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
         onChange={async e => {
-          const file = e.target.files?.[0]
-          if (!file) return
-          if (editingCard) {
-            const card = cards.find(c => c.id === editingCard)!
-            const fields = [...card.fields]
-            await uploadImage(file, uploadingFieldIdx.current, fields, updated => {
-              setCards(prev => prev.map(c => c.id === editingCard ? { ...c, fields: updated } : c))
-            })
-          } else {
+          const file = e.target.files?.[0]; if (!file) return
+          if (uploadingTarget.current === 'new') {
             await uploadImage(file, uploadingFieldIdx.current, newFields, setNewFields)
+          } else {
+            await uploadImage(file, uploadingFieldIdx.current, editFields, setEditFields)
           }
           e.target.value = ''
         }} />
@@ -105,49 +143,79 @@ export default function DeckEditPage() {
           <div className="flex gap-2">
             {cards.length > 0 && (
               <button onClick={() => router.push(`/flashcard/${deckId}/quiz`)}
-                className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition">
-                ▶ 퀴즈 시작
-              </button>
+                className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition">▶ 퀴즈</button>
             )}
             <button onClick={() => setShowAddCard(p => !p)}
-              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">
-              + 카드 추가
-            </button>
+              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">+ 카드 추가</button>
           </div>
         </div>
 
         {/* 카드 추가 폼 */}
         {showAddCard && (
           <div className="bg-gray-900 rounded-2xl p-5 mb-6 border border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">새 카드</h3>
-              <button onClick={() => setNewFields(prev => [...prev, { name: '', value: '', type: 'text' }])}
-                className="text-blue-400 text-sm hover:text-blue-300">+ 필드 추가</button>
+            <h3 className="font-semibold mb-4">새 카드</h3>
+
+            {/* 타입 선택 */}
+            <div className="flex gap-2 mb-5">
+              {(['basic', 'multi', 'cloze'] as CardType[]).map(t => (
+                <button key={t} onClick={() => changeNewType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition ${newType === t ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                  {TYPE_LABELS[t]}
+                </button>
+              ))}
             </div>
-            {newFields.map((f, i) => (
-              <div key={i} className="mb-3 flex gap-2 items-start">
-                <input className="w-28 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none flex-shrink-0"
-                  placeholder="필드명" value={f.name}
-                  onChange={e => setNewFields(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-                <div className="flex-1 flex gap-2">
-                  {f.type === 'image' && f.value
-                    ? <img src={f.value} className="h-20 rounded-lg object-contain bg-gray-800" alt="업로드된 이미지" />
-                    : <input className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none"
-                        placeholder="내용" value={f.value}
-                        onChange={e => setNewFields(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value, type: 'text' } : x))} />
-                  }
-                  <button onClick={() => { uploadingFieldIdx.current = i; fileInputRef.current?.click() }}
-                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm flex-shrink-0">
-                    {uploading === i ? '⏳' : '🖼'}
-                  </button>
-                </div>
-                {newFields.length > 2 && (
-                  <button onClick={() => setNewFields(prev => prev.filter((_, j) => j !== i))}
-                    className="text-gray-600 hover:text-red-400 py-2">✕</button>
+
+            {/* Basic / Multi 필드 */}
+            {(newType === 'basic' || newType === 'multi') && (
+              <>
+                {newFields.map((f, i) => (
+                  <div key={i} className="mb-3 flex gap-2 items-start">
+                    <input className="w-24 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none flex-shrink-0"
+                      placeholder="필드명" value={f.name}
+                      onChange={e => setNewFields(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                    <div className="flex-1 flex gap-2">
+                      {f.type === 'image' && f.value
+                        ? <img src={f.value} className="h-20 rounded-lg object-contain bg-gray-800" alt="" />
+                        : <textarea className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-10"
+                            placeholder="내용" value={f.value}
+                            onChange={e => setNewFields(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value, type: 'text' } : x))} />
+                      }
+                      <button onClick={() => { uploadingFieldIdx.current = i; uploadingTarget.current = 'new'; fileInputRef.current?.click() }}
+                        className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm flex-shrink-0">
+                        {uploading === i ? '⏳' : '🖼'}
+                      </button>
+                    </div>
+                    {newType === 'multi' && newFields.length > 2 && (
+                      <button onClick={() => setNewFields(prev => prev.filter((_, j) => j !== i))}
+                        className="text-gray-600 hover:text-red-400 py-2 flex-shrink-0">✕</button>
+                    )}
+                  </div>
+                ))}
+                {newType === 'multi' && (
+                  <button onClick={() => setNewFields(prev => [...prev, { name: '', value: '', type: 'text' }])}
+                    className="text-blue-400 text-sm hover:text-blue-300 mb-3">+ 필드 추가</button>
+                )}
+              </>
+            )}
+
+            {/* Cloze */}
+            {newType === 'cloze' && (
+              <div className="mb-4">
+                <p className="text-xs text-gray-400 mb-2">빈칸으로 만들 부분을 <code className="bg-gray-800 px-1 rounded text-yellow-300">{`{{텍스트}}`}</code> 로 감싸주세요</p>
+                <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
+                  placeholder={`예: 케이블헤드는 {{고압 케이블}}을 {{인입}}할 때 사용하는 기기이다.`}
+                  value={newClozeText}
+                  onChange={e => setNewClozeText(e.target.value)} />
+                {newClozeText && (
+                  <div className="mt-2 bg-gray-800 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-1">미리보기</p>
+                    <ClozePreview text={newClozeText} />
+                  </div>
                 )}
               </div>
-            ))}
-            <div className="flex gap-2 mt-4">
+            )}
+
+            <div className="flex gap-2 mt-2">
               <button onClick={addCard} disabled={saving}
                 className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50">
                 {saving ? '저장 중...' : '저장'}
@@ -165,66 +233,73 @@ export default function DeckEditPage() {
             <div className="space-y-3">
               {cards.map((card, ci) => {
                 const isEditing = editingCard === card.id
-                const [editFields, setEditFields] = useState<Field[]>([...card.fields])
                 return (
                   <div key={card.id} className="bg-gray-900 rounded-2xl p-4 group">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-gray-600 text-xs">카드 {ci + 1}</span>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-600 text-xs">#{ci + 1}</span>
+                        <span className="text-xs bg-gray-800 px-2 py-0.5 rounded-full text-gray-400">{TYPE_LABELS[card.card_type ?? 'basic']}</span>
+                      </div>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
                         {isEditing
                           ? <>
-                              <button onClick={() => saveCard(card, editFields)} disabled={saving}
-                                className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs transition disabled:opacity-50">
+                              <button onClick={() => saveEdit(card)} disabled={saving}
+                                className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs disabled:opacity-50">
                                 {saving ? '...' : '저장'}
                               </button>
-                              <button onClick={() => setEditingCard(null)}
-                                className="bg-gray-700 px-3 py-1 rounded text-xs">취소</button>
+                              <button onClick={() => setEditingCard(null)} className="bg-gray-700 px-3 py-1 rounded text-xs">취소</button>
                             </>
                           : <>
-                              <button onClick={() => { setEditingCard(card.id) }}
-                                className="text-gray-600 hover:text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition">편집</button>
-                              <button onClick={() => deleteCard(card.id)}
-                                className="text-gray-600 hover:text-red-400 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition">🗑</button>
+                              <button onClick={() => startEdit(card)} className="text-gray-400 hover:text-white px-2 py-1 rounded text-xs">편집</button>
+                              <button onClick={() => deleteCard(card.id)} className="text-gray-600 hover:text-red-400 px-2 py-1 rounded text-xs">🗑</button>
                             </>
                         }
                       </div>
                     </div>
-                    {isEditing
-                      ? (
-                        <div className="space-y-2">
-                          {editFields.map((f, i) => (
-                            <div key={i} className="flex gap-2 items-start">
-                              <input className="w-28 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none flex-shrink-0"
-                                value={f.name} onChange={e => setEditFields(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-                              <div className="flex-1 flex gap-2">
-                                {f.type === 'image' && f.value
-                                  ? <img src={f.value} className="h-20 rounded-lg object-contain bg-gray-800" alt="" />
-                                  : <input className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none"
-                                      value={f.value} onChange={e => setEditFields(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value, type: 'text' } : x))} />
-                                }
-                                <button onClick={() => { uploadingFieldIdx.current = i; fileInputRef.current?.click() }}
-                                  className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm flex-shrink-0">
-                                  {uploading === i ? '⏳' : '🖼'}
-                                </button>
+
+                    {isEditing ? (
+                      card.card_type === 'cloze'
+                        ? <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
+                            value={editFields[0]?.value ?? ''}
+                            onChange={e => setEditFields([{ name: 'cloze', value: e.target.value, type: 'text' }])} />
+                        : (
+                          <div className="space-y-2">
+                            {editFields.map((f, i) => (
+                              <div key={i} className="flex gap-2 items-start">
+                                <input className="w-24 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none flex-shrink-0"
+                                  value={f.name} onChange={e => setEditFields(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                                <div className="flex-1 flex gap-2">
+                                  {f.type === 'image' && f.value
+                                    ? <img src={f.value} className="h-20 rounded-lg object-contain bg-gray-800" alt="" />
+                                    : <textarea className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-10"
+                                        value={f.value} onChange={e => setEditFields(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value, type: 'text' } : x))} />
+                                  }
+                                  <button onClick={() => { uploadingFieldIdx.current = i; uploadingTarget.current = 'edit'; fileInputRef.current?.click() }}
+                                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm flex-shrink-0">
+                                    {uploading === i ? '⏳' : '🖼'}
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                      : (
-                        <div className="grid grid-cols-2 gap-2">
-                          {card.fields.map((f, i) => (
-                            <div key={i} className="bg-gray-800 rounded-xl p-3">
-                              <p className="text-xs text-blue-400 font-semibold mb-1">{f.name}</p>
-                              {f.type === 'image' && f.value
-                                ? <img src={f.value} className="max-h-24 object-contain rounded" alt={f.name} />
-                                : <p className="text-sm text-gray-200 whitespace-pre-wrap">{f.value || '—'}</p>
-                              }
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    }
+                            ))}
+                          </div>
+                        )
+                    ) : (
+                      card.card_type === 'cloze'
+                        ? <div className="bg-gray-800 rounded-xl p-3"><ClozePreview text={card.fields[0]?.value ?? ''} /></div>
+                        : (
+                          <div className="grid grid-cols-2 gap-2">
+                            {card.fields.map((f, i) => (
+                              <div key={i} className="bg-gray-800 rounded-xl p-3">
+                                <p className="text-xs text-blue-400 font-semibold mb-1">{f.name}</p>
+                                {f.type === 'image' && f.value
+                                  ? <img src={f.value} className="max-h-24 object-contain rounded" alt={f.name} />
+                                  : <p className="text-sm text-gray-200 whitespace-pre-wrap">{f.value || '—'}</p>
+                                }
+                              </div>
+                            ))}
+                          </div>
+                        )
+                    )}
                   </div>
                 )
               })}
