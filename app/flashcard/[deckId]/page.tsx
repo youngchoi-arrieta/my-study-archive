@@ -224,7 +224,18 @@ export default function DeckEditPage() {
                         ? <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
                             value={editFields[0]?.value ?? ''}
                             onChange={e => setEditFields([{ name: 'cloze', value: e.target.value, type: 'text' }])} />
-                        : <div>{editFields.map((f, i) => renderFieldRow(f, i, updateEditField, false, undefined, card.card_type === 'multi'))}</div>
+                        : <div>
+                            {editFields.map((f, i) => renderFieldRow(
+                              f, i, updateEditField,
+                              card.card_type === 'multi' && editFields.length > 2,
+                              () => setEditFields(prev => prev.filter((_, j) => j !== i)),
+                              card.card_type === 'multi'
+                            ))}
+                            {card.card_type === 'multi' && (
+                              <button onClick={() => setEditFields(prev => [...prev, { name: '', value: '', type: 'rich', canBeGiven: true }])}
+                                className="text-blue-400 text-sm hover:text-blue-300 mb-3">+ 필드 추가</button>
+                            )}
+                          </div>
                     ) : (
                       card.card_type === 'cloze'
                         ? <div className="bg-gray-800 rounded-xl p-3"><ClozePreview text={card.fields[0]?.value ?? ''} /></div>
