@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { OcclusionView, type OcclusionData } from '../OcclusionEditor'
 
-type CardType = 'basic' | 'multi' | 'cloze'
+type CardType = 'basic' | 'multi' | 'cloze' | 'occlusion'
 type Field = { name: string; value: string; type: 'text' | 'image' | 'rich'; canBeGiven?: boolean; images?: {url: string; x: number; y: number; w: number; h: number}[] }
 
 function renderField(f: Field) {
@@ -27,13 +28,13 @@ function renderField(f: Field) {
   return <p className="text-2xl font-bold whitespace-pre-wrap">{f?.value || '—'}</p>
 }
 
-
-type Card = { id: string; card_type: CardType; fields: Field[] }
+type Card = { id: string; card_type: CardType; fields: Field[]; occlusion?: OcclusionData }
 
 type QuizItem =
   | { kind: 'basic'; card: Card; direction: 'front' | 'back' }
   | { kind: 'multi'; card: Card; givenIdx: number }
   | { kind: 'cloze'; card: Card; blanks: string[] }
+  | { kind: 'occlusion'; card: Card }
 
 function parseCloze(text: string): { template: string; blanks: string[] } {
   const blanks: string[] = []
@@ -91,6 +92,8 @@ export default function QuizPage() {
       } else if (type === 'cloze') {
         const { blanks } = parseCloze(card.fields[0]?.value ?? '')
         items.push({ kind: 'cloze', card, blanks })
+      } else if (type === 'occlusion') {
+        if (card.occlusion?.imageUrl) items.push({ kind: 'occlusion', card })
       }
     }
     const shuffled = items.sort(() => Math.random() - 0.5)
@@ -158,9 +161,18 @@ export default function QuizPage() {
         </div>
       )
     }
+    if (current.kind === 'occlusion') {
+      return (
+        <div className="bg-gray-900 rounded-2xl p-4 mb-4 border border-red-900">
+          <p className="text-xs text-red-400 font-semibold uppercase tracking-widest mb-3">Image Occlusion · 블록을 클릭해서 공개</p>
+          {current.card.occlusion && <OcclusionView data={current.card.occlusion} mode="quiz" revealed={revealed} />}
+        </div>
+      )
+    }
   }
 
   const renderAnswer = () => {
+    if (current.kind === 'occlusion') return null  // occlusion은 인라인 공개
     if (!revealed) return (
       <button onClick={() => setRevealed(true)}
         className="w-full bg-gray-800 hover:bg-gray-700 rounded-2xl p-6 text-gray-500 text-lg font-semibold transition border-2 border-dashed border-gray-700 hover:border-gray-500 mb-6">

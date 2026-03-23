@@ -4,14 +4,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import RichEditor from '@/app/components/RichEditor'
+import { OcclusionEditor, OcclusionView, type OcclusionData } from '../OcclusionEditor'
 
-type CardType = 'basic' | 'multi' | 'cloze'
+type CardType = 'basic' | 'multi' | 'cloze' | 'occlusion'
 type Field = { name: string; value: string; type: 'text' | 'rich'; canBeGiven?: boolean }
-type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; created_at: string }
+type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; occlusion?: OcclusionData; created_at: string }
 type Deck = { id: string; name: string; description: string | null }
 
 const TYPE_LABELS: Record<CardType, string> = {
-  basic: '🔵 Basic', multi: '🟣 Multi-field', cloze: '🟠 Cloze',
+  basic: '🔵 Basic', multi: '🟣 Multi-field', cloze: '🟠 Cloze', occlusion: '🔴 Occlusion',
 }
 
 function ClozePreview({ text }: { text: string }) {
@@ -43,12 +44,15 @@ export default function DeckEditPage() {
     { name: '뒷면', value: '', type: 'rich' },
   ])
   const [newClozeText, setNewClozeText] = useState('')
+  const [newOcclusion, setNewOcclusion] = useState<OcclusionData>({ imageUrl: '', blocks: [] })
+  const [editOcclusion, setEditOcclusion] = useState<OcclusionData>({ imageUrl: '', blocks: [] })
   // 덱 이름/설명 편집
   const [editingDeck, setEditingDeck] = useState(false)
   const [deckName, setDeckName] = useState('')
   const [deckDesc, setDeckDesc] = useState('')
   // 카드 이동
   const [movingCard, setMovingCard] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
 
   useEffect(() => { loadData() }, [deckId])
 
@@ -56,6 +60,7 @@ export default function DeckEditPage() {
     setNewType(t)
     if (t === 'basic') setNewFields([{ name: '앞면', value: '', type: 'rich' }, { name: '뒷면', value: '', type: 'rich' }])
     else if (t === 'multi') setNewFields([{ name: '', value: '', type: 'rich' }, { name: '', value: '', type: 'rich' }])
+    else if (t === 'occlusion') setNewOcclusion({ imageUrl: '', blocks: [] })
     else setNewClozeText('')
   }
 
@@ -90,15 +95,21 @@ export default function DeckEditPage() {
 
   const addCard = async () => {
     setSaving(true)
-    let fields: Field[] = []
-    if (newType === 'cloze') {
-      if (!newClozeText.includes('{{')) { alert('{{빈칸}} 형식으로 빈칸을 표시해주세요'); setSaving(false); return }
-      fields = [{ name: 'cloze', value: newClozeText, type: 'text' }]
+    if (newType === 'occlusion') {
+      if (!newOcclusion.imageUrl) { alert('이미지를 추가해주세요'); setSaving(false); return }
+      await supabase.from('flashcard_cards').insert({ deck_id: deckId, card_type: 'occlusion', fields: [], occlusion: newOcclusion })
+      setNewOcclusion({ imageUrl: '', blocks: [] })
     } else {
-      if (newFields.some(f => !f.name.trim())) { alert('필드명을 입력해주세요'); setSaving(false); return }
-      fields = newFields
+      let fields: Field[] = []
+      if (newType === 'cloze') {
+        if (!newClozeText.includes('{{')) { alert('{{빈칸}} 형식으로 빈칸을 표시해주세요'); setSaving(false); return }
+        fields = [{ name: 'cloze', value: newClozeText, type: 'text' }]
+      } else {
+        if (newFields.some(f => !f.name.trim())) { alert('필드명을 입력해주세요'); setSaving(false); return }
+        fields = newFields
+      }
+      await supabase.from('flashcard_cards').insert({ deck_id: deckId, card_type: newType, fields })
     }
-    await supabase.from('flashcard_cards').insert({ deck_id: deckId, card_type: newType, fields })
     changeNewType('basic')
     setShowAddCard(false)
     await loadData()
@@ -108,12 +119,18 @@ export default function DeckEditPage() {
   const startEdit = (card: Card) => {
     setEditingCard(card.id)
     setEditFields(JSON.parse(JSON.stringify(card.fields)))
+    if (card.card_type === 'occlusion') setEditOcclusion(card.occlusion ?? { imageUrl: '', blocks: [] })
   }
 
   const saveEdit = async (card: Card) => {
     setSaving(true)
-    await supabase.from('flashcard_cards').update({ fields: editFields }).eq('id', card.id)
-    setCards(prev => prev.map(c => c.id === card.id ? { ...c, fields: editFields } : c))
+    if (card.card_type === 'occlusion') {
+      await supabase.from('flashcard_cards').update({ occlusion: editOcclusion }).eq('id', card.id)
+      setCards(prev => prev.map(c => c.id === card.id ? { ...c, occlusion: editOcclusion } : c))
+    } else {
+      await supabase.from('flashcard_cards').update({ fields: editFields }).eq('id', card.id)
+      setCards(prev => prev.map(c => c.id === card.id ? { ...c, fields: editFields } : c))
+    }
     setEditingCard(null)
     setSaving(false)
   }
@@ -190,8 +207,8 @@ export default function DeckEditPage() {
         {showAddCard && (
           <div className="bg-gray-900 rounded-2xl p-5 mb-6 border border-gray-700">
             <h3 className="font-semibold mb-4">새 카드</h3>
-            <div className="flex gap-2 mb-5">
-              {(['basic', 'multi', 'cloze'] as CardType[]).map(t => (
+            <div className="flex gap-2 mb-5 flex-wrap">
+              {(['basic', 'multi', 'cloze', 'occlusion'] as CardType[]).map(t => (
                 <button key={t} onClick={() => changeNewType(t)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition ${newType === t ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
                   {TYPE_LABELS[t]}
@@ -220,6 +237,11 @@ export default function DeckEditPage() {
                 {newClozeText && <div className="mt-2 bg-gray-800 rounded-lg p-3"><ClozePreview text={newClozeText} /></div>}
               </div>
             )}
+            {newType === 'occlusion' && (
+              <div className="mb-4">
+                <OcclusionEditor data={newOcclusion} onChange={setNewOcclusion} />
+              </div>
+            )}
             <div className="flex gap-2 mt-2">
               <button onClick={addCard} disabled={saving}
                 className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50">
@@ -232,15 +254,21 @@ export default function DeckEditPage() {
 
         {cards.length === 0
           ? <div className="text-gray-500 text-center py-16">카드가 없어요!</div>
-          : (
-            <div className="space-y-3">
-              {cards.map((card, ci) => {
+          : (() => {
+            const PAGE = 15
+            const pageCount = Math.ceil(cards.length / PAGE)
+            const paginated = cards.slice(page * PAGE, (page + 1) * PAGE)
+            return (
+            <div>
+              <div className="space-y-3">
+              {paginated.map((card, ci) => {
                 const isEditing = editingCard === card.id
+                const globalIdx = page * PAGE + ci
                 return (
                   <div key={card.id} className="bg-gray-900 rounded-2xl p-4 group">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-gray-600 text-xs">#{ci + 1}</span>
+                        <span className="text-gray-600 text-xs">#{globalIdx + 1}</span>
                         <span className="text-xs bg-gray-800 px-2 py-0.5 rounded-full text-gray-400">{TYPE_LABELS[card.card_type ?? 'basic']}</span>
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
@@ -281,45 +309,64 @@ export default function DeckEditPage() {
                         ? <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
                             value={editFields[0]?.value ?? ''}
                             onChange={e => setEditFields([{ name: 'cloze', value: e.target.value, type: 'text' }])} />
-                        : <div>
-                            {editFields.map((f, i) => renderFieldRow(
-                              f, i, updateEditField,
-                              card.card_type === 'multi' && editFields.length > 2,
-                              () => setEditFields(prev => prev.filter((_, j) => j !== i)),
-                              card.card_type === 'multi'
-                            ))}
-                            {card.card_type === 'multi' && (
-                              <button onClick={() => setEditFields(prev => [...prev, { name: '', value: '', type: 'rich', canBeGiven: true }])}
-                                className="text-blue-400 text-sm hover:text-blue-300 mb-3">+ 필드 추가</button>
-                            )}
-                          </div>
+                        : card.card_type === 'occlusion'
+                          ? <OcclusionEditor data={editOcclusion} onChange={setEditOcclusion} />
+                          : <div>
+                              {editFields.map((f, i) => renderFieldRow(
+                                f, i, updateEditField,
+                                card.card_type === 'multi' && editFields.length > 2,
+                                () => setEditFields(prev => prev.filter((_, j) => j !== i)),
+                                card.card_type === 'multi'
+                              ))}
+                              {card.card_type === 'multi' && (
+                                <button onClick={() => setEditFields(prev => [...prev, { name: '', value: '', type: 'rich', canBeGiven: true }])}
+                                  className="text-blue-400 text-sm hover:text-blue-300 mb-3">+ 필드 추가</button>
+                              )}
+                            </div>
                     ) : (
                       card.card_type === 'cloze'
                         ? <div className="bg-gray-800 rounded-xl p-3"><ClozePreview text={card.fields[0]?.value ?? ''} /></div>
-                        : (
-                          <div className="grid grid-cols-2 gap-2">
-                            {card.fields.map((f, i) => (
-                              <div key={i} className="bg-gray-800 rounded-xl p-3">
-                                <div className="flex items-center gap-1 mb-1">
-                                  <p className="text-xs text-blue-400 font-semibold">{f.name}</p>
-                                  {card.card_type === 'multi' && f.canBeGiven === false &&
-                                    <span className="text-xs text-gray-600">(Given ✕)</span>}
+                        : card.card_type === 'occlusion'
+                          ? <div className="bg-gray-800 rounded-xl p-2">
+                              {card.occlusion?.imageUrl
+                                ? <OcclusionView data={card.occlusion} mode="edit" />
+                                : <p className="text-gray-500 text-xs text-center py-4">이미지 없음</p>}
+                            </div>
+                          : (
+                            <div className="grid grid-cols-2 gap-2">
+                              {card.fields.map((f, i) => (
+                                <div key={i} className="bg-gray-800 rounded-xl p-3">
+                                  <div className="flex items-center gap-1 mb-1">
+                                    <p className="text-xs text-blue-400 font-semibold">{f.name}</p>
+                                    {card.card_type === 'multi' && f.canBeGiven === false &&
+                                      <span className="text-xs text-gray-600">(Given ✕)</span>}
+                                  </div>
+                                  {f.type === 'rich'
+                                    ? <div className="prose prose-invert prose-sm max-w-none [&_img]:max-w-full [&_img]:rounded"
+                                        dangerouslySetInnerHTML={{ __html: f.value }} />
+                                    : <p className="text-sm text-gray-200 whitespace-pre-wrap">{f.value || '—'}</p>
+                                  }
                                 </div>
-                                {f.type === 'rich'
-                                  ? <div className="prose prose-invert prose-sm max-w-none [&_img]:max-w-full [&_img]:rounded"
-                                      dangerouslySetInnerHTML={{ __html: f.value }} />
-                                  : <p className="text-sm text-gray-200 whitespace-pre-wrap">{f.value || '—'}</p>
-                                }
-                              </div>
-                            ))}
-                          </div>
-                        )
+                              ))}
+                            </div>
+                          )
                     )}
                   </div>
                 )
               })}
+              </div>
+              {pageCount > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-30 transition">← 이전</button>
+                  <span className="text-gray-500 text-sm">{page + 1} / {pageCount}</span>
+                  <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={page === pageCount - 1}
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-30 transition">다음 →</button>
+                </div>
+              )}
             </div>
-          )
+            )
+          })()
         }
       </div>
     </main>
