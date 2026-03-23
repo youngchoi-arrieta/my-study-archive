@@ -5,7 +5,35 @@ import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type CardType = 'basic' | 'multi' | 'cloze'
-type Field = { name: string; value: string; type: 'text' | 'image' }
+type Field = { name: string; value: string; type: 'text' | 'image'; images?: {url: string; x: number; y: number; w: number; h: number}[] }
+
+function renderField(f: Field) {
+  if (f.type === 'image' && f.images?.length) {
+    return (
+      <div className="relative bg-gray-800 rounded-xl" style={{ height: 220 }}>
+        {f.images.map((img: any, i: number) => (
+          <img key={i} src={img.url}
+            style={{ position: 'absolute', left: img.x, top: img.y, width: img.w, height: img.h }}
+            className="object-contain rounded" alt="" />
+        ))}
+      </div>
+    )
+  }
+  if (f.type === 'image' && f.value) return <img src={f.value} className="max-h-48 object-contain rounded-xl mx-auto" alt="" />
+  return <p className="text-2xl font-bold whitespace-pre-wrap">{f?.value || '—'}</p>
+}
+
+
+function renderImg(f: Field) {
+  if (f.type !== 'image') return null
+  if (f.images?.length) return (
+    <div className="flex flex-wrap gap-2">
+      {f.images.map((img, i) => <img key={i} src={img.url} style={{width: img.width}} className="object-contain rounded-xl" alt="" />)}
+    </div>
+  )
+  if (f.value) return <img src={f.value} className="max-h-48 object-contain rounded-xl mx-auto" alt="" />
+  return null
+}
 type Card = { id: string; card_type: CardType; fields: Field[] }
 
 type QuizItem =
@@ -118,8 +146,8 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
           <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {label}</p>
-          {f?.type === 'image' && f.value
-            ? <img src={f.value} className="max-h-48 object-contain rounded-xl mx-auto" alt="" />
+          {f?.type === 'image'
+            ? renderImg(f as Field)
             : <p className="text-2xl font-bold whitespace-pre-wrap">{f?.value || '—'}</p>
           }
         </div>
@@ -130,8 +158,8 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
           <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {f.name}</p>
-          {f.type === 'image' && f.value
-            ? <img src={f.value} className="max-h-48 object-contain rounded-xl mx-auto" alt="" />
+          {f.type === 'image'
+            ? renderImg(f as Field)
             : <p className="text-2xl font-bold whitespace-pre-wrap">{f.value || '—'}</p>
           }
         </div>
@@ -161,8 +189,8 @@ export default function QuizPage() {
       return (
         <div className="bg-gray-900 rounded-2xl p-5 border border-green-900 mb-6">
           <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{label}</p>
-          {f?.type === 'image' && f.value
-            ? <img src={f.value} className="max-h-40 object-contain rounded-xl" alt="" />
+          {f?.type === 'image'
+            ? renderImg(f as Field)
             : <p className="text-xl font-semibold whitespace-pre-wrap">{f?.value || '—'}</p>
           }
         </div>
@@ -175,8 +203,8 @@ export default function QuizPage() {
           {current.card.fields.filter((_, i) => i !== current.givenIdx).map((f, i) => (
             <div key={i} className="bg-gray-900 rounded-2xl p-5 border border-green-900">
               <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{f.name}</p>
-              {f.type === 'image' && f.value
-                ? <img src={f.value} className="max-h-40 object-contain rounded-xl" alt="" />
+              {f.type === 'image'
+                ? renderImg(f as Field)
                 : <p className="text-xl font-semibold whitespace-pre-wrap">{f.value || '—'}</p>
               }
             </div>
