@@ -36,6 +36,7 @@ function ImageCanvas({ field, fieldIdx, deckId, onUpdate }: {
 }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<number | null>(null)
+  const [isActive, setIsActive] = useState(false)
   const images = field.images ?? []
 
   const uploadAndAdd = useCallback(async (file: File) => {
@@ -46,7 +47,6 @@ function ImageCanvas({ field, fieldIdx, deckId, onUpdate }: {
     if (error) { alert('업로드 실패'); return }
     const { data } = supabase.storage.from('flashcard-images').getPublicUrl(path)
     const prev = field.images ?? []
-    // 새 이미지는 캔버스 중앙에 배치
     const x = Math.max(0, 160 * (prev.length % 3))
     const y = Math.max(0, 80 * Math.floor(prev.length / 3))
     onUpdate(fieldIdx, {
@@ -55,10 +55,16 @@ function ImageCanvas({ field, fieldIdx, deckId, onUpdate }: {
     })
   }, [deckId, field.images, fieldIdx, onUpdate])
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
-    if (item) { e.preventDefault(); uploadAndAdd(item.getAsFile()!) }
-  }, [uploadAndAdd])
+  // 전역 paste 이벤트 — 캔버스가 활성화됐을 때만 잡기
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      if (!isActive) return
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type.startsWith('image/'))
+      if (item) { e.preventDefault(); uploadAndAdd(item.getAsFile()!) }
+    }
+    window.addEventListener('paste', handler)
+    return () => window.removeEventListener('paste', handler)
+  }, [isActive, uploadAndAdd])
 
   const startDrag = (e: React.MouseEvent | React.TouchEvent, imgIdx: number, action: 'move' | 'resize') => {
     e.preventDefault()
@@ -103,15 +109,18 @@ function ImageCanvas({ field, fieldIdx, deckId, onUpdate }: {
   return (
     <div
       ref={canvasRef}
-      className="flex-1 relative rounded-lg bg-gray-800 border-2 border-dashed border-gray-700 outline-none"
+      className={`flex-1 relative rounded-lg bg-gray-800 border-2 transition outline-none cursor-crosshair
+        ${isActive ? 'border-blue-500' : 'border-dashed border-gray-700'}`}
       style={{ height: CANVAS_H }}
       tabIndex={0}
-      onPaste={handlePaste}
-      onClick={(e) => { if (e.target === canvasRef.current) setSelected(null) }}
+      onFocus={() => setIsActive(true)}
+      onBlur={() => setIsActive(false)}
+      onClick={(e) => { if (e.target === canvasRef.current) { setSelected(null); canvasRef.current?.focus() } }}
     >
       {images.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs pointer-events-none">
-          클릭 후 Ctrl+V로 이미지 붙여넣기
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 text-xs pointer-events-none gap-1">
+          <span>클릭으로 활성화 후 Ctrl+V</span>
+          {isActive && <span className="text-blue-400 font-bold">✓ 활성화됨</span>}
         </div>
       )}
       {images.map((img, ii) => (
