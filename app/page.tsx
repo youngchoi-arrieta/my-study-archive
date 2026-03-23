@@ -21,6 +21,11 @@ export default function Home() {
               <h2 className="text-lg font-bold mb-1">자료해석형 문제</h2>
               <p className="text-gray-400 text-xs">도면해석 · Table spec · 시퀀스회로도</p>
             </Link>
+            <Link href="/flashcard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
+              <div className="text-2xl mb-2">🃏</div>
+              <h2 className="text-lg font-bold mb-1">플래시카드</h2>
+              <p className="text-gray-400 text-xs">멀티필드 · 랜덤 인출 훈련</p>
+            </Link>
           </div>
 
           {/* 오른쪽: 대시보드 */}
