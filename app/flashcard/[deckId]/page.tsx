@@ -47,8 +47,8 @@ export default function DeckEditPage() {
 
   const changeNewType = (t: CardType) => {
     setNewType(t)
-    if (t === 'basic') setNewFields([{ name: '앞면', value: '', type: 'text' }, { name: '뒷면', value: '', type: 'text' }])
-    else if (t === 'multi') setNewFields([{ name: '', value: '', type: 'text' }, { name: '', value: '', type: 'text' }])
+    if (t === 'basic') setNewFields([{ name: '앞면', value: '', type: 'rich' }, { name: '뒷면', value: '', type: 'rich' }])
+    else if (t === 'multi') setNewFields([{ name: '', value: '', type: 'rich' }, { name: '', value: '', type: 'rich' }])
     else setNewClozeText('')
   }
 
@@ -108,26 +108,11 @@ export default function DeckEditPage() {
         <input className="w-28 bg-gray-800 rounded-lg px-3 py-1.5 text-white text-sm outline-none"
           placeholder="필드명" value={f.name}
           onChange={e => onUpdate(i, { name: e.target.value })} />
-        <div className="flex gap-1">
-          <button onClick={() => onUpdate(i, { type: 'text', value: f.type === 'rich' ? '' : f.value })}
-            className={`px-2 py-1 rounded text-xs transition ${f.type === 'text' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
-            텍스트
-          </button>
-          <button onClick={() => onUpdate(i, { type: 'rich', value: f.type === 'text' ? '' : f.value })}
-            className={`px-2 py-1 rounded text-xs transition ${f.type === 'rich' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
-            리치 (이미지)
-          </button>
-        </div>
         {canDelete && onDelete && (
           <button onClick={onDelete} className="text-gray-600 hover:text-red-400 text-sm ml-auto">✕</button>
         )}
       </div>
-      {f.type === 'rich'
-        ? <RichEditor content={f.value} onChange={v => onUpdate(i, { value: v })} placeholder="내용 입력 (Ctrl+V로 이미지 붙여넣기)" />
-        : <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none min-h-[60px]"
-            placeholder="내용" value={f.value}
-            onChange={e => onUpdate(i, { value: e.target.value })} />
-      }
+      <RichEditor content={f.value} onChange={v => onUpdate(i, { value: v, type: 'rich' })} placeholder="내용 입력 (Ctrl+V로 이미지 붙여넣기)" />
     </div>
   )
 
