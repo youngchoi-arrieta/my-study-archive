@@ -273,6 +273,7 @@ export default function DiagramCardDetail() {
       </div>
 
       {editing ? (
+        <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto p-8 space-y-4">
           <div className="flex gap-3 flex-wrap">
             {(['도면해석', 'Table spec', '시퀀스회로도'] as const).map(t => (
@@ -374,10 +375,11 @@ export default function DiagramCardDetail() {
             💾 저장
           </button>
         </div>
+        </div>
       ) : (
         <>
           {/* 학습 상태 바 */}
-          <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 flex-wrap">
+          <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 flex-wrap shrink-0">
             <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[card.status || '새 카드']}`}>
               {card.status || '새 카드'}
             </span>
