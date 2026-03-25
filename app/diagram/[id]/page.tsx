@@ -402,9 +402,9 @@ export default function DiagramCardDetail() {
           </div>
 
           {/* 2단 학습 뷰 */}
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-1 overflow-hidden min-h-0">
             {/* 왼쪽: 도면/표/회로도 */}
-            <div className="w-1/2 border-r border-gray-800 overflow-auto flex flex-col">
+            <div className="w-1/2 border-r border-gray-800 overflow-auto flex flex-col min-h-0">
               {imageUrls.length > 0 ? (
                 <>
                   {/* 페이지 네비게이션 */}
@@ -443,7 +443,7 @@ export default function DiagramCardDetail() {
             </div>
 
             {/* 오른쪽: 소문제 */}
-            <div className="w-1/2 overflow-auto p-4 space-y-4">
+            <div className="w-1/2 overflow-auto p-4 space-y-4 min-h-0">
               {card.subquestions?.length > 0 ? (
                 <>
                   <p className="text-xs text-gray-500">클릭하면 정답 공개 · 빈칸(중괄호 두 개)은 클릭으로 열기</p>
