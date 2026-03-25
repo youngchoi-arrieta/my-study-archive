@@ -249,7 +249,7 @@ export default function DiagramCardDetail() {
   if (!card) return <div className="min-h-screen bg-gray-950 text-white p-8">불러오는 중...</div>
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
       {/* 상단 바 */}
       <div className="flex justify-between items-center p-4 border-b border-gray-800">
         <div className="flex items-center gap-3 overflow-hidden">
@@ -400,7 +400,7 @@ export default function DiagramCardDetail() {
           </div>
 
           {/* 2단 학습 뷰 */}
-          <div className="flex h-[calc(100vh-130px)]">
+          <div className="flex flex-1 overflow-hidden">
             {/* 왼쪽: 도면/표/회로도 */}
             <div className="w-1/2 border-r border-gray-800 overflow-auto flex flex-col">
               {imageUrls.length > 0 ? (
