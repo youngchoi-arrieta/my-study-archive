@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { STATUS_COLORS, TYPE_COLORS } from '@/lib/constants'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
@@ -15,18 +16,6 @@ type DiagramCard = {
   status: string
   review_count: number
   created_at: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  '새 카드': 'bg-gray-600',
-  '오답노트': 'bg-red-600',
-  '완료': 'bg-blue-600',
-}
-
-const TYPE_COLORS: Record<string, string> = {
-  '도면해석': 'bg-blue-800',
-  'Table spec': 'bg-purple-700',
-  '시퀀스회로도': 'bg-teal-700',
 }
 
 function DiagramListInner() {

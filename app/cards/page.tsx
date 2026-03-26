@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { STATUS_COLORS } from '@/lib/constants'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
@@ -14,12 +15,6 @@ type Card = {
   status: string
   review_count: number
   created_at: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  '새 카드': 'bg-gray-600',
-  '오답노트': 'bg-red-600',
-  '완료': 'bg-blue-600',
 }
 
 function CardListInner() {

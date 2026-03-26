@@ -1,11 +1,14 @@
 'use client'
-import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../../lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import RichEditor from '../../components/RichEditor'
+import dynamic from 'next/dynamic'
+import { STATUS_COLORS, TYPE_COLORS } from '@/lib/constants'
+import { renderLatexNodes, renderClozeNodes } from '@/lib/latex'
+
+const RichEditor = dynamic(() => import('@/app/components/RichEditor'), { ssr: false })
 
 type SubQuestion = {
   id: number
@@ -29,62 +32,6 @@ type DiagramCard = {
   last_reviewed: string
   my_note: string
   created_at: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  '새 카드': 'bg-gray-600',
-  '오답노트': 'bg-red-600',
-  '완료': 'bg-blue-600',
-}
-
-const TYPE_COLORS: Record<string, string> = {
-  '도면해석': 'bg-blue-800',
-  'Table spec': 'bg-purple-700',
-  '시퀀스회로도': 'bg-teal-700',
-}
-
-function renderLatexText(html: string): React.ReactNode[] {
-  if (!html) return []
-
-  // img 태그는 보존, 나머지 HTML 태그 제거
-  // 먼저 img 태그를 플레이스홀더로 치환
-  const imgPlaceholders: string[] = []
-  const withPlaceholders = html.replace(/<img[^>]+>/g, (match) => {
-    imgPlaceholders.push(match)
-    return `%%IMG${imgPlaceholders.length - 1}%%`
-  })
-
-  // 나머지 HTML 태그 제거
-  const plain = withPlaceholders
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  // LaTeX, 이미지 플레이스홀더, 일반 텍스트 파싱
-  const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
-
-  return parts.map((part, i) => {
-    // 이미지 플레이스홀더
-    const imgMatch = part.match(/^%%IMG(\d+)%%$/)
-    if (imgMatch) {
-      const imgHtml = imgPlaceholders[parseInt(imgMatch[1])]
-      return <span key={i} dangerouslySetInnerHTML={{ __html: imgHtml }} className="inline-block my-2" />
-    }
-    if (part.startsWith('$$') && part.endsWith('$$')) {
-      const math = part.slice(2, -2).trim()
-      try {
-        return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} />
-      } catch { return <span key={i}>{part}</span> }
-    }
-    if (part.startsWith('$') && part.endsWith('$')) {
-      const math = part.slice(1, -1).trim()
-      try {
-        return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: false, throwOnError: false }) }} />
-      } catch { return <span key={i}>{part}</span> }
-    }
-    return <span key={i}>{part}</span>
-  })
 }
 
 export default function DiagramCardDetail() {
@@ -207,44 +154,11 @@ export default function DiagramCardDetail() {
     router.push('/diagram')
   }
 
-  const renderCloze = (html: string, qIdx: number) => {
-    if (!html) return null
-    const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
-    const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|\{\{.*?\}\})/g)
-    let blanks = 0
-    return (
-      <div className="text-sm leading-relaxed">
-        {parts.map((part, i) => {
-          const clozeMatch = part.match(/^\{\{(.*?)\}\}$/)
-          if (clozeMatch) {
-            const blankIdx = qIdx * 100 + blanks++
-            const isRevealed = revealed.has(blankIdx)
-            return (
-              <button key={i} onClick={() => setRevealed(prev => new Set([...prev, blankIdx]))}
-                className={`mx-1 px-2 py-0.5 rounded font-bold transition text-sm ${
-                  isRevealed ? 'bg-green-700 text-white' : 'bg-gray-600 text-gray-600 hover:bg-gray-500 hover:text-gray-400'
-                }`}>
-                {isRevealed ? clozeMatch[1] : '　　'}
-              </button>
-            )
-          }
-          if (part.startsWith('$$') && part.endsWith('$$')) {
-            const math = part.slice(2, -2).trim()
-            try {
-              return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} />
-            } catch { return <span key={i}>{part}</span> }
-          }
-          if (part.startsWith('$') && part.endsWith('$')) {
-            const math = part.slice(1, -1).trim()
-            try {
-              return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: false, throwOnError: false }) }} />
-            } catch { return <span key={i}>{part}</span> }
-          }
-          return <span key={i}>{part}</span>
-        })}
-      </div>
-    )
-  }
+  const renderCloze = (html: string, qIdx: number) => (
+    <div className="text-sm leading-relaxed">
+      {renderClozeNodes(html, qIdx, revealed, (idx) => setRevealed(prev => new Set([...prev, idx])))}
+    </div>
+  )
 
   if (!card) return <div className="min-h-screen bg-gray-950 text-white p-8">불러오는 중...</div>
 
@@ -433,7 +347,7 @@ export default function DiagramCardDetail() {
                 </>
               ) : card.card_type === 'Table spec' && card.table_content ? (
                 <div className="p-4 text-sm leading-relaxed overflow-auto">
-                  {renderLatexText(card.table_content)}
+                  {renderLatexNodes(card.table_content)}
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-500">
@@ -456,7 +370,7 @@ export default function DiagramCardDetail() {
                       {revealed.has(i * 100 + 1000) ? (
                         <div>
                           <div className="bg-green-900 rounded-lg p-3 text-sm leading-relaxed mb-2">
-                            {renderLatexText(q.answer)}
+                            {renderLatexNodes(q.answer)}
                           </div>
                           <button onClick={() => setRevealed(prev => {
                             const next = new Set(prev)

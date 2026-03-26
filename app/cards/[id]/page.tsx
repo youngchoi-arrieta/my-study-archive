@@ -1,11 +1,14 @@
 'use client'
-import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../../lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import RichEditor from '../../components/RichEditor'
+import dynamic from 'next/dynamic'
+import { STATUS_COLORS } from '@/lib/constants'
+import { renderLatexHtml } from '@/lib/latex'
+
+const RichEditor = dynamic(() => import('@/app/components/RichEditor'), { ssr: false })
 
 type FlowStep = {
   step: number
@@ -32,12 +35,6 @@ type Card = {
 }
 
 type Mode = 'full' | 'cloze' | 'keyword' | 'flow'
-
-const STATUS_COLORS: Record<string, string> = {
-  '새 카드': 'bg-gray-600',
-  '오답노트': 'bg-red-600',
-  '완료': 'bg-blue-600',
-}
 
 export default function CardDetail() {
   const { id } = useParams()
@@ -115,15 +112,7 @@ export default function CardDetail() {
     router.push('/cards')
   }
 
-  const renderContent = (html: string) => {
-    if (!html) return ''
-    return html.replace(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g, match => {
-      const isDisplay = match.startsWith('$$')
-      const math = isDisplay ? match.slice(2, -2) : match.slice(1, -1)
-      try { return katex.renderToString(math, { displayMode: isDisplay }) }
-      catch { return match }
-    })
-  }
+  const renderContent = (html: string) => renderLatexHtml(html)
 
   const renderCloze = () => {
     if (!card?.cloze_text) return <p className="text-gray-400">Cloze 텍스트가 없습니다.</p>
