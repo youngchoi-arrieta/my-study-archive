@@ -4,11 +4,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
+import RichEditor from '@/app/components/RichEditor'
 import { STATUS_COLORS, TYPE_COLORS } from '@/lib/constants'
 import { renderLatexNodes, renderClozeNodes } from '@/lib/latex'
-
-const RichEditor = dynamic(() => import('@/app/components/RichEditor'), { ssr: false })
 
 type SubQuestion = {
   id: number
