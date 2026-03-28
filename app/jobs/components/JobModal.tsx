@@ -20,7 +20,6 @@ export default function JobModal({ job, defaultStage = 'watch', onSave, onClose 
   const [memo, setMemo] = useState('')
   const [jpScore, setJpScore] = useState('')
   const [blindScore, setBlindScore] = useState('')
-  const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -37,33 +36,6 @@ export default function JobModal({ job, defaultStage = 'watch', onSave, onClose 
       setBlindScore(job.blind_score?.toString() || '')
     }
   }, [job])
-
-  async function handleAIParse() {
-    if (!url.trim()) return alert('URL을 먼저 입력해주세요')
-    setParsing(true)
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: 'You are a Korean job posting parser. Given a URL, extract job info. Respond ONLY with JSON (no markdown): {"company":"...","role":"...","cat":"top|foreign|sme|dc","memo":"한국어로 핵심 요약 2-3줄"}. cat rules: top=대기업/그룹사, foreign=외국계/글로벌, sme=중소중견기업, dc=데이터센터/IT인프라',
-          messages: [{ role: 'user', content: `Parse this job URL: ${url}` }],
-        }),
-      })
-      const data = await res.json()
-      const text = data.content.filter((x: { type: string }) => x.type === 'text').map((x: { text: string }) => x.text).join('')
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-      if (parsed.company) setCompany(parsed.company)
-      if (parsed.role) setRole(parsed.role)
-      if (parsed.cat) setCat(parsed.cat)
-      if (parsed.memo) setMemo(parsed.memo)
-    } catch {
-      alert('파싱 실패. 직접 입력해주세요.')
-    }
-    setParsing(false)
-  }
 
   async function handleSave() {
     if (!company.trim()) return alert('회사명을 입력해주세요')
@@ -88,24 +60,15 @@ export default function JobModal({ job, defaultStage = 'watch', onSave, onClose 
       <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold mb-4">{job ? '공고 수정' : '채용공고 추가'}</h2>
 
-        {/* URL + AI 파싱 */}
+        {/* URL */}
         <div className="mb-3">
           <label className="text-xs text-gray-500 block mb-1">공고 URL</label>
-          <div className="flex gap-2">
-            <input
-              className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600"
-              placeholder="https://..."
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-            />
-            <button
-              onClick={handleAIParse}
-              disabled={parsing}
-              className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white text-sm px-3 py-2 rounded-lg transition whitespace-nowrap"
-            >
-              {parsing ? '분석중...' : 'AI 파싱'}
-            </button>
-          </div>
+          <input
+            className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600"
+            placeholder="https://..."
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+          />
         </div>
 
         {/* 회사명 / 직무 */}

@@ -209,15 +209,53 @@ export default function DiagramCardDetail() {
 
   const renderCloze = (html: string, qIdx: number) => {
     if (!html) return null
-    // cloze 빈칸이 없으면 HTML 그대로 출력 (이미지 보존)
+
+    // HTML에서 이미지 추출 보존 + LaTeX 렌더링
+    const renderHtmlWithLatex = (rawHtml: string) => {
+      // img 태그 플레이스홀더 처리
+      const imgs: string[] = []
+      const withPlaceholders = rawHtml.replace(/<img[^>]+>/g, m => {
+        imgs.push(m); return `%%IMG${imgs.length - 1}%%`
+      })
+      // 나머지 HTML 태그 제거
+      const plain = withPlaceholders
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\\\\/g, '\\')   // \\ → \ (Tiptap 이스케이프 복원)
+        .replace(/\s+/g, ' ').trim()
+
+      const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
+      return parts.map((part, i) => {
+        const imgMatch = part.match(/^%%IMG(\d+)%%$/)
+        if (imgMatch) {
+          return <span key={i} className="inline-block my-2"
+            dangerouslySetInnerHTML={{ __html: imgs[parseInt(imgMatch[1])] }} />
+        }
+        if (part.startsWith('$$') && part.endsWith('$$')) {
+          const math = part.slice(2, -2).trim()
+          try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} /> }
+          catch { return <span key={i}>{part}</span> }
+        }
+        if (part.startsWith('$') && part.endsWith('$')) {
+          const math = part.slice(1, -1).trim()
+          try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: false, throwOnError: false }) }} /> }
+          catch { return <span key={i}>{part}</span> }
+        }
+        return <span key={i}>{part}</span>
+      })
+    }
+
+    // cloze 빈칸이 없으면 LaTeX만 렌더링
     if (!html.includes('{{')) {
       return (
-        <div className="text-sm leading-relaxed prose prose-invert max-w-none
-          [&_img]:max-w-full [&_img]:rounded-lg"
-          dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="text-sm leading-relaxed">
+          {renderHtmlWithLatex(html)}
+        </div>
       )
     }
-    const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+
+    const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
+      .replace(/\\\\/g, '\\').replace(/\s+/g, ' ').trim()
     const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|\{\{.*?\}\})/g)
     let blanks = 0
     return (
@@ -463,9 +501,9 @@ export default function DiagramCardDetail() {
                       </div>
                       {revealed.has(i * 100 + 1000) ? (
                         <div>
-                          <div className="bg-green-900 rounded-lg p-3 text-sm leading-relaxed mb-2
-                            prose prose-invert max-w-none [&_img]:max-w-full [&_img]:rounded-lg"
-                            dangerouslySetInnerHTML={{ __html: q.answer }} />
+                          <div className="bg-green-900 rounded-lg p-3 text-sm leading-relaxed mb-2">
+                            {renderCloze(q.answer, i + 1000)}
+                          </div>
                           <button onClick={() => setRevealed(prev => {
                             const next = new Set(prev)
                             next.delete(i * 100 + 1000)
