@@ -61,8 +61,13 @@ function renderLatexText(html: string): React.ReactNode[] {
     .replace(/\s+/g, ' ')
     .trim()
 
+  // LaTeX 이스케이프 정규화: \\$ → $, \% → %  (Tiptap 저장 형태 복원)
+  const normalized = plain
+    .replace(/\\\\\$/g, '$')   // \\$ → $
+    .replace(/\\\s*\$/g, '$')  // \ $ → $  (공백 포함)
+
   // LaTeX, 이미지 플레이스홀더, 일반 텍스트 파싱
-  const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
+  const parts = normalized.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
 
   return parts.map((part, i) => {
     // 이미지 플레이스홀더
@@ -222,6 +227,7 @@ export default function DiagramCardDetail() {
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/g, ' ')
         .replace(/\\\\/g, '\\')   // \\ → \ (Tiptap 이스케이프 복원)
+        .replace(/\\\$/g, '$')    // \$ → $
         .replace(/\s+/g, ' ').trim()
 
       const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
