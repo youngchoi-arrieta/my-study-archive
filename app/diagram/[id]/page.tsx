@@ -222,13 +222,15 @@ export default function DiagramCardDetail() {
       const withPlaceholders = rawHtml.replace(/<img[^>]+>/g, m => {
         imgs.push(m); return `%%IMG${imgs.length - 1}%%`
       })
-      // 나머지 HTML 태그 제거
+      // 블록 태그는 줄바꿈으로, 나머지 태그 제거
       const plain = withPlaceholders
+        .replace(/<\/?(p|br|li|div|ol|ul)[^>]*>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/g, ' ')
         .replace(/\\\\/g, '\\')   // \\ → \ (Tiptap 이스케이프 복원)
         .replace(/\\\$/g, '$')    // \$ → $
-        .replace(/\s+/g, ' ').trim()
+        .replace(/[ \t]+/g, ' ')    // 공백만 정리 (줄바꿈은 유지)
+        .trim()
 
       const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
       return parts.map((part, i) => {
@@ -254,18 +256,21 @@ export default function DiagramCardDetail() {
     // cloze 빈칸이 없으면 LaTeX만 렌더링
     if (!html.includes('{{')) {
       return (
-        <div className="text-sm leading-relaxed">
+        <div className="text-sm leading-relaxed whitespace-pre-wrap">
           {renderHtmlWithLatex(html)}
         </div>
       )
     }
 
-    const plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
-      .replace(/\\\\/g, '\\').replace(/\s+/g, ' ').trim()
+    const plain = html
+      .replace(/<\/?(p|br|li|div|ol|ul)[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
+      .replace(/\\\\/g, '\\').replace(/\\\$/g, '$')
+      .replace(/[ \t]+/g, ' ').trim()
     const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|\{\{.*?\}\})/g)
     let blanks = 0
     return (
-      <div className="text-sm leading-relaxed">
+      <div className="text-sm leading-relaxed whitespace-pre-wrap">
         {parts.map((part, i) => {
           const clozeMatch = part.match(/^\{\{(.*?)\}\}$/)
           if (clozeMatch) {
