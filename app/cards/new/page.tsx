@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import RichEditor from '../../components/RichEditor'
+import RichEditor from '@/app/components/RichEditor'
 
 export default function NewCard() {
   const router = useRouter()
@@ -11,6 +11,7 @@ export default function NewCard() {
   const [category, setCategory] = useState('')
   const [tags, setTags] = useState('')
   const [source, setSource] = useState('')
+  const [problem, setProblem] = useState('')
   const [fullSolution, setFullSolution] = useState('')
   const [clozeText, setClozeText] = useState('')
   const [keywords, setKeywords] = useState('')
@@ -24,6 +25,7 @@ export default function NewCard() {
       category,
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
       source,
+      problem,
       full_solution: fullSolution,
       cloze_text: clozeText,
       keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
@@ -51,6 +53,11 @@ export default function NewCard() {
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="출처" value={source} onChange={e => setSource(e.target.value)} />
 
+          <div>
+            <label className="text-sm text-gray-400 mb-1 block">📋 문제 (이미지 첨부 가능)</label>
+            <RichEditor content={problem} onChange={setProblem}
+              placeholder="문제 내용 입력 (Ctrl+V로 이미지 붙여넣기 가능)" />
+          </div>
           <div>
             <label className="text-sm text-gray-400 mb-1 block">📝 전체 풀이 / 증명</label>
             <RichEditor content={fullSolution} onChange={setFullSolution}
