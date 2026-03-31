@@ -28,6 +28,7 @@ type Card = {
   status: string
   review_count: number
   last_reviewed: string
+  problem: string
   my_note: string
   created_at: string
 }
@@ -43,7 +44,7 @@ export default function CardDetail() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({
     title: '', category: '', tags: '', source: '',
-    full_solution: '', cloze_text: '', keywords: '', flow_steps: '[]'
+    problem: '', full_solution: '', cloze_text: '', keywords: '', flow_steps: '[]'
   })
   const [revealedSteps, setRevealedSteps] = useState<Set<number>>(new Set())
   const [myNote, setMyNote] = useState('')
@@ -59,6 +60,7 @@ export default function CardDetail() {
         category: data.category || '',
         tags: (data.tags || []).join(', '),
         source: data.source || '',
+        problem: data.problem || '',
         full_solution: data.full_solution || '',
         cloze_text: data.cloze_text || '',
         keywords: (data.keywords || []).join(', '),
@@ -92,6 +94,7 @@ export default function CardDetail() {
       category: form.category,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       source: form.source,
+      problem: form.problem,
       full_solution: form.full_solution,
       cloze_text: form.cloze_text,
       keywords: form.keywords.split(',').map(k => k.trim()).filter(Boolean),
@@ -189,6 +192,12 @@ export default function CardDetail() {
               placeholder="출처" value={form.source}
               onChange={e => setForm({...form, source: e.target.value})} />
             <div>
+              <label className="text-sm text-gray-400 mb-1 block">📋 문제 (이미지 첨부 가능)</label>
+              <RichEditor content={form.problem}
+                onChange={val => setForm({...form, problem: val})}
+                placeholder="문제 내용 입력 (Ctrl+V로 이미지 붙여넣기 가능)" />
+            </div>
+            <div>
               <label className="text-sm text-gray-400 mb-1 block">📝 전체 풀이 / 증명</label>
               <RichEditor content={form.full_solution}
                 onChange={val => setForm({...form, full_solution: val})}
@@ -258,6 +267,16 @@ export default function CardDetail() {
                 {card.tags.map(tag => (
                   <span key={tag} className="bg-gray-700 text-xs px-2 py-1 rounded-full">{tag}</span>
                 ))}
+              </div>
+            )}
+
+            {/* 문제 */}
+            {card.problem && (
+              <div className="bg-gray-900 rounded-xl p-5 mb-5">
+                <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-widest">📋 문제</p>
+                <div className="prose prose-invert max-w-none text-sm leading-relaxed
+                  [&_img]:max-w-full [&_img]:rounded-lg"
+                  dangerouslySetInnerHTML={{ __html: card.problem }} />
               </div>
             )}
 
