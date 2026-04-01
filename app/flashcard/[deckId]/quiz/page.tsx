@@ -83,7 +83,6 @@ export default function QuizPage() {
       const type = card.card_type ?? 'basic'
       if (type === 'basic') {
         items.push({ kind: 'basic', card, direction: 'front' })
-        items.push({ kind: 'basic', card, direction: 'back' })
       } else if (type === 'multi') {
         const givenIndices = card.fields
           .map((_: Field, i: number) => i)
@@ -138,11 +137,10 @@ export default function QuizPage() {
 
   const renderGiven = () => {
     if (current.kind === 'basic') {
-      const f = current.direction === 'front' ? current.card.fields[0] : current.card.fields[1]
-      const label = current.direction === 'front' ? '앞면' : '뒷면'
+      const f = current.card.fields[0]
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
-          <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {label}</p>
+          <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">문제</p>
           {renderField(f as Field)}
         </div>
       )
@@ -188,11 +186,10 @@ export default function QuizPage() {
     )
 
     if (current.kind === 'basic') {
-      const f = current.direction === 'front' ? current.card.fields[1] : current.card.fields[0]
-      const label = current.direction === 'front' ? '뒷면' : '앞면'
+      const f = current.card.fields[1]
       return (
         <div className="bg-gray-900 rounded-2xl p-5 border border-green-900 mb-6">
-          <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">{label}</p>
+          <p className="text-xs text-green-400 font-semibold uppercase tracking-widest mb-2">정답</p>
           {renderField(f as Field)}
         </div>
       )
