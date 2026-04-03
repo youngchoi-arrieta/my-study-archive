@@ -39,18 +39,9 @@ const MEMO_FIELDS = [
 
 const EMPTY_ADD_FORM = {
   record_type: '기출문제',
-  year: '',
-  session: '',
-  pass_rate: '',
-  custom_name: '',
-  my_score: '',
-  memo_electrical_design: '',
-  memo_substation: '',
-  memo_logic_sequence: '',
-  memo_lighting: '',
-  memo_kec: '',
-  memo_supervision: '',
-  comments: '',
+  year: '', session: '', pass_rate: '', custom_name: '', my_score: '',
+  memo_electrical_design: '', memo_substation: '', memo_logic_sequence: '',
+  memo_lighting: '', memo_kec: '', memo_supervision: '', comments: '',
 }
 
 export default function Dashboard() {
@@ -77,8 +68,7 @@ export default function Dashboard() {
   }
 
   const handleEdit = (s: ExamSession) => {
-    setEditing(s.id)
-    setExpanded(s.id)
+    setEditing(s.id); setExpanded(s.id)
     setEditForm({
       my_score: s.my_score,
       memo_electrical_design: s.memo_electrical_design || '',
@@ -93,13 +83,8 @@ export default function Dashboard() {
 
   const handleSave = async (id: string) => {
     setSaving(true)
-    await supabase.from('exam_sessions').update({
-      ...editForm,
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    await fetchSessions()
-    setEditing(null)
-    setSaving(false)
+    await supabase.from('exam_sessions').update({ ...editForm, updated_at: new Date().toISOString() }).eq('id', id)
+    await fetchSessions(); setEditing(null); setSaving(false)
   }
 
   const handleDelete = async (id: string) => {
@@ -126,11 +111,8 @@ export default function Dashboard() {
       memo_supervision: addForm.memo_supervision || null,
       comments: addForm.comments || null,
     })
-    if (!error) {
-      await fetchSessions()
-      setShowAddForm(false)
-      setAddForm({ ...EMPTY_ADD_FORM })
-    } else alert('저장 실패: ' + error.message)
+    if (!error) { await fetchSessions(); setShowAddForm(false); setAddForm({ ...EMPTY_ADD_FORM }) }
+    else alert('저장 실패: ' + error.message)
     setAddSaving(false)
   }
 
@@ -150,13 +132,18 @@ export default function Dashboard() {
   const getGroup = (rate: number | null) =>
     PASS_RATE_GROUPS.find(g => (rate ?? 0) >= g.min && (rate ?? 0) < g.max) || PASS_RATE_GROUPS[3]
 
-  const scored = sessions.filter(s => s.my_score !== null)
-  const avg = scored.length > 0
-    ? scored.reduce((a, b) => a + (b.my_score || 0), 0) / scored.length
-    : null
-  const avgScore = avg !== null ? avg.toFixed(1) : '-'
-  const stdDev = avg !== null && scored.length > 1
-    ? Math.sqrt(scored.reduce((a, b) => a + Math.pow((b.my_score || 0) - avg, 2), 0) / scored.length).toFixed(1)
+  const examOnly = sessions.filter(s => s.record_type !== '사설 모의고사')
+  const customOnly = sessions.filter(s => s.record_type === '사설 모의고사')
+  const examScored = examOnly.filter(s => s.my_score !== null)
+  const examTotal = examOnly.length
+
+  // 최근 5회 평균 (updated_at 최신순)
+  const allScored = sessions.filter(s => s.my_score !== null)
+  const recent5 = [...allScored]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 5)
+  const recent5Avg = recent5.length > 0
+    ? (recent5.reduce((a, b) => a + (b.my_score || 0), 0) / recent5.length).toFixed(1)
     : '-'
 
   const filtered = sessions.filter(s => {
@@ -166,14 +153,16 @@ export default function Dashboard() {
     return true
   })
 
-  const customSessions = filtered.filter(s => s.record_type === '사설 모의고사')
-  const examSessions = filtered.filter(s => s.record_type !== '사설 모의고사')
+  const filteredCustom = filtered.filter(s => s.record_type === '사설 모의고사')
+  const filteredExam = filtered.filter(s => s.record_type !== '사설 모의고사')
+  const recentExam = filteredExam.filter(s => s.year !== null && s.year >= 2016)
+  const oldExam = filteredExam.filter(s => s.year === null || s.year < 2016)
 
   if (loading) return <div className="min-h-screen bg-gray-950 text-white p-8">불러오는 중...</div>
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-2">
           <Link href="/dashboard" className="text-gray-400 hover:text-white text-sm">← 대시보드</Link>
         </div>
@@ -200,7 +189,6 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
-
             {addForm.record_type === '기출문제' ? (
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div>
@@ -231,7 +219,6 @@ export default function Dashboard() {
                   onChange={e => setAddForm({ ...addForm, custom_name: e.target.value })} />
               </div>
             )}
-
             <div className="mb-4">
               <label className="text-xs text-gray-400 mb-1 block">내 점수 / 100</label>
               <input type="number" min="0" max="100"
@@ -239,7 +226,6 @@ export default function Dashboard() {
                 placeholder="점수" value={addForm.my_score}
                 onChange={e => setAddForm({ ...addForm, my_score: e.target.value })} />
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               {MEMO_FIELDS.map(f => (
                 <div key={f.key}>
@@ -274,46 +260,49 @@ export default function Dashboard() {
         {/* 통계 */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-900 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold">{scored.length}<span className="text-gray-500 text-base"> / {sessions.length}</span></p>
-            <p className="text-gray-400 text-sm mt-1">풀이 완료</p>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-400">{avgScore}</p>
-            <p className="text-gray-400 text-sm mt-1">평균 점수</p>
-            {stdDev !== '-' && (
-              <p className="text-xs text-gray-500 mt-0.5">σ = {stdDev}</p>
+            <p className="text-2xl font-bold">
+              {examScored.length}<span className="text-gray-500 text-base"> / {examTotal}</span>
+            </p>
+            <p className="text-gray-400 text-sm mt-1">기출 풀이 완료</p>
+            {customOnly.length > 0 && (
+              <p className="text-xs text-purple-400 mt-0.5">+ 사설 {customOnly.filter(s => s.my_score !== null).length}회</p>
             )}
           </div>
           <div className="bg-gray-900 rounded-xl p-4 text-center">
+            <p className="text-2xl font-bold text-yellow-400">{recent5Avg}</p>
+            <p className="text-gray-400 text-sm mt-1">최근 5회 평균</p>
+            <p className="text-xs text-gray-600 mt-0.5">{recent5.length}회 기준</p>
+          </div>
+          <div className="bg-gray-900 rounded-xl p-4 text-center">
             <p className="text-2xl font-bold text-blue-400">
-              {sessions.length > 0 ? Math.round(scored.length / sessions.length * 100) : 0}%
+              {examTotal > 0 ? Math.round(examScored.length / examTotal * 100) : 0}%
             </p>
-            <p className="text-gray-400 text-sm mt-1">진행률</p>
+            <p className="text-gray-400 text-sm mt-1">기출 진행률</p>
           </div>
         </div>
 
         {/* 진행률 바 */}
         <div className="bg-gray-900 rounded-xl p-4 mb-6">
           <div className="flex justify-between text-xs text-gray-500 mb-2">
-            <span>풀이 진행률</span>
-            <span>{scored.length} / {sessions.length}</span>
+            <span>기출문제 풀이 진행률</span>
+            <span>{examScored.length} / {examTotal}</span>
           </div>
           <div className="w-full bg-gray-800 rounded-full h-3 mb-3">
             <div className="bg-blue-500 h-3 rounded-full transition-all"
-              style={{ width: `${sessions.length > 0 ? scored.length / sessions.length * 100 : 0}%` }} />
+              style={{ width: `${examTotal > 0 ? examScored.length / examTotal * 100 : 0}%` }} />
           </div>
           <div className="grid grid-cols-4 gap-2">
             {PASS_RATE_GROUPS.map(g => {
-              const groupSessions = sessions.filter(s => (s.pass_rate ?? 0) >= g.min && (s.pass_rate ?? 0) < g.max)
-              const groupScored = groupSessions.filter(s => s.my_score !== null)
-              if (groupSessions.length === 0) return null
+              const gs = examOnly.filter(s => (s.pass_rate ?? 0) >= g.min && (s.pass_rate ?? 0) < g.max)
+              const gScored = gs.filter(s => s.my_score !== null)
+              if (gs.length === 0) return null
               return (
                 <div key={g.label} className="text-center">
                   <p className={`text-xs font-semibold ${g.color}`}>{g.label}</p>
-                  <p className="text-xs text-gray-400">{groupScored.length}/{groupSessions.length}</p>
+                  <p className="text-xs text-gray-400">{gScored.length}/{gs.length}</p>
                   <div className="w-full bg-gray-800 rounded-full h-1.5 mt-1">
                     <div className={`h-1.5 rounded-full ${g.color.replace('text-', 'bg-')}`}
-                      style={{ width: `${groupSessions.length > 0 ? groupScored.length / groupSessions.length * 100 : 0}%` }} />
+                      style={{ width: `${gs.length > 0 ? gScored.length / gs.length * 100 : 0}%` }} />
                   </div>
                 </div>
               )
@@ -322,7 +311,7 @@ export default function Dashboard() {
         </div>
 
         {/* 필터 */}
-        <div className="flex gap-2 mb-4 flex-wrap">
+        <div className="flex gap-2 mb-6 flex-wrap">
           {([
             { key: 'all' as const, label: '전체' },
             { key: 'scored' as const, label: '✅ 풀이완료' },
@@ -338,14 +327,14 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* 사설 모의고사 섹션 */}
-        {customSessions.length > 0 && (
-          <div className="mb-6">
-            <div className="text-xs font-semibold px-3 py-1.5 rounded-lg mb-2 inline-block bg-purple-900/30 text-purple-400">
+        {/* 사설 모의고사 */}
+        {filteredCustom.length > 0 && (
+          <div className="mb-8">
+            <div className="text-xs font-semibold px-3 py-1.5 rounded-lg mb-3 inline-block bg-purple-900/30 text-purple-400">
               📝 사설 모의고사
             </div>
             <div className="space-y-2">
-              {customSessions.map(s => (
+              {filteredCustom.map(s => (
                 <SessionRow key={s.id} s={s} expanded={expanded} setExpanded={setExpanded}
                   editing={editing} editForm={editForm} setEditForm={setEditForm}
                   saving={saving} handleEdit={handleEdit} handleSave={handleSave}
@@ -356,30 +345,72 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 기출문제 그룹별 */}
-        {PASS_RATE_GROUPS.map(group => {
-          const groupRows = examSessions.filter(s =>
-            (s.pass_rate ?? 0) >= group.min && (s.pass_rate ?? 0) < group.max
-          )
-          if (groupRows.length === 0) return null
-          return (
-            <div key={group.label} className="mb-6">
-              <div className={`text-xs font-semibold px-3 py-1.5 rounded-lg mb-2 inline-block ${group.bg} ${group.color}`}>
-                합격률 {group.label}
+        {/* 기출문제 2단 레이아웃 */}
+        {filter !== 'custom' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 왼쪽: 2016~2025 */}
+            <div>
+              <div className="text-sm font-bold text-gray-300 mb-3 pb-2 border-b border-gray-800">
+                📅 2016~2025년 (10개년)
               </div>
-              <div className="space-y-2">
-                {groupRows.map(s => (
-                  <SessionRow key={s.id} s={s} expanded={expanded} setExpanded={setExpanded}
-                    editing={editing} editForm={editForm} setEditForm={setEditForm}
-                    saving={saving} handleEdit={handleEdit} handleSave={handleSave}
-                    handleDelete={handleDelete} getDisplayName={getDisplayName}
-                    scoreColor={scoreColor} getGroup={getGroup}
-                    deletable={s.pass_rate !== null && s.pass_rate >= 30} />
-                ))}
-              </div>
+              {PASS_RATE_GROUPS.map(group => {
+                const rows = recentExam.filter(s =>
+                  (s.pass_rate ?? 0) >= group.min && (s.pass_rate ?? 0) < group.max
+                )
+                if (rows.length === 0) return null
+                return (
+                  <div key={group.label} className="mb-4">
+                    <div className={`text-xs font-semibold px-2 py-1 rounded mb-2 inline-block ${group.bg} ${group.color}`}>
+                      합격률 {group.label}
+                    </div>
+                    <div className="space-y-1.5">
+                      {rows.map(s => (
+                        <SessionRow key={s.id} s={s} expanded={expanded} setExpanded={setExpanded}
+                          editing={editing} editForm={editForm} setEditForm={setEditForm}
+                          saving={saving} handleEdit={handleEdit} handleSave={handleSave}
+                          handleDelete={handleDelete} getDisplayName={getDisplayName}
+                          scoreColor={scoreColor} getGroup={getGroup}
+                          deletable={s.pass_rate !== null && s.pass_rate >= 30} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+              {recentExam.length === 0 && <p className="text-gray-600 text-sm">해당 기록 없음</p>}
             </div>
-          )
-        })}
+
+            {/* 오른쪽: 2015년 이전 */}
+            <div>
+              <div className="text-sm font-bold text-gray-300 mb-3 pb-2 border-b border-gray-800">
+                📅 2015년 이전
+              </div>
+              {PASS_RATE_GROUPS.map(group => {
+                const rows = oldExam.filter(s =>
+                  (s.pass_rate ?? 0) >= group.min && (s.pass_rate ?? 0) < group.max
+                )
+                if (rows.length === 0) return null
+                return (
+                  <div key={group.label} className="mb-4">
+                    <div className={`text-xs font-semibold px-2 py-1 rounded mb-2 inline-block ${group.bg} ${group.color}`}>
+                      합격률 {group.label}
+                    </div>
+                    <div className="space-y-1.5">
+                      {rows.map(s => (
+                        <SessionRow key={s.id} s={s} expanded={expanded} setExpanded={setExpanded}
+                          editing={editing} editForm={editForm} setEditForm={setEditForm}
+                          saving={saving} handleEdit={handleEdit} handleSave={handleSave}
+                          handleDelete={handleDelete} getDisplayName={getDisplayName}
+                          scoreColor={scoreColor} getGroup={getGroup}
+                          deletable={s.pass_rate !== null && s.pass_rate >= 30} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+              {oldExam.length === 0 && <p className="text-gray-600 text-sm">해당 기록 없음</p>}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   )
@@ -405,26 +436,26 @@ function SessionRow({ s, expanded, setExpanded, editing, editForm, setEditForm,
   const group = getGroup(s.pass_rate)
   return (
     <div className="bg-gray-900 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-800 transition"
+      <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800 transition"
         onClick={() => setExpanded(expanded === s.id ? null : s.id)}>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-bold text-white whitespace-nowrap">{getDisplayName(s)}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-white text-sm whitespace-nowrap">{getDisplayName(s)}</span>
           {s.pass_rate !== null && (
-            <span className={`text-sm font-semibold whitespace-nowrap ${group.color}`}>
-              합격률 {s.pass_rate}%
+            <span className={`text-xs font-semibold whitespace-nowrap ${group.color}`}>
+              {s.pass_rate}%
             </span>
           )}
           {MEMO_FIELDS.some(f => s[f.key]) && (
             <span className="text-xs text-blue-400 whitespace-nowrap">
-              📌 {MEMO_FIELDS.filter(f => s[f.key]).length}개 메모
+              📌{MEMO_FIELDS.filter(f => s[f.key]).length}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className={`text-lg font-bold ${scoreColor(s.my_score)}`}>
+        <div className="flex items-center gap-2">
+          <span className={`text-sm font-bold ${scoreColor(s.my_score)}`}>
             {s.my_score !== null ? `${s.my_score}점` : '—'}
           </span>
-          <span className="text-gray-600 text-sm">{expanded === s.id ? '▲' : '▼'}</span>
+          <span className="text-gray-600 text-xs">{expanded === s.id ? '▲' : '▼'}</span>
         </div>
       </div>
 
