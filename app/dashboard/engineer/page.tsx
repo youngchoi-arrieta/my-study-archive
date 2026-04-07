@@ -275,7 +275,7 @@ export default function Dashboard() {
           </div>
           <div className="bg-gray-900 rounded-xl p-4 text-center">
             <p className="text-2xl font-bold text-green-400">
-              {chartData.filter(d => d.score >= 60).length}회
+              {chartData.filter(d => (d.score ?? 0) >= 60).length}회
             </p>
             <p className="text-gray-400 text-sm mt-1">합격권 달성</p>
           </div>
