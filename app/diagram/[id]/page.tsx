@@ -6,6 +6,7 @@ import { supabase } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import RichEditor from '../../components/RichEditor'
+import { TOPIC_TREE, NATURE_COLORS, PROBLEM_NATURE } from '../../../lib/constants'
 
 type SubQuestion = {
   id: number
@@ -43,7 +44,47 @@ const TYPE_COLORS: Record<string, string> = {
   '시퀀스회로도': 'bg-teal-700',
 }
 
-function renderLatexText(html: string): React.ReactNode[] {
+// TopicSelector (새 카드 폼과 동일)
+function TopicSelector({ selectedTags, onChange }: { selectedTags: string[], onChange: (tags: string[]) => void }) {
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null)
+  const toggle = (tag: string) => {
+    onChange(selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag])
+  }
+  return (
+    <div className="space-y-2">
+      {TOPIC_TREE.map(topic => {
+        const isExpanded = expandedTopic === topic.label
+        const parentSelected = selectedTags.includes(topic.label)
+        return (
+          <div key={topic.label} className="rounded-xl overflow-hidden border border-gray-700">
+            <div className="flex items-center gap-2 p-2 bg-gray-800">
+              <button onClick={() => toggle(topic.label)}
+                className={`flex-1 text-left px-3 py-1.5 rounded-lg text-sm font-semibold transition ${parentSelected ? topic.color : 'bg-gray-700 hover:bg-gray-600'}`}>
+                {parentSelected ? '✓ ' : ''}{topic.label}
+              </button>
+              <button onClick={() => setExpandedTopic(isExpanded ? null : topic.label)}
+                className="text-gray-400 hover:text-white px-2 text-sm">
+                {isExpanded ? '▲' : '▼'}
+              </button>
+            </div>
+            {isExpanded && (
+              <div className="flex flex-wrap gap-2 p-3 bg-gray-900">
+                {topic.subs.map(sub => (
+                  <button key={sub} onClick={() => toggle(sub)}
+                    className={`px-3 py-1 rounded-full text-xs transition ${selectedTags.includes(sub) ? topic.color : 'bg-gray-700 hover:bg-gray-600'}`}>
+                    {selectedTags.includes(sub) ? '✓ ' : ''}{sub}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+(html: string): React.ReactNode[] {
   if (!html) return []
 
   // img 태그는 보존, 나머지 HTML 태그 제거
@@ -103,8 +144,8 @@ export default function DiagramCardDetail() {
   const [currentPage, setCurrentPage] = useState(0)
 
   const [formTitle, setFormTitle] = useState('')
-  const [formCategory, setFormCategory] = useState('')
-  const [formTags, setFormTags] = useState('')
+  const [formSelectedTags, setFormSelectedTags] = useState<string[]>([])
+  const [formSelectedNatures, setFormSelectedNatures] = useState<string[]>([])
   const [formSource, setFormSource] = useState('')
   const [formCardType, setFormCardType] = useState('도면해석')
   const [formDiagramUrls, setFormDiagramUrls] = useState<string[]>([])
@@ -119,8 +160,12 @@ export default function DiagramCardDetail() {
       setMyNote(data?.my_note || '')
       if (data) {
         setFormTitle(data.title || '')
-        setFormCategory(data.category || '')
-        setFormTags((data.tags || []).join(', '))
+        // 기존 tags에서 주제/성격 분리
+        const existingTags: string[] = data.tags || []
+        const allTopicLabels = TOPIC_TREE.flatMap(t => [t.label, ...t.subs])
+        const natureList = PROBLEM_NATURE as readonly string[]
+        setFormSelectedTags(existingTags.filter(t => allTopicLabels.includes(t)))
+        setFormSelectedNatures(existingTags.filter(t => natureList.includes(t)))
         setFormSource(data.source || '')
         setFormCardType(data.card_type || '도면해석')
         // diagram_urls 우선, 없으면 diagram_url로 폴백
@@ -187,12 +232,13 @@ export default function DiagramCardDetail() {
   }
 
   const handleSave = async () => {
+    const allTags = [...formSelectedTags, ...formSelectedNatures]
     const { error } = await supabase.from('diagram_cards').update({
       title: formTitle,
-      category: formCategory,
-      tags: formTags.split(',').map(t => t.trim()).filter(Boolean),
+      category: formSelectedTags[0] || '',
+      tags: allTags,
       source: formSource,
-      card_type: formCardType,
+      card_type: formSelectedNatures[0] || formCardType,
       diagram_url: formDiagramUrls[0] || '',
       diagram_urls: formDiagramUrls,
       table_content: formTableContent,
@@ -332,22 +378,44 @@ export default function DiagramCardDetail() {
       {editing ? (
         <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto p-8 space-y-4">
-          <div className="flex gap-3 flex-wrap">
-            {(['도면해석', 'Table spec', '시퀀스회로도'] as const).map(t => (
-              <button key={t} onClick={() => setFormCardType(t)}
-                className={`px-4 py-2 rounded-lg font-semibold transition ${
-                  formCardType === t ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-                }`}>
-                {t === '도면해석' ? '🗺️ 도면해석' : t === 'Table spec' ? '📊 Table spec' : '⚡ 시퀀스회로도'}
-              </button>
-            ))}
-          </div>
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="제목" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
-          <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="카테고리" value={formCategory} onChange={e => setFormCategory(e.target.value)} />
-          <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="태그 (쉼표 구분)" value={formTags} onChange={e => setFormTags(e.target.value)} />
+
+          {/* 주제 분류 */}
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">📚 주제 분류 <span className="text-gray-600">(▼ 눌러 소분류 선택)</span></label>
+            <TopicSelector selectedTags={formSelectedTags} onChange={setFormSelectedTags} />
+          </div>
+          {formSelectedTags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {formSelectedTags.map(tag => {
+                const parent = TOPIC_TREE.find(t => t.label === tag || t.subs.includes(tag))
+                return (
+                  <span key={tag} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${parent?.color || 'bg-gray-600'}`}>
+                    {tag}
+                    <button onClick={() => setFormSelectedTags(prev => prev.filter(t => t !== tag))} className="opacity-70 hover:opacity-100">✕</button>
+                  </span>
+                )
+              })}
+            </div>
+          )}
+
+          {/* 문제 성격 */}
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">🏷️ 문제 성격</label>
+            <div className="flex flex-wrap gap-2">
+              {PROBLEM_NATURE.map(n => (
+                <button key={n}
+                  onClick={() => setFormSelectedNatures(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
+                  className={`px-3 py-1.5 rounded-full text-sm transition ${
+                    formSelectedNatures.includes(n) ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-700 hover:bg-gray-600'
+                  }`}>
+                  {formSelectedNatures.includes(n) ? '✓ ' : ''}{n}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="출처" value={formSource} onChange={e => setFormSource(e.target.value)} />
 
@@ -392,7 +460,7 @@ export default function DiagramCardDetail() {
             </div>
           </div>
 
-          {formCardType === 'Table spec' && (
+          {(formSelectedNatures.includes('Table spec') || formCardType === 'Table spec') && (
             <div>
               <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
               <RichEditor content={formTableContent} onChange={val => setFormTableContent(val)}
