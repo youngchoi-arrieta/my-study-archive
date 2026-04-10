@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../../lib/supabase'
 import Link from 'next/link'
-import { ScoreChart, type ChartItem } from './ScoreChart'
+import { ScoreChart, type ChartItem } from './engineer/ScoreChart'
 
 type ExamSession = {
   id: string
