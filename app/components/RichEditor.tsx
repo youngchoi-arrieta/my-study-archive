@@ -55,7 +55,7 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
     const current = editor.getHTML()
     // 에디터가 비어있거나 placeholder 상태인데 content가 들어온 경우에만 업데이트
     if (content && current !== content && (current === '<p></p>' || current === '')) {
-      editor.commands.setContent(content, false)
+      editor.commands.setContent(content, { emitUpdate: false })
     }
   }, [editor, content])
 
