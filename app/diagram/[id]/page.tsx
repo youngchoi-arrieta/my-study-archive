@@ -417,7 +417,7 @@ export default function DiagramCardDetail() {
             {(formSelectedNatures.includes('Table spec') || formCardType === 'Table spec') && (
               <div>
                 <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
-                <RichEditor content={formTableContent} onChange={val => setFormTableContent(val)}
+                <RichEditor key={`table-${card.id}`} content={formTableContent} onChange={val => setFormTableContent(val)}
                   placeholder="표 내용 직접 입력 (LaTeX: $$ ... $$)" />
               </div>
             )}
@@ -437,11 +437,11 @@ export default function DiagramCardDetail() {
                         className="text-red-400 hover:text-red-300 text-sm">✕</button>
                     </div>
                     <label className="text-xs text-gray-500 mb-1 block">문항 (LaTeX: $$ ... $$, 빈칸: 중괄호 두 개)</label>
-                    <RichEditor content={q.question}
+                    <RichEditor key={`q-${card.id}-${q.id}`} content={q.question}
                       onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, question: val } : fq))}
                       placeholder="소문제 내용" />
                     <label className="text-xs text-gray-500 mt-3 mb-1 block">정답</label>
-                    <RichEditor content={q.answer}
+                    <RichEditor key={`a-${card.id}-${q.id}`} content={q.answer}
                       onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, answer: val } : fq))}
                       placeholder="정답" />
                   </div>
@@ -477,17 +477,39 @@ export default function DiagramCardDetail() {
 
           {card.tags?.length > 0 && (
             <div className="px-4 py-2 border-b border-gray-800 flex flex-wrap gap-1.5 shrink-0">
-              {card.tags.map(tag => {
-                const parent = topicTree.find(t => t.label === tag || t.subs.includes(tag))
-                const isNature = natureTags.includes(tag)
+              {(() => {
+                const parentLabels = topicTree.map(tr => tr.label)
+                const subTags = card.tags.filter(t => topicTree.some(tr => tr.subs.includes(t)))
+                const parentTags = card.tags.filter(t => parentLabels.includes(t))
+                const cardNatureTags = card.tags.filter(t => natureTags.includes(t))
                 return (
-                  <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${
-                    parent ? parent.color : isNature ? (NATURE_COLORS[tag] || 'bg-gray-600') : 'bg-gray-700'
-                  }`}>
-                    {tag}
-                  </span>
+                  <>
+                    {subTags.map(tag => {
+                      const parent = topicTree.find(tr => tr.subs.includes(tag))
+                      return (
+                        <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${parent?.color || 'bg-gray-700'}`}>
+                          <span className="opacity-60">{parent?.label} / </span>{tag}
+                        </span>
+                      )
+                    })}
+                    {parentTags
+                      .filter(p => !subTags.some(s => topicTree.find(tr => tr.label === p)?.subs.includes(s)))
+                      .map(tag => {
+                        const parent = topicTree.find(tr => tr.label === tag)
+                        return (
+                          <span key={tag} className={`text-xs px-2 py-0.5 rounded-full opacity-60 ${parent?.color || 'bg-gray-700'}`}>
+                            {tag}
+                          </span>
+                        )
+                      })}
+                    {cardNatureTags.map(tag => (
+                      <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${NATURE_COLORS[tag] || 'bg-gray-600'}`}>
+                        {tag}
+                      </span>
+                    ))}
+                  </>
                 )
-              })}
+              })()}
             </div>
           )}
 
