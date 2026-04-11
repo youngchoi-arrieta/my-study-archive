@@ -84,7 +84,7 @@ function TopicSelector({ selectedTags, onChange }: { selectedTags: string[], onC
   )
 }
 
-function renderLatexText(html: string): React.ReactNode[] {
+(html: string): React.ReactNode[] {
   if (!html) return []
 
   // img 태그는 보존, 나머지 HTML 태그 제거
@@ -521,6 +521,23 @@ export default function DiagramCardDetail() {
               ))}
             </div>
           </div>
+
+          {/* 태그 뱃지 */}
+          {card.tags?.length > 0 && (
+            <div className="px-4 py-2 border-b border-gray-800 flex flex-wrap gap-1.5 shrink-0">
+              {card.tags.map(tag => {
+                const parent = TOPIC_TREE.find(t => t.label === tag || t.subs.includes(tag))
+                const isNature = ['계산', '결선', '단답/용어', '도면해석', '시퀀스', 'Table spec'].includes(tag)
+                return (
+                  <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${
+                    parent ? parent.color : isNature ? (NATURE_COLORS[tag] || 'bg-gray-600') : 'bg-gray-700'
+                  }`}>
+                    {tag}
+                  </span>
+                )
+              })}
+            </div>
+          )}
 
           {/* 2단 학습 뷰 */}
           <div className="flex flex-1 overflow-hidden min-h-0">
