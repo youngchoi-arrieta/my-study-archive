@@ -80,6 +80,12 @@ export default function LibraryPage() {
     fetchAll()
   }
 
+  const handleUpdateSubject = async (pdfId: string, subject: string) => {
+    await supabase.from('pdf_refs').update({ subject }).eq('id', pdfId)
+    setPdfs(prev => prev.map(p => p.id === pdfId ? { ...p, subject } : p))
+    if (activePdf?.id === pdfId) setActivePdf(prev => prev ? { ...prev, subject } : null)
+  }
+
   const filtered = selectedSubject === '전체' ? pdfs : pdfs.filter(p => p.subject === selectedSubject)
 
   return (
@@ -175,7 +181,15 @@ export default function LibraryPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm truncate">📄 {pdf.title}</p>
-                    {pdf.subject && <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-gray-600">{pdf.subject}</span>}
+                    <select
+                      value={pdf.subject || ''}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => handleUpdateSubject(pdf.id, e.target.value)}
+                      className="mt-1.5 bg-gray-700 text-xs rounded-lg px-2 py-1 text-white border-none outline-none cursor-pointer"
+                    >
+                      <option value="">주제 없음</option>
+                      {subjects.map(s => <option key={s.id} value={s.label}>{s.label}</option>)}
+                    </select>
                     {pdf.description && <p className="text-gray-400 text-xs mt-1 truncate">{pdf.description}</p>}
                   </div>
                   <button onClick={e => { e.stopPropagation(); handleDeletePdf(pdf.id) }}
