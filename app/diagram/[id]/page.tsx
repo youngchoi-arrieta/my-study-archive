@@ -361,7 +361,7 @@ export default function DiagramCardDetail() {
             {card.card_type === 'Table spec' ? '📊 Table spec' : card.card_type === '시퀀스회로도' ? '⚡ 시퀀스회로도' : '🗺️ 도면해석'}
           </span>
           <h1 className="text-lg font-bold truncate">{card.title}</h1>
-          {card.category && <span className="text-blue-400 text-sm shrink-0">{card.category}</span>}
+          
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={() => setEditing(!editing)}
@@ -380,8 +380,7 @@ export default function DiagramCardDetail() {
         <div className="max-w-4xl mx-auto p-8 space-y-4">
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="제목" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
-
-          {/* 주제 분류 */}
+}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">📚 주제 분류 <span className="text-gray-600">(▼ 눌러 소분류 선택)</span></label>
             <TopicSelector selectedTags={formSelectedTags} onChange={setFormSelectedTags} />
