@@ -39,7 +39,7 @@ function drivePreviewUrl(url: string): string {
   return url.replace('/view', '/preview')
 }
 
-function BookCard({ pdf, subjects, onClick, onDelete, onUpdateSubject, colorIdx }: {
+function BookCard({ pdf, subjects, onClick, onDelete, onUpdateSubject, onUpdate, colorIdx }: {
   pdf: PdfRef
   subjects: Subject[]
   onClick: () => void
