@@ -1,10 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { STATUS_COLORS, TOPIC_TREE, NATURE_COLORS } from '@/lib/constants'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+
+const NATURE_TAGS = ['계산', '결선', '단답/용어', '도면해석', '시퀀스', 'Table spec'] as const
 
 type DiagramCard = {
   id: string
@@ -44,18 +46,31 @@ function DiagramListInner() {
   const allStatuses = ['새 카드', '오답노트', '완료']
   const activeTopic = TOPIC_TREE.find(t => t.label === selectedTopic)
 
-  const filtered = cards.filter(card => {
-    const matchSearch = search === '' ||
-      card.title?.toLowerCase().includes(search.toLowerCase()) ||
-      card.category?.toLowerCase().includes(search.toLowerCase()) ||
-      card.source?.toLowerCase().includes(search.toLowerCase()) ||
-      card.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()))
-    const matchStatus = selectedStatus === '' || card.status === selectedStatus
-    const matchTopic = selectedTopic === '' || (() => { const topic = TOPIC_TREE.find(t => t.label === selectedTopic); return topic ? (card.tags?.includes(selectedTopic) || topic.subs.some(sub => card.tags?.includes(sub))) : false })()
-    const matchSub = selectedSub === '' || card.tags?.includes(selectedSub)
-    const matchNature = selectedNature === '' || card.tags?.includes(selectedNature)
-    return matchSearch && matchStatus && matchTopic && matchSub && matchNature
-  })
+  const filtered = useMemo(() => {
+    const searchLower = search.toLowerCase()
+    const topic = selectedTopic ? TOPIC_TREE.find(t => t.label === selectedTopic) : null
+
+    return cards.filter(card => {
+      if (search !== '' && !(
+        card.title?.toLowerCase().includes(searchLower) ||
+        card.category?.toLowerCase().includes(searchLower) ||
+        card.source?.toLowerCase().includes(searchLower) ||
+        card.tags?.some(t => t.toLowerCase().includes(searchLower))
+      )) return false
+
+      if (selectedStatus !== '' && card.status !== selectedStatus) return false
+
+      if (topic && !(
+        card.tags?.includes(selectedTopic) ||
+        topic.subs.some(sub => card.tags?.includes(sub))
+      )) return false
+
+      if (selectedSub !== '' && !card.tags?.includes(selectedSub)) return false
+      if (selectedNature !== '' && !card.tags?.includes(selectedNature)) return false
+
+      return true
+    })
+  }, [cards, search, selectedStatus, selectedTopic, selectedSub, selectedNature])
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6">
@@ -121,7 +136,7 @@ function DiagramListInner() {
 
         {/* 성격 필터 */}
         <div className="flex flex-wrap gap-2 mb-5">
-          {['계산', '결선', '단답/용어', '도면해석', '시퀀스', 'Table spec'].map(n => (
+          {NATURE_TAGS.map(n => (
             <button key={n}
               onClick={() => setSelectedNature(selectedNature === n ? '' : n)}
               className={`px-3 py-1 rounded-full text-xs transition ${selectedNature === n ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-800 hover:bg-gray-700'}`}>
@@ -142,7 +157,7 @@ function DiagramListInner() {
         <div className="space-y-3">
           {filtered.map(card => {
             const topicTags = card.tags?.filter(t => TOPIC_TREE.some(tr => tr.label === t || tr.subs.includes(t))) || []
-            const natureTags = card.tags?.filter(t => ['계산', '결선', '단답/용어', '도면해석', '시퀀스', 'Table spec'].includes(t)) || []
+            const natureTags = card.tags?.filter(t => (NATURE_TAGS as readonly string[]).includes(t)) || []
             return (
               <Link key={card.id} href={`/diagram/${card.id}`}
                 className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-5 transition">

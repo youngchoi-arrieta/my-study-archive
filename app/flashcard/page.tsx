@@ -25,18 +25,17 @@ export default function FlashcardPage() {
   useEffect(() => { loadDecks() }, [])
 
   const loadDecks = async () => {
+    // flashcard_cards를 join해서 카드 수를 한 번에 가져옴 (N+1 → 1회 쿼리)
     const { data } = await supabase
-      .from('flashcard_decks').select('*')
+      .from('flashcard_decks')
+      .select('*, flashcard_cards(count)')
       .eq('user_id', USER_ID)
       .order('created_at', { ascending: false })
     if (!data) { setLoading(false); return }
 
-    // 카드 수 가져오기
-    const decksWithCount = await Promise.all(data.map(async d => {
-      const { count } = await supabase
-        .from('flashcard_cards').select('*', { count: 'exact', head: true })
-        .eq('deck_id', d.id)
-      return { ...d, card_count: count ?? 0 }
+    const decksWithCount = data.map(d => ({
+      ...d,
+      card_count: (d.flashcard_cards as unknown as { count: number }[])?.[0]?.count ?? 0,
     }))
     setDecks(decksWithCount)
     setLoading(false)
