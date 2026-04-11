@@ -162,7 +162,9 @@ function DiagramListInner() {
 
         <div className="space-y-3">
           {filtered.map(card => {
-            const topicTags = card.tags?.filter(t => topicTree.some(tr => tr.label === t || tr.subs.includes(t))) || []
+            const parentLabels = topicTree.map(tr => tr.label)
+            const parentTags = card.tags?.filter(t => parentLabels.includes(t)) || []
+            const subTags = card.tags?.filter(t => topicTree.some(tr => tr.subs.includes(t))) || []
             const cardNatureTags = card.tags?.filter(t => natureTags.includes(t)) || []
             return (
               <Link key={card.id} href={`/diagram/${card.id}`}
@@ -181,16 +183,26 @@ function DiagramListInner() {
                   </div>
                 </div>
                 {card.source && <p className="text-gray-500 text-xs mt-1">{card.source}</p>}
-                {(topicTags.length > 0 || cardNatureTags.length > 0) && (
+                {(subTags.length > 0 || parentTags.length > 0 || cardNatureTags.length > 0) && (
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {topicTags.map(tag => {
-                      const parent = topicTree.find(tr => tr.label === tag || tr.subs.includes(tag))
+                    {subTags.map(tag => {
+                      const parent = topicTree.find(tr => tr.subs.includes(tag))
                       return (
                         <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${parent?.color || 'bg-gray-700'}`}>
-                          {tag}
+                          <span className="opacity-60">{parent?.label} / </span>{tag}
                         </span>
                       )
                     })}
+                    {parentTags
+                      .filter(p => !subTags.some(s => topicTree.find(tr => tr.label === p)?.subs.includes(s)))
+                      .map(tag => {
+                        const parent = topicTree.find(tr => tr.label === tag)
+                        return (
+                          <span key={tag} className={`text-xs px-2 py-0.5 rounded-full opacity-60 ${parent?.color || 'bg-gray-700'}`}>
+                            {tag}
+                          </span>
+                        )
+                      })}
                     {cardNatureTags.map(tag => (
                       <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${NATURE_COLORS[tag] || 'bg-gray-700'}`}>
                         {tag}

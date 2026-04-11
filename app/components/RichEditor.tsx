@@ -22,7 +22,7 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
       ResizeImage,
       Placeholder.configure({ placeholder: placeholder || '내용을 입력하세요...' }),
     ],
-    content,
+    content: '',  // 항상 빈 상태로 시작, 아래 useEffect에서 주입
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
     editorProps: {
       handlePaste(view, event) {
@@ -41,6 +41,12 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
     },
   })
 
+  // editor 준비되면 content 주입 (DB fetch 완료 후 늦게 도착해도 반영됨)
+  useEffect(() => {
+    if (!editor || !content) return
+    editor.commands.setContent(content, { emitUpdate: false })
+  }, [editor]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const insertImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -48,16 +54,6 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
     editor?.chain().focus().setImage({ src: base64 }).run()
     e.target.value = ''
   }
-
-  // content가 나중에 도착했을 때(DB fetch 완료 후) 에디터에 반영
-  useEffect(() => {
-    if (!editor) return
-    const current = editor.getHTML()
-    // 에디터가 비어있거나 placeholder 상태인데 content가 들어온 경우에만 업데이트
-    if (content && current !== content && (current === '<p></p>' || current === '')) {
-      editor.commands.setContent(content, { emitUpdate: false })
-    }
-  }, [editor, content])
 
   if (!editor) return null
 
