@@ -163,7 +163,7 @@ function DiagramListInner() {
         <div className="space-y-3">
           {filtered.map(card => {
             const topicTags = card.tags?.filter(t => topicTree.some(tr => tr.label === t || tr.subs.includes(t))) || []
-            const natureTags = card.tags?.filter(t => natureTags.includes(t)) || []
+            const cardNatureTags = card.tags?.filter(t => natureTags.includes(t)) || []
             return (
               <Link key={card.id} href={`/diagram/${card.id}`}
                 className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-5 transition">
@@ -181,7 +181,7 @@ function DiagramListInner() {
                   </div>
                 </div>
                 {card.source && <p className="text-gray-500 text-xs mt-1">{card.source}</p>}
-                {(topicTags.length > 0 || natureTags.length > 0) && (
+                {(topicTags.length > 0 || cardNatureTags.length > 0) && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {topicTags.map(tag => {
                       const parent = topicTree.find(tr => tr.label === tag || tr.subs.includes(tag))
@@ -191,7 +191,7 @@ function DiagramListInner() {
                         </span>
                       )
                     })}
-                    {natureTags.map(tag => (
+                    {cardNatureTags.map(tag => (
                       <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${NATURE_COLORS[tag] || 'bg-gray-700'}`}>
                         {tag}
                       </span>
