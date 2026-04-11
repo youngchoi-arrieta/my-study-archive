@@ -2,11 +2,11 @@
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import RichEditor from '../../components/RichEditor'
-import { TOPIC_TREE, NATURE_COLORS, PROBLEM_NATURE } from '@/lib/constants'
+import { TOPIC_TREE, NATURE_COLORS, PROBLEM_NATURE } from '../../../lib/constants'
 
 type SubQuestion = {
   id: number
