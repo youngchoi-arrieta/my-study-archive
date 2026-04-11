@@ -1,4 +1,5 @@
 'use client'
+import { useEffect } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
@@ -47,6 +48,16 @@ export default function RichEditor({ content, onChange, placeholder }: Props) {
     editor?.chain().focus().setImage({ src: base64 }).run()
     e.target.value = ''
   }
+
+  // content가 나중에 도착했을 때(DB fetch 완료 후) 에디터에 반영
+  useEffect(() => {
+    if (!editor) return
+    const current = editor.getHTML()
+    // 에디터가 비어있거나 placeholder 상태인데 content가 들어온 경우에만 업데이트
+    if (content && current !== content && (current === '<p></p>' || current === '')) {
+      editor.commands.setContent(content, false)
+    }
+  }, [editor, content])
 
   if (!editor) return null
 

@@ -6,7 +6,8 @@ import { supabase } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import RichEditor from '../../components/RichEditor'
-import { TOPIC_TREE, NATURE_COLORS, PROBLEM_NATURE } from '../../../lib/constants'
+import { NATURE_COLORS } from '../../../lib/constants'
+import { useDiagramConfig } from '../../../lib/useDiagramConfig'
 
 type SubQuestion = {
   id: number
@@ -38,21 +39,25 @@ const STATUS_COLORS: Record<string, string> = {
   '완료': 'bg-blue-600',
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  '도면해석': 'bg-blue-800',
-  'Table spec': 'bg-purple-700',
-  '시퀀스회로도': 'bg-teal-700',
-}
-
-// TopicSelector (새 카드 폼과 동일)
-function TopicSelector({ selectedTags, onChange }: { selectedTags: string[], onChange: (tags: string[]) => void }) {
+function TopicSelector({ selectedTags, onChange, topicTree }: {
+  selectedTags: string[]
+  onChange: (tags: string[]) => void
+  topicTree: { label: string; color: string; subs: string[] }[]
+}) {
   const [expandedTopic, setExpandedTopic] = useState<string | null>(null)
   const toggle = (tag: string) => {
-    onChange(selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag])
+    if (selectedTags.includes(tag)) {
+      onChange(selectedTags.filter(t => t !== tag))
+    } else {
+      const parent = topicTree.find(t => t.subs.includes(tag))
+      const toAdd = [tag]
+      if (parent && !selectedTags.includes(parent.label)) toAdd.push(parent.label)
+      onChange([...selectedTags, ...toAdd])
+    }
   }
   return (
     <div className="space-y-2">
-      {TOPIC_TREE.map(topic => {
+      {topicTree.map(topic => {
         const isExpanded = expandedTopic === topic.label
         const parentSelected = selectedTags.includes(topic.label)
         return (
@@ -86,32 +91,21 @@ function TopicSelector({ selectedTags, onChange }: { selectedTags: string[], onC
 
 function renderLatexText(html: string): React.ReactNode[] {
   if (!html) return []
-
-  // img 태그는 보존, 나머지 HTML 태그 제거
-  // 먼저 img 태그를 플레이스홀더로 치환
   const imgPlaceholders: string[] = []
   const withPlaceholders = html.replace(/<img[^>]+>/g, (match) => {
     imgPlaceholders.push(match)
     return `%%IMG${imgPlaceholders.length - 1}%%`
   })
-
-  // 나머지 HTML 태그 제거
   const plain = withPlaceholders
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-
-  // LaTeX 이스케이프 정규화: \\$ → $, \% → %  (Tiptap 저장 형태 복원)
   const normalized = plain
-    .replace(/\\\\\$/g, '$')   // \\$ → $
-    .replace(/\\\s*\$/g, '$')  // \ $ → $  (공백 포함)
-
-  // LaTeX, 이미지 플레이스홀더, 일반 텍스트 파싱
+    .replace(/\\\\\$/g, '$')
+    .replace(/\\\s*\$/g, '$')
   const parts = normalized.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
-
   return parts.map((part, i) => {
-    // 이미지 플레이스홀더
     const imgMatch = part.match(/^%%IMG(\d+)%%$/)
     if (imgMatch) {
       const imgHtml = imgPlaceholders[parseInt(imgMatch[1])]
@@ -119,15 +113,13 @@ function renderLatexText(html: string): React.ReactNode[] {
     }
     if (part.startsWith('$$') && part.endsWith('$$')) {
       const math = part.slice(2, -2).trim()
-      try {
-        return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} />
-      } catch { return <span key={i}>{part}</span> }
+      try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} /> }
+      catch { return <span key={i}>{part}</span> }
     }
     if (part.startsWith('$') && part.endsWith('$')) {
       const math = part.slice(1, -1).trim()
-      try {
-        return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: false, throwOnError: false }) }} />
-      } catch { return <span key={i}>{part}</span> }
+      try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: false, throwOnError: false }) }} /> }
+      catch { return <span key={i}>{part}</span> }
     }
     return <span key={i}>{part}</span>
   })
@@ -136,6 +128,9 @@ function renderLatexText(html: string): React.ReactNode[] {
 export default function DiagramCardDetail() {
   const { id } = useParams()
   const router = useRouter()
+  const { config } = useDiagramConfig()
+  const { topicTree, natureTags } = config
+
   const [card, setCard] = useState<DiagramCard | null>(null)
   const [revealed, setRevealed] = useState<Set<number>>(new Set())
   const [editing, setEditing] = useState(false)
@@ -160,15 +155,12 @@ export default function DiagramCardDetail() {
       setMyNote(data?.my_note || '')
       if (data) {
         setFormTitle(data.title || '')
-        // 기존 tags에서 주제/성격 분리
         const existingTags: string[] = data.tags || []
-        const allTopicLabels = TOPIC_TREE.flatMap(t => [t.label, ...t.subs])
-        const natureList = PROBLEM_NATURE as readonly string[]
+        const allTopicLabels = topicTree.flatMap(t => [t.label, ...t.subs])
         setFormSelectedTags(existingTags.filter(t => allTopicLabels.includes(t)))
-        setFormSelectedNatures(existingTags.filter(t => natureList.includes(t)))
+        setFormSelectedNatures(existingTags.filter(t => natureTags.includes(t)))
         setFormSource(data.source || '')
         setFormCardType(data.card_type || '도면해석')
-        // diagram_urls 우선, 없으면 diagram_url로 폴백
         const urls = data.diagram_urls?.length ? data.diagram_urls : (data.diagram_url ? [data.diagram_url] : [])
         setFormDiagramUrls(urls)
         setFormTableContent(data.table_content || '')
@@ -176,9 +168,8 @@ export default function DiagramCardDetail() {
       }
     }
     fetchCard()
-  }, [id])
+  }, [id, topicTree, natureTags])
 
-  // 현재 카드의 이미지 목록
   const imageUrls = card?.diagram_urls?.length
     ? card.diagram_urls
     : (card?.diagram_url ? [card.diagram_url] : [])
@@ -186,9 +177,7 @@ export default function DiagramCardDetail() {
   const handleStatusChange = async (status: string) => {
     const newCount = status === '새 카드' ? 0 : (card?.review_count || 0) + 1
     const { data } = await supabase.from('diagram_cards').update({
-      status,
-      review_count: newCount,
-      last_reviewed: new Date().toISOString(),
+      status, review_count: newCount, last_reviewed: new Date().toISOString(),
     }).eq('id', id).select().single()
     if (data) setCard(data)
   }
@@ -260,31 +249,18 @@ export default function DiagramCardDetail() {
 
   const renderCloze = (html: string, qIdx: number) => {
     if (!html) return null
-
-    // HTML에서 이미지 추출 보존 + LaTeX 렌더링
     const renderHtmlWithLatex = (rawHtml: string) => {
-      // img 태그 플레이스홀더 처리
       const imgs: string[] = []
-      const withPlaceholders = rawHtml.replace(/<img[^>]+>/g, m => {
-        imgs.push(m); return `%%IMG${imgs.length - 1}%%`
-      })
-      // 블록 태그는 줄바꿈으로, 나머지 태그 제거
+      const withPlaceholders = rawHtml.replace(/<img[^>]+>/g, m => { imgs.push(m); return `%%IMG${imgs.length - 1}%%` })
       const plain = withPlaceholders
         .replace(/<\/?(p|br|li|div|ol|ul)[^>]*>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\\\\/g, '\\')   // \\ → \ (Tiptap 이스케이프 복원)
-        .replace(/\\\$/g, '$')    // \$ → $
-        .replace(/[ \t]+/g, ' ')    // 공백만 정리 (줄바꿈은 유지)
-        .trim()
-
+        .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
+        .replace(/\\\\/g, '\\').replace(/\\\$/g, '$')
+        .replace(/[ \t]+/g, ' ').trim()
       const parts = plain.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|%%IMG\d+%%)/g)
       return parts.map((part, i) => {
         const imgMatch = part.match(/^%%IMG(\d+)%%$/)
-        if (imgMatch) {
-          return <span key={i} className="inline-block my-2"
-            dangerouslySetInnerHTML={{ __html: imgs[parseInt(imgMatch[1])] }} />
-        }
+        if (imgMatch) return <span key={i} className="inline-block my-2" dangerouslySetInnerHTML={{ __html: imgs[parseInt(imgMatch[1])] }} />
         if (part.startsWith('$$') && part.endsWith('$$')) {
           const math = part.slice(2, -2).trim()
           try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} /> }
@@ -298,16 +274,9 @@ export default function DiagramCardDetail() {
         return <span key={i}>{part}</span>
       })
     }
-
-    // cloze 빈칸이 없으면 LaTeX만 렌더링
     if (!html.includes('{{')) {
-      return (
-        <div className="text-sm leading-relaxed whitespace-pre-wrap">
-          {renderHtmlWithLatex(html)}
-        </div>
-      )
+      return <div className="text-sm leading-relaxed whitespace-pre-wrap">{renderHtmlWithLatex(html)}</div>
     }
-
     const plain = html
       .replace(/<\/?(p|br|li|div|ol|ul)[^>]*>/gi, '\n')
       .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
@@ -324,24 +293,18 @@ export default function DiagramCardDetail() {
             const isRevealed = revealed.has(blankIdx)
             return (
               <button key={i} onClick={() => setRevealed(prev => new Set([...prev, blankIdx]))}
-                className={`mx-1 px-2 py-0.5 rounded font-bold transition text-sm ${
-                  isRevealed ? 'bg-green-700 text-white' : 'bg-gray-600 text-gray-600 hover:bg-gray-500 hover:text-gray-400'
-                }`}>
+                className={`mx-1 px-2 py-0.5 rounded font-bold transition text-sm ${isRevealed ? 'bg-green-700 text-white' : 'bg-gray-600 text-gray-600 hover:bg-gray-500 hover:text-gray-400'}`}>
                 {isRevealed ? clozeMatch[1] : '　　'}
               </button>
             )
           }
           if (part.startsWith('$$') && part.endsWith('$$')) {
-            const math = part.slice(2, -2).trim()
-            try {
-              return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: true, throwOnError: false }) }} />
-            } catch { return <span key={i}>{part}</span> }
+            try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(part.slice(2,-2).trim(), { displayMode: true, throwOnError: false }) }} /> }
+            catch { return <span key={i}>{part}</span> }
           }
           if (part.startsWith('$') && part.endsWith('$')) {
-            const math = part.slice(1, -1).trim()
-            try {
-              return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(math, { displayMode: false, throwOnError: false }) }} />
-            } catch { return <span key={i}>{part}</span> }
+            try { return <span key={i} dangerouslySetInnerHTML={{ __html: katex.renderToString(part.slice(1,-1).trim(), { displayMode: false, throwOnError: false }) }} /> }
+            catch { return <span key={i}>{part}</span> }
           }
           return <span key={i}>{part}</span>
         })}
@@ -373,161 +336,150 @@ export default function DiagramCardDetail() {
 
       {editing ? (
         <div className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto p-8 space-y-4">
-          <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="제목" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
+          <div className="max-w-4xl mx-auto p-8 space-y-4">
+            <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
+              placeholder="제목" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
 
-          {/* 주제 분류 */}
-          <div>
-            <label className="text-sm text-gray-400 mb-2 block">📚 주제 분류 <span className="text-gray-600">(▼ 눌러 소분류 선택)</span></label>
-            <TopicSelector selectedTags={formSelectedTags} onChange={setFormSelectedTags} />
-          </div>
-          {formSelectedTags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {formSelectedTags.map(tag => {
-                const parent = TOPIC_TREE.find(t => t.label === tag || t.subs.includes(tag))
-                return (
-                  <span key={tag} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${parent?.color || 'bg-gray-600'}`}>
-                    {tag}
-                    <button onClick={() => setFormSelectedTags(prev => prev.filter(t => t !== tag))} className="opacity-70 hover:opacity-100">✕</button>
-                  </span>
-                )
-              })}
+            <div>
+              <label className="text-sm text-gray-400 mb-2 block">📚 주제 분류 <span className="text-gray-600">(▼ 눌러 소분류 선택)</span></label>
+              <TopicSelector selectedTags={formSelectedTags} onChange={setFormSelectedTags} topicTree={topicTree} />
             </div>
-          )}
+            {formSelectedTags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {formSelectedTags.map(tag => {
+                  const parent = topicTree.find(t => t.label === tag || t.subs.includes(tag))
+                  return (
+                    <span key={tag} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${parent?.color || 'bg-gray-600'}`}>
+                      {tag}
+                      <button onClick={() => setFormSelectedTags(prev => prev.filter(t => t !== tag))} className="opacity-70 hover:opacity-100">✕</button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
 
-          {/* 문제 성격 */}
-          <div>
-            <label className="text-sm text-gray-400 mb-2 block">🏷️ 문제 성격</label>
-            <div className="flex flex-wrap gap-2">
-              {PROBLEM_NATURE.map(n => (
-                <button key={n}
-                  onClick={() => setFormSelectedNatures(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
-                  className={`px-3 py-1.5 rounded-full text-sm transition ${
-                    formSelectedNatures.includes(n) ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-700 hover:bg-gray-600'
-                  }`}>
-                  {formSelectedNatures.includes(n) ? '✓ ' : ''}{n}
-                </button>
-              ))}
+            <div>
+              <label className="text-sm text-gray-400 mb-2 block">🏷️ 문제 성격</label>
+              <div className="flex flex-wrap gap-2">
+                {natureTags.map(n => (
+                  <button key={n}
+                    onClick={() => setFormSelectedNatures(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
+                    className={`px-3 py-1.5 rounded-full text-sm transition ${formSelectedNatures.includes(n) ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-700 hover:bg-gray-600'}`}>
+                    {formSelectedNatures.includes(n) ? '✓ ' : ''}{n}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
-            placeholder="출처" value={formSource} onChange={e => setFormSource(e.target.value)} />
+            <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
+              placeholder="출처" value={formSource} onChange={e => setFormSource(e.target.value)} />
 
-          {/* 다중 이미지 */}
-          <div>
-            <label className="text-sm text-gray-400 mb-2 block">🖼️ 이미지 ({formDiagramUrls.length}장)</label>
-            {formDiagramUrls.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {formDiagramUrls.map((url, idx) => (
-                  <div key={idx} className="bg-gray-800 rounded-lg p-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs text-gray-400">페이지 {idx + 1}</span>
-                      <button onClick={() => setFormDiagramUrls(prev => prev.filter((_, i) => i !== idx))}
-                        className="text-xs text-red-400 hover:text-red-300">✕ 삭제</button>
-                      {idx > 0 && (
-                        <button onClick={() => {
-                          const newUrls = [...formDiagramUrls]
-                          ;[newUrls[idx - 1], newUrls[idx]] = [newUrls[idx], newUrls[idx - 1]]
-                          setFormDiagramUrls(newUrls)
-                        }} className="text-xs text-gray-400 hover:text-white">↑ 위로</button>
-                      )}
+            <div>
+              <label className="text-sm text-gray-400 mb-2 block">🖼️ 이미지 ({formDiagramUrls.length}장)</label>
+              {formDiagramUrls.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {formDiagramUrls.map((url, idx) => (
+                    <div key={idx} className="bg-gray-800 rounded-lg p-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs text-gray-400">페이지 {idx + 1}</span>
+                        <button onClick={() => setFormDiagramUrls(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-red-400 hover:text-red-300">✕ 삭제</button>
+                        {idx > 0 && (
+                          <button onClick={() => {
+                            const newUrls = [...formDiagramUrls]
+                            ;[newUrls[idx - 1], newUrls[idx]] = [newUrls[idx], newUrls[idx - 1]]
+                            setFormDiagramUrls(newUrls)
+                          }} className="text-xs text-gray-400 hover:text-white">↑ 위로</button>
+                        )}
+                      </div>
+                      <img src={url} alt={`페이지 ${idx + 1}`} className="max-w-full rounded max-h-32 object-contain" />
                     </div>
-                    <img src={url} alt={`페이지 ${idx + 1}`} className="max-w-full rounded max-h-32 object-contain" />
+                  ))}
+                </div>
+              )}
+              <div onPaste={handleDiagramPaste}
+                className="w-full bg-gray-800 border-2 border-dashed border-gray-600 rounded-lg p-4 focus:outline-none focus:border-blue-500 text-center"
+                tabIndex={0}>
+                {uploading ? (
+                  <p className="text-gray-400 py-2">업로드 중...</p>
+                ) : (
+                  <div className="text-gray-500 py-2">
+                    <p>클릭 후 Ctrl+V 붙여넣기 (페이지 추가)</p>
+                    <label className="mt-2 inline-block bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg cursor-pointer text-sm">
+                      파일 선택 (여러 장 가능)
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleDiagramFile} />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {(formSelectedNatures.includes('Table spec') || formCardType === 'Table spec') && (
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
+                <RichEditor content={formTableContent} onChange={val => setFormTableContent(val)}
+                  placeholder="표 내용 직접 입력 (LaTeX: $$ ... $$)" />
+              </div>
+            )}
+
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm text-gray-400">📝 소문제</label>
+                <button onClick={() => setFormSubquestions([...formSubquestions, { id: Date.now(), question: '', answer: '' }])}
+                  className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm">+ 소문제 추가</button>
+              </div>
+              <div className="space-y-4">
+                {formSubquestions.map((q, i) => (
+                  <div key={q.id} className="bg-gray-900 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-blue-400 font-semibold">({i + 1})</span>
+                      <button onClick={() => setFormSubquestions(formSubquestions.filter((_, fi) => fi !== i))}
+                        className="text-red-400 hover:text-red-300 text-sm">✕</button>
+                    </div>
+                    <label className="text-xs text-gray-500 mb-1 block">문항 (LaTeX: $$ ... $$, 빈칸: 중괄호 두 개)</label>
+                    <RichEditor content={q.question}
+                      onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, question: val } : fq))}
+                      placeholder="소문제 내용" />
+                    <label className="text-xs text-gray-500 mt-3 mb-1 block">정답</label>
+                    <RichEditor content={q.answer}
+                      onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, answer: val } : fq))}
+                      placeholder="정답" />
                   </div>
                 ))}
               </div>
-            )}
-            <div onPaste={handleDiagramPaste}
-              className="w-full bg-gray-800 border-2 border-dashed border-gray-600 rounded-lg p-4 focus:outline-none focus:border-blue-500 text-center"
-              tabIndex={0}>
-              {uploading ? (
-                <p className="text-gray-400 py-2">업로드 중...</p>
-              ) : (
-                <div className="text-gray-500 py-2">
-                  <p>클릭 후 Ctrl+V 붙여넣기 (페이지 추가)</p>
-                  <label className="mt-2 inline-block bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg cursor-pointer text-sm">
-                    파일 선택 (여러 장 가능)
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleDiagramFile} />
-                  </label>
-                </div>
-              )}
             </div>
+
+            <button onClick={handleSave}
+              className="w-full bg-blue-600 hover:bg-blue-500 rounded-lg p-3 font-semibold transition">
+              💾 저장
+            </button>
           </div>
-
-          {(formSelectedNatures.includes('Table spec') || formCardType === 'Table spec') && (
-            <div>
-              <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
-              <RichEditor content={formTableContent} onChange={val => setFormTableContent(val)}
-                placeholder="표 내용 직접 입력 (LaTeX: $$ ... $$)" />
-            </div>
-          )}
-
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <label className="text-sm text-gray-400">📝 소문제</label>
-              <button onClick={() => setFormSubquestions([...formSubquestions, { id: Date.now(), question: '', answer: '' }])}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm">+ 소문제 추가</button>
-            </div>
-            <div className="space-y-4">
-              {formSubquestions.map((q, i) => (
-                <div key={q.id} className="bg-gray-900 rounded-xl p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-blue-400 font-semibold">({i + 1})</span>
-                    <button onClick={() => setFormSubquestions(formSubquestions.filter((_, fi) => fi !== i))}
-                      className="text-red-400 hover:text-red-300 text-sm">✕</button>
-                  </div>
-                  <label className="text-xs text-gray-500 mb-1 block">문항 (LaTeX: $$ ... $$, 빈칸: 중괄호 두 개)</label>
-                  <RichEditor content={q.question}
-                    onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, question: val } : fq))}
-                    placeholder="소문제 내용" />
-                  <label className="text-xs text-gray-500 mt-3 mb-1 block">정답</label>
-                  <RichEditor content={q.answer}
-                    onChange={val => setFormSubquestions(formSubquestions.map((fq, fi) => fi === i ? { ...fq, answer: val } : fq))}
-                    placeholder="정답" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <button onClick={handleSave}
-            className="w-full bg-blue-600 hover:bg-blue-500 rounded-lg p-3 font-semibold transition">
-            💾 저장
-          </button>
-        </div>
         </div>
       ) : (
         <>
-          {/* 학습 상태 바 */}
           <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 flex-wrap shrink-0">
             <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATUS_COLORS[card.status || '새 카드']}`}>
               {card.status || '새 카드'}
             </span>
             <span className="text-gray-400 text-sm">회독 {card.review_count || 0}회</span>
             {card.last_reviewed && (
-              <span className="text-gray-500 text-xs">
-                마지막: {new Date(card.last_reviewed).toLocaleDateString('ko-KR')}
-              </span>
+              <span className="text-gray-500 text-xs">마지막: {new Date(card.last_reviewed).toLocaleDateString('ko-KR')}</span>
             )}
             <div className="flex gap-2 flex-wrap">
               {['새 카드', '오답노트', '완료'].map(s => (
                 <button key={s} onClick={() => handleStatusChange(s)}
-                  className={`px-3 py-1 rounded-full text-xs transition ${
-                    card.status === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'
-                  }`}>
+                  className={`px-3 py-1 rounded-full text-xs transition ${card.status === s ? STATUS_COLORS[s] : 'bg-gray-700 hover:bg-gray-600'}`}>
                   {s === '새 카드' ? '🆕' : s === '오답노트' ? '❌' : '✅'} {s}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 태그 뱃지 */}
           {card.tags?.length > 0 && (
             <div className="px-4 py-2 border-b border-gray-800 flex flex-wrap gap-1.5 shrink-0">
               {card.tags.map(tag => {
-                const parent = TOPIC_TREE.find(t => t.label === tag || t.subs.includes(tag))
-                const isNature = ['계산', '결선', '단답/용어', '도면해석', '시퀀스', 'Table spec'].includes(tag)
+                const parent = topicTree.find(t => t.label === tag || t.subs.includes(tag))
+                const isNature = natureTags.includes(tag)
                 return (
                   <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${
                     parent ? parent.color : isNature ? (NATURE_COLORS[tag] || 'bg-gray-600') : 'bg-gray-700'
@@ -539,30 +491,17 @@ export default function DiagramCardDetail() {
             </div>
           )}
 
-          {/* 2단 학습 뷰 */}
           <div className="flex flex-1 overflow-hidden min-h-0">
-            {/* 왼쪽: 도면/표/회로도 */}
             <div className="w-1/2 border-r border-gray-800 overflow-auto flex flex-col min-h-0">
               {imageUrls.length > 0 ? (
                 <>
-                  {/* 페이지 네비게이션 */}
                   {imageUrls.length > 1 && (
                     <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
-                      <button
-                        onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                        disabled={currentPage === 0}
-                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-30 transition">
-                        ← 이전
-                      </button>
-                      <span className="text-sm text-gray-400">
-                        {currentPage + 1} / {imageUrls.length}
-                      </span>
-                      <button
-                        onClick={() => setCurrentPage(p => Math.min(imageUrls.length - 1, p + 1))}
-                        disabled={currentPage === imageUrls.length - 1}
-                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-30 transition">
-                        다음 →
-                      </button>
+                      <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
+                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-30 transition">← 이전</button>
+                      <span className="text-sm text-gray-400">{currentPage + 1} / {imageUrls.length}</span>
+                      <button onClick={() => setCurrentPage(p => Math.min(imageUrls.length - 1, p + 1))} disabled={currentPage === imageUrls.length - 1}
+                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-30 transition">다음 →</button>
                     </div>
                   )}
                   <div className="overflow-auto p-4 flex-1">
@@ -570,17 +509,12 @@ export default function DiagramCardDetail() {
                   </div>
                 </>
               ) : card.card_type === 'Table spec' && card.table_content ? (
-                <div className="p-4 text-sm leading-relaxed overflow-auto">
-                  {renderLatexText(card.table_content)}
-                </div>
+                <div className="p-4 text-sm leading-relaxed overflow-auto">{renderLatexText(card.table_content)}</div>
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <p>이미지가 없습니다</p>
-                </div>
+                <div className="flex items-center justify-center h-full text-gray-500"><p>이미지가 없습니다</p></div>
               )}
             </div>
 
-            {/* 오른쪽: 소문제 */}
             <div className="w-1/2 overflow-auto p-4 space-y-4 min-h-0">
               {card.subquestions?.length > 0 ? (
                 <>
@@ -588,42 +522,26 @@ export default function DiagramCardDetail() {
                   {card.subquestions.map((q, i) => (
                     <div key={q.id} className="bg-gray-900 rounded-xl p-4">
                       <p className="text-blue-400 font-semibold text-sm mb-2">({i + 1})</p>
-                      <div className="mb-3">
-                        {renderCloze(q.question, i)}
-                      </div>
+                      <div className="mb-3">{renderCloze(q.question, i)}</div>
                       {revealed.has(i * 100 + 1000) ? (
                         <div>
                           <div className="bg-green-900 rounded-lg p-3 text-sm leading-relaxed mb-2">
                             {renderCloze(q.answer, i + 1000)}
                           </div>
-                          <button onClick={() => setRevealed(prev => {
-                            const next = new Set(prev)
-                            next.delete(i * 100 + 1000)
-                            return next
-                          })} className="text-xs text-gray-400 hover:text-white underline">
-                            숨기기
-                          </button>
+                          <button onClick={() => setRevealed(prev => { const next = new Set(prev); next.delete(i * 100 + 1000); return next })}
+                            className="text-xs text-gray-400 hover:text-white underline">숨기기</button>
                         </div>
                       ) : (
                         <button onClick={() => setRevealed(prev => new Set([...prev, i * 100 + 1000]))}
-                          className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
-                          정답 보기
-                        </button>
+                          className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">정답 보기</button>
                       )}
                     </div>
                   ))}
-                  <button onClick={() => setRevealed(new Set())}
-                    className="text-xs text-gray-400 hover:text-white underline">
-                    전체 다시 숨기기
-                  </button>
+                  <button onClick={() => setRevealed(new Set())} className="text-xs text-gray-400 hover:text-white underline">전체 다시 숨기기</button>
                   <div className="bg-gray-900 rounded-xl p-4">
                     <p className="text-sm text-gray-400 mb-2">📌 나의 메모</p>
-                    <textarea
-                      className="w-full bg-gray-800 rounded-lg p-3 text-white h-20 text-sm"
-                      placeholder="틀린 포인트, 주의사항 등..."
-                      value={myNote}
-                      onChange={e => setMyNote(e.target.value)}
-                    />
+                    <textarea className="w-full bg-gray-800 rounded-lg p-3 text-white h-20 text-sm"
+                      placeholder="틀린 포인트, 주의사항 등..." value={myNote} onChange={e => setMyNote(e.target.value)} />
                     <button onClick={handleSaveNote} disabled={savingNote}
                       className="mt-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm transition">
                       {savingNote ? '저장 중...' : '💾 메모 저장'}
@@ -631,9 +549,7 @@ export default function DiagramCardDetail() {
                   </div>
                 </>
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <p>소문제가 없습니다</p>
-                </div>
+                <div className="flex items-center justify-center h-full text-gray-500"><p>소문제가 없습니다</p></div>
               )}
             </div>
           </div>

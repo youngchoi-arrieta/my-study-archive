@@ -4,7 +4,8 @@ import { supabase } from '../../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import RichEditor from '../../components/RichEditor'
-import { TOPIC_TREE, NATURE_COLORS, PROBLEM_NATURE } from '../../../lib/constants'
+import { NATURE_COLORS } from '../../../lib/constants'
+import { useDiagramConfig } from '../../../lib/useDiagramConfig'
 
 type SubQuestion = {
   id: number
@@ -12,59 +13,50 @@ type SubQuestion = {
   answer: string
 }
 
-// 대분류 선택 시 소분류 패널을 보여주는 컴포넌트
 function TopicSelector({
   selectedTags,
   onChange,
+  topicTree,
 }: {
   selectedTags: string[]
   onChange: (tags: string[]) => void
+  topicTree: { label: string; color: string; subs: string[] }[]
 }) {
   const [expandedTopic, setExpandedTopic] = useState<string | null>(null)
 
   const toggle = (tag: string) => {
-    onChange(
-      selectedTags.includes(tag)
-        ? selectedTags.filter(t => t !== tag)
-        : [...selectedTags, tag]
-    )
+    if (selectedTags.includes(tag)) {
+      onChange(selectedTags.filter(t => t !== tag))
+    } else {
+      const parent = topicTree.find(t => t.subs.includes(tag))
+      const toAdd = [tag]
+      if (parent && !selectedTags.includes(parent.label)) toAdd.push(parent.label)
+      onChange([...selectedTags, ...toAdd])
+    }
   }
 
   return (
     <div className="space-y-2">
-      {TOPIC_TREE.map(topic => {
+      {topicTree.map(topic => {
         const isExpanded = expandedTopic === topic.label
         const parentSelected = selectedTags.includes(topic.label)
         return (
           <div key={topic.label} className="rounded-xl overflow-hidden border border-gray-700">
             <div className="flex items-center gap-2 p-2 bg-gray-800">
-              {/* 대분류 토글 버튼 */}
-              <button
-                onClick={() => toggle(topic.label)}
-                className={`flex-1 text-left px-3 py-1.5 rounded-lg text-sm font-semibold transition ${
-                  parentSelected ? topic.color : 'bg-gray-700 hover:bg-gray-600'
-                }`}
-              >
+              <button onClick={() => toggle(topic.label)}
+                className={`flex-1 text-left px-3 py-1.5 rounded-lg text-sm font-semibold transition ${parentSelected ? topic.color : 'bg-gray-700 hover:bg-gray-600'}`}>
                 {parentSelected ? '✓ ' : ''}{topic.label}
               </button>
-              {/* 소분류 펼치기 */}
-              <button
-                onClick={() => setExpandedTopic(isExpanded ? null : topic.label)}
-                className="text-gray-400 hover:text-white px-2 text-sm"
-              >
+              <button onClick={() => setExpandedTopic(isExpanded ? null : topic.label)}
+                className="text-gray-400 hover:text-white px-2 text-sm">
                 {isExpanded ? '▲' : '▼'}
               </button>
             </div>
             {isExpanded && (
               <div className="flex flex-wrap gap-2 p-3 bg-gray-900">
                 {topic.subs.map(sub => (
-                  <button
-                    key={sub}
-                    onClick={() => toggle(sub)}
-                    className={`px-3 py-1 rounded-full text-xs transition ${
-                      selectedTags.includes(sub) ? topic.color : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
+                  <button key={sub} onClick={() => toggle(sub)}
+                    className={`px-3 py-1 rounded-full text-xs transition ${selectedTags.includes(sub) ? topic.color : 'bg-gray-700 hover:bg-gray-600'}`}>
                     {selectedTags.includes(sub) ? '✓ ' : ''}{sub}
                   </button>
                 ))}
@@ -79,22 +71,21 @@ function TopicSelector({
 
 export default function NewDiagramCard() {
   const router = useRouter()
+  const { config } = useDiagramConfig()
+  const { topicTree, natureTags } = config
+
   const [title, setTitle] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedNatures, setSelectedNatures] = useState<string[]>([])
   const [source, setSource] = useState('')
   const [diagramUrls, setDiagramUrls] = useState<string[]>([])
   const [tableContent, setTableContent] = useState('')
-  const [subquestions, setSubquestions] = useState<SubQuestion[]>([
-    { id: 1, question: '', answer: '' }
-  ])
+  const [subquestions, setSubquestions] = useState<SubQuestion[]>([{ id: 1, question: '', answer: '' }])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
 
   const toggleNature = (n: string) => {
-    setSelectedNatures(prev =>
-      prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n]
-    )
+    setSelectedNatures(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])
   }
 
   const uploadImage = async (file: File): Promise<string | null> => {
@@ -129,33 +120,23 @@ export default function NewDiagramCard() {
     setUploading(false)
   }
 
-  const removeImage = (idx: number) => {
-    setDiagramUrls(prev => prev.filter((_, i) => i !== idx))
-  }
-
-  const addSubQuestion = () => {
-    setSubquestions([...subquestions, { id: subquestions.length + 1, question: '', answer: '' }])
-  }
-
-  const removeSubQuestion = (id: number) => {
-    setSubquestions(subquestions.filter(q => q.id !== id))
-  }
-
+  const removeImage = (idx: number) => setDiagramUrls(prev => prev.filter((_, i) => i !== idx))
+  const addSubQuestion = () => setSubquestions([...subquestions, { id: subquestions.length + 1, question: '', answer: '' }])
+  const removeSubQuestion = (id: number) => setSubquestions(subquestions.filter(q => q.id !== id))
   const updateSubQuestion = (id: number, field: 'question' | 'answer', value: string) => {
     setSubquestions(subquestions.map(q => q.id === id ? { ...q, [field]: value } : q))
   }
 
-  const allTags = [...selectedTags, ...selectedNatures]
-
   const handleSave = async () => {
     if (!title) return alert('제목을 입력해주세요')
     setSaving(true)
+    const allTags = [...selectedTags, ...selectedNatures]
     const { error } = await supabase.from('diagram_cards').insert({
       title,
-      category: selectedTags[0] || '',   // 첫 번째 대분류를 category로도 저장 (하위 호환)
+      category: selectedTags[0] || '',
       tags: allTags,
       source,
-      card_type: selectedNatures[0] || '도면해석',  // 하위 호환용
+      card_type: selectedNatures[0] || '도면해석',
       diagram_url: diagramUrls[0] || '',
       diagram_urls: diagramUrls,
       table_content: tableContent,
@@ -178,19 +159,17 @@ export default function NewDiagramCard() {
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="제목" value={title} onChange={e => setTitle(e.target.value)} />
 
-          {/* 주제 분류 */}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">
               📚 주제 분류 <span className="text-gray-600">(복수 선택 가능 — 대분류 클릭 또는 ▼ 눌러 소분류 선택)</span>
             </label>
-            <TopicSelector selectedTags={selectedTags} onChange={setSelectedTags} />
+            <TopicSelector selectedTags={selectedTags} onChange={setSelectedTags} topicTree={topicTree} />
           </div>
 
-          {/* 선택된 태그 미리보기 */}
           {selectedTags.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {selectedTags.map(tag => {
-                const parent = TOPIC_TREE.find(t => t.label === tag || t.subs.includes(tag))
+                const parent = topicTree.find(t => t.label === tag || t.subs.includes(tag))
                 return (
                   <span key={tag} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${parent?.color || 'bg-gray-600'}`}>
                     {tag}
@@ -201,16 +180,12 @@ export default function NewDiagramCard() {
             </div>
           )}
 
-          {/* 문제 성격 */}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">🏷️ 문제 성격 <span className="text-gray-600">(복수 선택)</span></label>
             <div className="flex flex-wrap gap-2">
-              {PROBLEM_NATURE.map(n => (
-                <button key={n}
-                  onClick={() => toggleNature(n)}
-                  className={`px-3 py-1.5 rounded-full text-sm transition ${
-                    selectedNatures.includes(n) ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-700 hover:bg-gray-600'
-                  }`}>
+              {natureTags.map(n => (
+                <button key={n} onClick={() => toggleNature(n)}
+                  className={`px-3 py-1.5 rounded-full text-sm transition ${selectedNatures.includes(n) ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-700 hover:bg-gray-600'}`}>
                   {selectedNatures.includes(n) ? '✓ ' : ''}{n}
                 </button>
               ))}
@@ -220,11 +195,8 @@ export default function NewDiagramCard() {
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="출처 (예: 2023년 1회 기사 실기 29번)" value={source} onChange={e => setSource(e.target.value)} />
 
-          {/* 이미지 업로드 */}
           <div>
-            <label className="text-sm text-gray-400 mb-2 block">
-              🖼️ 이미지 ({diagramUrls.length}장) — 여러 장 추가 가능
-            </label>
+            <label className="text-sm text-gray-400 mb-2 block">🖼️ 이미지 ({diagramUrls.length}장) — 여러 장 추가 가능</label>
             {diagramUrls.length > 0 && (
               <div className="space-y-3 mb-3">
                 {diagramUrls.map((url, idx) => (
@@ -263,7 +235,6 @@ export default function NewDiagramCard() {
             </div>
           </div>
 
-          {/* Table spec 전용 텍스트 입력 */}
           {selectedNatures.includes('Table spec') && (
             <div>
               <label className="text-sm text-gray-400 mb-2 block">📝 표 내용 직접 입력 (선택)</label>
@@ -272,13 +243,10 @@ export default function NewDiagramCard() {
             </div>
           )}
 
-          {/* 소문제 */}
           <div>
             <div className="flex justify-between items-center mb-3">
               <label className="text-sm text-gray-400">📝 소문제</label>
-              <button onClick={addSubQuestion} className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm">
-                + 소문제 추가
-              </button>
+              <button onClick={addSubQuestion} className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm">+ 소문제 추가</button>
             </div>
             <div className="space-y-6">
               {subquestions.map((q, i) => (
@@ -290,13 +258,9 @@ export default function NewDiagramCard() {
                     )}
                   </div>
                   <label className="text-xs text-gray-500 mb-1 block">문항 (LaTeX: $$ ... $$, 빈칸: 중괄호 두 개)</label>
-                  <RichEditor content={q.question}
-                    onChange={val => updateSubQuestion(q.id, 'question', val)}
-                    placeholder="소문제 내용" />
+                  <RichEditor content={q.question} onChange={val => updateSubQuestion(q.id, 'question', val)} placeholder="소문제 내용" />
                   <label className="text-xs text-gray-500 mt-3 mb-1 block">정답</label>
-                  <RichEditor content={q.answer}
-                    onChange={val => updateSubQuestion(q.id, 'answer', val)}
-                    placeholder="정답" />
+                  <RichEditor content={q.answer} onChange={val => updateSubQuestion(q.id, 'answer', val)} placeholder="정답" />
                 </div>
               ))}
             </div>

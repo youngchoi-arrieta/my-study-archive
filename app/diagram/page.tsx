@@ -1,12 +1,11 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { STATUS_COLORS, TOPIC_TREE, NATURE_COLORS } from '@/lib/constants'
+import { STATUS_COLORS, NATURE_COLORS } from '@/lib/constants'
+import { useDiagramConfig } from '@/lib/useDiagramConfig'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
-
-const NATURE_TAGS = ['계산', '결선', '단답/용어', '도면해석', '시퀀스', 'Table spec'] as const
 
 type DiagramCard = {
   id: string
@@ -23,6 +22,8 @@ type DiagramCard = {
 function DiagramListInner() {
   const searchParams = useSearchParams()
   const statusFilter = searchParams.get('status') || ''
+  const { config } = useDiagramConfig()
+  const { topicTree, natureTags } = config
   const [cards, setCards] = useState<DiagramCard[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -44,11 +45,11 @@ function DiagramListInner() {
   }, [])
 
   const allStatuses = ['새 카드', '오답노트', '완료']
-  const activeTopic = TOPIC_TREE.find(t => t.label === selectedTopic)
+  const activeTopic = topicTree.find(t => t.label === selectedTopic)
 
   const filtered = useMemo(() => {
     const searchLower = search.toLowerCase()
-    const topic = selectedTopic ? TOPIC_TREE.find(t => t.label === selectedTopic) : null
+    const topic = selectedTopic ? topicTree.find(t => t.label === selectedTopic) : null
 
     return cards.filter(card => {
       if (search !== '' && !(
@@ -80,9 +81,14 @@ function DiagramListInner() {
             <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
             <h1 className="text-2xl font-bold">⚡ 전기기사 실기 오답노트</h1>
           </div>
-          <Link href="/diagram/new" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg transition text-sm">
-            + 새 카드
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/diagram/settings" className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg transition text-sm">
+              ⚙️ 분류 편집
+            </Link>
+            <Link href="/diagram/new" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg transition text-sm">
+              + 새 카드
+            </Link>
+          </div>
         </div>
 
         <input
@@ -112,7 +118,7 @@ function DiagramListInner() {
             className={`px-3 py-1 rounded-full text-sm transition ${selectedTopic === '' ? 'bg-gray-500' : 'bg-gray-700 hover:bg-gray-600'}`}>
             전체 주제
           </button>
-          {TOPIC_TREE.map(t => (
+          {topicTree.map(t => (
             <button key={t.label}
               onClick={() => { setSelectedTopic(selectedTopic === t.label ? '' : t.label); setSelectedSub('') }}
               className={`px-3 py-1 rounded-full text-sm transition ${selectedTopic === t.label ? t.color : 'bg-gray-700 hover:bg-gray-600'}`}>
@@ -136,7 +142,7 @@ function DiagramListInner() {
 
         {/* 성격 필터 */}
         <div className="flex flex-wrap gap-2 mb-5">
-          {NATURE_TAGS.map(n => (
+          {natureTags.map(n => (
             <button key={n}
               onClick={() => setSelectedNature(selectedNature === n ? '' : n)}
               className={`px-3 py-1 rounded-full text-xs transition ${selectedNature === n ? (NATURE_COLORS[n] || 'bg-gray-500') : 'bg-gray-800 hover:bg-gray-700'}`}>
@@ -156,8 +162,8 @@ function DiagramListInner() {
 
         <div className="space-y-3">
           {filtered.map(card => {
-            const topicTags = card.tags?.filter(t => TOPIC_TREE.some(tr => tr.label === t || tr.subs.includes(t))) || []
-            const natureTags = card.tags?.filter(t => (NATURE_TAGS as readonly string[]).includes(t)) || []
+            const topicTags = card.tags?.filter(t => topicTree.some(tr => tr.label === t || tr.subs.includes(t))) || []
+            const natureTags = card.tags?.filter(t => natureTags.includes(t)) || []
             return (
               <Link key={card.id} href={`/diagram/${card.id}`}
                 className="block bg-gray-800 hover:bg-gray-700 rounded-xl p-5 transition">
@@ -178,7 +184,7 @@ function DiagramListInner() {
                 {(topicTags.length > 0 || natureTags.length > 0) && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {topicTags.map(tag => {
-                      const parent = TOPIC_TREE.find(tr => tr.label === tag || tr.subs.includes(tag))
+                      const parent = topicTree.find(tr => tr.label === tag || tr.subs.includes(tag))
                       return (
                         <span key={tag} className={`text-xs px-2 py-0.5 rounded-full ${parent?.color || 'bg-gray-700'}`}>
                           {tag}
