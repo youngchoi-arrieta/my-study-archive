@@ -36,6 +36,11 @@ export default function Home() {
               <h2 className="text-lg font-bold mb-1">시험별 학습 대시보드</h2>
               <p className="text-gray-400 text-xs">전기기사 · 電験 · 기술고시 · GATE</p>
             </Link>
+            <Link href="/library" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
+              <div className="text-2xl mb-2">📖</div>
+              <h2 className="text-lg font-bold mb-1">레퍼런스 라이브러리</h2>
+              <p className="text-gray-400 text-xs">주제별 PDF · 구글 드라이브 연동</p>
+            </Link>
             <Link href="/jobs" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
               <div className="text-2xl mb-2">💼</div>
               <h2 className="text-lg font-bold mb-1">구직 대시보드</h2>
