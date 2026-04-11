@@ -84,7 +84,7 @@ function TopicSelector({ selectedTags, onChange }: { selectedTags: string[], onC
   )
 }
 
-(html: string): React.ReactNode[] {
+function renderLatexText(html: string): React.ReactNode[] {
   if (!html) return []
 
   // img 태그는 보존, 나머지 HTML 태그 제거
