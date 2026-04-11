@@ -51,7 +51,7 @@ function DiagramListInner() {
       card.source?.toLowerCase().includes(search.toLowerCase()) ||
       card.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()))
     const matchStatus = selectedStatus === '' || card.status === selectedStatus
-    const matchTopic = selectedTopic === '' || card.tags?.includes(selectedTopic)
+    const matchTopic = selectedTopic === '' || (() => { const topic = TOPIC_TREE.find(t => t.label === selectedTopic); return topic ? (card.tags?.includes(selectedTopic) || topic.subs.some(sub => card.tags?.includes(sub))) : false })()
     const matchSub = selectedSub === '' || card.tags?.includes(selectedSub)
     const matchNature = selectedNature === '' || card.tags?.includes(selectedNature)
     return matchSearch && matchStatus && matchTopic && matchSub && matchNature

@@ -84,7 +84,7 @@ function TopicSelector({ selectedTags, onChange }: { selectedTags: string[], onC
   )
 }
 
-function renderLatexText(html: string): React.ReactNode[] {
+(html: string): React.ReactNode[] {
   if (!html) return []
 
   // img 태그는 보존, 나머지 HTML 태그 제거
@@ -357,11 +357,7 @@ export default function DiagramCardDetail() {
       <div className="flex justify-between items-center p-4 border-b border-gray-800">
         <div className="flex items-center gap-3 overflow-hidden">
           <Link href="/diagram" className="text-gray-400 hover:text-white text-sm shrink-0">← 목록</Link>
-          <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${TYPE_COLORS[card.card_type] || 'bg-gray-700'}`}>
-            {card.card_type === 'Table spec' ? '📊 Table spec' : card.card_type === '시퀀스회로도' ? '⚡ 시퀀스회로도' : '🗺️ 도면해석'}
-          </span>
           <h1 className="text-lg font-bold truncate">{card.title}</h1>
-          
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={() => setEditing(!editing)}
@@ -381,6 +377,7 @@ export default function DiagramCardDetail() {
           <input className="w-full bg-gray-800 rounded-lg p-3 text-white"
             placeholder="제목" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
 
+          {/* 주제 분류 */}
           <div>
             <label className="text-sm text-gray-400 mb-2 block">📚 주제 분류 <span className="text-gray-600">(▼ 눌러 소분류 선택)</span></label>
             <TopicSelector selectedTags={formSelectedTags} onChange={setFormSelectedTags} />
