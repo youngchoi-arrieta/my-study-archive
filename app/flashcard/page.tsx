@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -19,7 +19,17 @@ const EXAM_META: Record<string, { label: string; back: string }> = {
   denkoshi:  { label: '🗾 第二種電気工事士', back: '/dashboard/denkoshi' },
 }
 
-export default function FlashcardPage() {
+export default function FlashcardPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white text-4xl">🃏</div>
+    }>
+      <FlashcardPage />
+    </Suspense>
+  )
+}
+
+function FlashcardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const examParam = searchParams.get('exam') || 'all'
@@ -178,3 +188,4 @@ export default function FlashcardPage() {
     </main>
   )
 }
+
