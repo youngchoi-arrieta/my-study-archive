@@ -31,6 +31,11 @@ export default function Home() {
           {/* 오른쪽: 대시보드 */}
           <div className="flex flex-col gap-4">
             <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">📊 대시보드</p>
+            <Link href="/lifeops" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1 ring-1 ring-blue-600/30">
+              <div className="text-2xl mb-2">🧭</div>
+              <h2 className="text-lg font-bold mb-1">생활 작전실</h2>
+              <p className="text-gray-400 text-xs">마일스톤 · 일일 로그 · 예산 추적</p>
+            </Link>
             <Link href="/dashboard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
               <div className="text-2xl mb-2">📊</div>
               <h2 className="text-lg font-bold mb-1">시험별 학습 대시보드</h2>
