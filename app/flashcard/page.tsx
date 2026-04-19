@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type Deck = {
@@ -9,11 +9,21 @@ type Deck = {
   name: string
   description: string | null
   created_at: string
+  exam_type: string | null
   card_count?: number
+}
+
+const EXAM_META: Record<string, { label: string; back: string }> = {
+  engineer:  { label: '⚡ 전기기사 실기', back: '/dashboard' },
+  gineung:   { label: '🔧 전기기능사 실기', back: '/dashboard' },
+  denkoshi:  { label: '🗾 第二種電気工事士', back: '/dashboard/denkoshi' },
 }
 
 export default function FlashcardPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const examParam = searchParams.get('exam') || 'all'
+
   const [decks, setDecks] = useState<Deck[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -22,31 +32,37 @@ export default function FlashcardPage() {
   const [saving, setSaving] = useState(false)
   const USER_ID = 'flashcard_user'
 
-  useEffect(() => { loadDecks() }, [])
-
-  const loadDecks = async () => {
-    // flashcard_cards를 join해서 카드 수를 한 번에 가져옴 (N+1 → 1회 쿼리)
-    const { data } = await supabase
+  const loadDecks = useCallback(async () => {
+    setLoading(true)
+    let q = supabase
       .from('flashcard_decks')
       .select('*, flashcard_cards(count)')
       .eq('user_id', USER_ID)
       .order('created_at', { ascending: false })
-    if (!data) { setLoading(false); return }
 
-    const decksWithCount = data.map(d => ({
+    if (examParam !== 'all') {
+      q = q.eq('exam_type', examParam)
+    }
+
+    const { data } = await q
+    if (!data) { setLoading(false); return }
+    setDecks(data.map(d => ({
       ...d,
       card_count: (d.flashcard_cards as unknown as { count: number }[])?.[0]?.count ?? 0,
-    }))
-    setDecks(decksWithCount)
+    })))
     setLoading(false)
-  }
+  }, [examParam])
+
+  useEffect(() => { loadDecks() }, [loadDecks])
 
   const addDeck = async () => {
     if (!newName.trim()) return
     setSaving(true)
     await supabase.from('flashcard_decks').insert({
-      user_id: USER_ID, name: newName.trim(),
+      user_id: USER_ID,
+      name: newName.trim(),
       description: newDesc.trim() || null,
+      exam_type: examParam !== 'all' ? examParam : null,
     })
     setNewName(''); setNewDesc(''); setShowAdd(false)
     await loadDecks()
@@ -59,6 +75,10 @@ export default function FlashcardPage() {
     setDecks(prev => prev.filter(d => d.id !== id))
   }
 
+  const meta = EXAM_META[examParam]
+  const backHref = meta?.back || '/'
+  const pageTitle = meta ? `🃏 플래시카드 — ${meta.label}` : '🃏 플래시카드'
+
   if (loading) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white text-4xl">🃏</div>
   )
@@ -67,30 +87,39 @@ export default function FlashcardPage() {
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-2">
-          <button onClick={() => router.push('/')} className="text-gray-400 hover:text-white text-sm">← 홈</button>
+          <button onClick={() => router.push(backHref)} className="text-gray-400 hover:text-white text-sm">
+            ← {meta?.label || '홈'}
+          </button>
         </div>
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-1">🃏 플래시카드</h1>
+            <h1 className="text-3xl font-bold mb-1">{pageTitle}</h1>
             <p className="text-gray-500 text-sm">멀티필드 인출 훈련 · 덱 관리</p>
           </div>
-          <button onClick={() => setShowAdd(p => !p)}
-            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">
+          <button
+            onClick={() => setShowAdd(p => !p)}
+            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
+          >
             + 새 덱
           </button>
         </div>
 
-        {/* 새 덱 추가 폼 */}
         {showAdd && (
           <div className="bg-gray-900 rounded-2xl p-5 mb-6 border border-gray-700">
             <h3 className="font-semibold mb-4">새 덱 만들기</h3>
-            <input className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-3 outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="덱 이름 (예: 수변전 기기 심볼)" value={newName}
+            <input
+              className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-3 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="덱 이름 (예: 법령 조문 핵심)"
+              value={newName}
               onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addDeck()} />
-            <input className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-4 outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="설명 (선택)" value={newDesc}
-              onChange={e => setNewDesc(e.target.value)} />
+              onKeyDown={e => e.key === 'Enter' && addDeck()}
+            />
+            <input
+              className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-4 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="설명 (선택)"
+              value={newDesc}
+              onChange={e => setNewDesc(e.target.value)}
+            />
             <div className="flex gap-2">
               <button onClick={addDeck} disabled={saving}
                 className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50">
@@ -104,9 +133,13 @@ export default function FlashcardPage() {
           </div>
         )}
 
-        {/* 덱 목록 */}
         {decks.length === 0
-          ? <div className="text-gray-500 text-center py-16">아직 덱이 없어요. + 새 덱을 만들어보세요!</div>
+          ? (
+            <div className="text-gray-500 text-center py-16">
+              <p className="mb-2">아직 덱이 없어요.</p>
+              <p className="text-xs">+ 새 덱을 만들어 시작하세요.</p>
+            </div>
+          )
           : (
             <div className="space-y-3">
               {decks.map(deck => (
@@ -117,16 +150,22 @@ export default function FlashcardPage() {
                     <p className="text-gray-600 text-xs mt-1">{deck.card_count}장</p>
                   </div>
                   <div className="flex gap-2 items-center">
-                    <button onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
-                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition">
+                    <button
+                      onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
+                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    >
                       ▶ 퀴즈
                     </button>
-                    <button onClick={() => router.push(`/flashcard/${deck.id}`)}
-                      className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition">
+                    <button
+                      onClick={() => router.push(`/flashcard/${deck.id}`)}
+                      className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition"
+                    >
                       편집
                     </button>
-                    <button onClick={() => deleteDeck(deck.id)}
-                      className="text-gray-600 hover:text-red-400 px-2 py-2 rounded-lg text-sm transition opacity-0 group-hover:opacity-100">
+                    <button
+                      onClick={() => deleteDeck(deck.id)}
+                      className="text-gray-600 hover:text-red-400 px-2 py-2 rounded-lg text-sm transition opacity-0 group-hover:opacity-100"
+                    >
                       🗑
                     </button>
                   </div>

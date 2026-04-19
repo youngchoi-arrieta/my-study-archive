@@ -1,24 +1,27 @@
 import Link from 'next/link'
 
-function ActiveCard({ href, flag, org, title, desc }: { href: string, flag?: string, org: string, title: string, desc: string }) {
+function HubCard({
+  href, emoji, title, desc, accent
+}: {
+  href: string
+  emoji: string
+  title: string
+  desc: string
+  accent?: boolean
+}) {
   return (
-    <Link href={href} className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition h-full">
-      {flag && <p className="text-lg mb-1">{flag}</p>}
-      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{org}</p>
-      <h2 className="text-lg font-bold mb-1 leading-snug">{title}</h2>
+    <Link
+      href={href}
+      className={`block rounded-2xl p-5 transition h-full ${
+        accent
+          ? 'bg-blue-950 hover:bg-blue-900 ring-1 ring-blue-600/40'
+          : 'bg-gray-900 hover:bg-gray-800'
+      }`}
+    >
+      <div className="text-2xl mb-2">{emoji}</div>
+      <h2 className="text-base font-bold mb-1">{title}</h2>
       <p className="text-gray-400 text-xs">{desc}</p>
     </Link>
-  )
-}
-
-function InactiveCard({ flag, org, title, desc }: { flag?: string, org: string, title: string, desc: string }) {
-  return (
-    <div className="bg-gray-900 rounded-2xl p-5 opacity-40 cursor-not-allowed h-full">
-      {flag && <p className="text-lg mb-1">{flag}</p>}
-      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{org} · 준비 중</p>
-      <h2 className="text-lg font-bold mb-1 leading-snug">{title}</h2>
-      <p className="text-gray-400 text-xs">{desc}</p>
-    </div>
   )
 }
 
@@ -26,30 +29,67 @@ export default function DashboardHome() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-3 mb-2">
+        <div className="mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
         </div>
-        <h1 className="text-3xl font-bold mb-1">📊 시험별 기출문제 풀이 현황</h1>
-        <p className="text-gray-500 text-sm mb-8">시험을 선택하세요</p>
 
-        <div className="grid grid-cols-2 gap-4">
-          {/* 왼쪽: 한국 시험 */}
-          <div className="flex flex-col gap-4">
-            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">🇰🇷 한국</p>
-            <ActiveCard href="/dashboard/engineer" org="한국산업인력공단"
-              title="⚡ 전기기사 실기" desc="합격률 낮은 순 · 회차별 점수 · 영역별 메모" />
-            <ActiveCard href="/dashboard/practical" org="한국산업인력공단"
-              title="🔧 전기기능사 실기" desc="작업형 실기 · 공정별 타이머 · 훈련 통계" />
-            <InactiveCard org="인사혁신처" title="🏛️ 기술고시" desc="전기직 기술고시 기출문제" />
+        {/* 전기기사 실기 허브 */}
+        <div className="mb-10">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">⚡</span>
+            <h1 className="text-2xl font-bold">전기기사 실기</h1>
+            <span className="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded-full ml-1">취득</span>
           </div>
+          <p className="text-gray-500 text-sm mb-6">한국산업인력공단 · Engineer 학과/실기 통합 허브</p>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <HubCard
+              href="/dashboard/engineer"
+              emoji="📊"
+              title="기출 점수 대시보드"
+              desc="회차별 점수 · 합격률 · 영역별 메모"
+              accent
+            />
+            <HubCard
+              href="/diagram"
+              emoji="📝"
+              title="오답노트 데이터베이스"
+              desc="주제별 분류 · 복수 태그 · 오답 추적"
+            />
+            <HubCard
+              href="/flashcard?exam=engineer"
+              emoji="🃏"
+              title="플래시카드"
+              desc="전기기사 전용 덱 · 인출 훈련"
+            />
+          </div>
+        </div>
 
-          {/* 오른쪽: 해외 시험 */}
-          <div className="flex flex-col gap-4">
-            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">🌏 해외</p>
-            <InactiveCard flag="🇯🇵" org="일본 경제산업성" title="電験 (덴켄)" desc="電験三種 · 電験二種 · 電験一種" />
-            <InactiveCard flag="🇮🇳" org="IIT" title="GATE (EE)" desc="Graduate Aptitude Test in Engineering" />
-            <InactiveCard flag="🇨🇦" org="APEGS / PEO" title="Technical Exam (EE)" desc="Canadian Professional Engineer — EE" />
+        {/* 전기기능사 실기 허브 */}
+        <div className="mb-10">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🔧</span>
+            <h1 className="text-2xl font-bold">전기기능사 실기</h1>
+            <span className="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded-full ml-1">취득</span>
           </div>
+          <p className="text-gray-500 text-sm mb-6">한국산업인력공단 · 작업형 실기 전용</p>
+          <HubCard
+            href="/dashboard/practical"
+            emoji="⏱"
+            title="작업형 훈련 트레이너"
+            desc="공정별 타이머 · 체크리스트 · 훈련 통계"
+            accent
+          />
+        </div>
+
+        {/* 다른 시험 */}
+        <div className="border-t border-gray-800 pt-6">
+          <p className="text-xs text-gray-600 mb-3">다른 시험</p>
+          <Link
+            href="/dashboard/denkoshi"
+            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition"
+          >
+            🗾 第二種電気工事士 →
+          </Link>
         </div>
       </div>
     </main>

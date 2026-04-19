@@ -1,5 +1,65 @@
 import Link from 'next/link'
 
+function ExamCard({
+  href, emoji, org, title, desc, badge
+}: {
+  href: string
+  emoji: string
+  org: string
+  title: string
+  desc: string
+  badge?: string
+}) {
+  return (
+    <Link href={href} className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition h-full">
+      <div className="flex items-start justify-between mb-2">
+        <span className="text-2xl">{emoji}</span>
+        {badge && (
+          <span className="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded-full">{badge}</span>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{org}</p>
+      <h2 className="text-base font-bold mb-1 leading-snug">{title}</h2>
+      <p className="text-gray-400 text-xs">{desc}</p>
+    </Link>
+  )
+}
+
+function InactiveExamCard({
+  emoji, org, title, desc
+}: {
+  emoji: string
+  org: string
+  title: string
+  desc: string
+}) {
+  return (
+    <div className="bg-gray-900 rounded-2xl p-5 opacity-35 cursor-not-allowed h-full">
+      <span className="text-2xl block mb-2">{emoji}</span>
+      <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{org} · 준비 중</p>
+      <h2 className="text-base font-bold mb-1 leading-snug">{title}</h2>
+      <p className="text-gray-400 text-xs">{desc}</p>
+    </div>
+  )
+}
+
+function ToolCard({
+  href, emoji, title, desc
+}: {
+  href: string
+  emoji: string
+  title: string
+  desc: string
+}) {
+  return (
+    <Link href={href} className="block bg-gray-900 hover:bg-gray-800 rounded-xl p-4 transition">
+      <span className="text-lg block mb-1">{emoji}</span>
+      <h3 className="text-sm font-semibold mb-0.5">{title}</h3>
+      <p className="text-gray-500 text-xs">{desc}</p>
+    </Link>
+  )
+}
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
@@ -7,51 +67,55 @@ export default function Home() {
         <h1 className="text-4xl font-bold mb-1">⚡ 나의 전기공학 도장</h1>
         <p className="text-gray-500 mb-10">電気工学 · 수학 · 물리 학습 아카이브</p>
 
-        <div className="grid grid-cols-2 gap-4">
-          {/* 왼쪽: 문제 데이터베이스 */}
-          <div className="flex flex-col gap-4">
-            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">📚 문제 데이터베이스</p>
-            <Link href="/cards" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
-              <div className="text-2xl mb-2">📚</div>
-              <h2 className="text-lg font-bold mb-1">증명형 문제</h2>
-              <p className="text-gray-400 text-xs">정리 · 증명 · 공식 · LaTeX · Cloze · Flow</p>
-            </Link>
-            <Link href="/diagram" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
-              <div className="text-2xl mb-2">⚡</div>
-              <h2 className="text-lg font-bold mb-1">전기기사 실기 오답노트</h2>
-              <p className="text-gray-400 text-xs">주제별 분류 · 복수 태그 · 오답 추적</p>
-            </Link>
-            <Link href="/flashcard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
-              <div className="text-2xl mb-2">🃏</div>
-              <h2 className="text-lg font-bold mb-1">플래시카드</h2>
-              <p className="text-gray-400 text-xs">멀티필드 · 랜덤 인출 훈련</p>
-            </Link>
-          </div>
+        {/* 도구 — 최상단 */}
+        <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">🛠 도구</p>
+        <div className="grid grid-cols-3 gap-3 mb-10">
+          <ToolCard href="/lifeops"  emoji="🧭" title="생활 작전실"        desc="마일스톤 · 일일 로그 · 예산" />
+          <ToolCard href="/jobs"     emoji="💼" title="구직 대시보드"       desc="칸반 · 마감일 · AI 파싱" />
+          <ToolCard href="/library"  emoji="📖" title="레퍼런스 라이브러리" desc="주제별 PDF · 구글 드라이브" />
+        </div>
 
-          {/* 오른쪽: 대시보드 */}
-          <div className="flex flex-col gap-4">
-            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">📊 대시보드</p>
-            <Link href="/lifeops" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1 ring-1 ring-blue-600/30">
-              <div className="text-2xl mb-2">🧭</div>
-              <h2 className="text-lg font-bold mb-1">생활 작전실</h2>
-              <p className="text-gray-400 text-xs">마일스톤 · 일일 로그 · 예산 추적</p>
-            </Link>
-            <Link href="/dashboard" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
-              <div className="text-2xl mb-2">📊</div>
-              <h2 className="text-lg font-bold mb-1">시험별 학습 대시보드</h2>
-              <p className="text-gray-400 text-xs">전기기사 · 電験 · 기술고시 · GATE</p>
-            </Link>
-            <Link href="/library" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
-              <div className="text-2xl mb-2">📖</div>
-              <h2 className="text-lg font-bold mb-1">레퍼런스 라이브러리</h2>
-              <p className="text-gray-400 text-xs">주제별 PDF · 구글 드라이브 연동</p>
-            </Link>
-            <Link href="/jobs" className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition flex-1">
-              <div className="text-2xl mb-2">💼</div>
-              <h2 className="text-lg font-bold mb-1">구직 대시보드</h2>
-              <p className="text-gray-400 text-xs">채용공고 칸반 · 마감일 타임라인 · AI 파싱</p>
-            </Link>
-          </div>
+        {/* 시험 */}
+        <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📋 시험</p>
+
+        {/* 일본 — 우선 */}
+        <p className="text-xs text-gray-700 mb-2 ml-1">🇯🇵 일본</p>
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <ExamCard
+            href="/dashboard/denkoshi"
+            emoji="🗾"
+            org="일본 경제산업성"
+            title="第二種電気工事士 학과"
+            desc="기출 PDF · 출제경향 분석 · 플래시카드"
+            badge="준비 중"
+          />
+          <InactiveExamCard
+            emoji="🏭"
+            org="일본 경제산업성"
+            title="電験三種"
+            desc="理論 · 電力 · 機械 · 法規"
+          />
+        </div>
+
+        {/* 한국 — 취득 완료 */}
+        <p className="text-xs text-gray-700 mb-2 ml-1">🇰🇷 한국 (취득 완료)</p>
+        <div className="grid grid-cols-2 gap-3">
+          <ExamCard
+            href="/dashboard"
+            emoji="⚡"
+            org="한국산업인력공단"
+            title="전기기사 실기"
+            desc="오답노트 · 기출 점수 · 플래시카드"
+            badge="취득"
+          />
+          <ExamCard
+            href="/dashboard"
+            emoji="🔧"
+            org="한국산업인력공단"
+            title="전기기능사 실기"
+            desc="작업형 공정 타이머 · 훈련 통계"
+            badge="취득"
+          />
         </div>
       </div>
     </main>
