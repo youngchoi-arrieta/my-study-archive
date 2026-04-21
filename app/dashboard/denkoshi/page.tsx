@@ -20,73 +20,6 @@ const PAST_EXAMS = [
 ]
 const YEARS = [2025, 2024, 2023, 2022, 2021]
 
-// ── 출제경향 분석 데이터 ─────────────────────────────────────────
-const PERIODS = ['22상','22하','23상','23하','24상','24하','25상','25하']
-const TOPIC_MATRIX: { area: string; color: string; topics: [string, number[], number][] }[] = [
-  { area: 'A 전기이론', color: '#378ADD', topics: [
-    ['합성저항 계산',      [0,0,0,0,0,1,1,1], 3],
-    ['전력·전력량 계산',   [0,1,1,0,0,1,0,1], 4],
-    ['전압강하/전력손실',  [1,1,1,1,0,0,1,0], 4],
-    ['전동기 력률',        [0,0,0,0,1,1,1,0], 3],
-    ['기타 회로이론',      [1,1,1,1,1,1,1,1], 8],
-  ]},
-  { area: 'B 배선재료·기자재', color: '#1D9E75', topics: [
-    ['사진 식별 — 재료',   [1,1,1,1,0,1,1,1], 7],
-    ['사진 식별 — 기구',   [0,1,1,0,1,1,1,1], 6],
-    ['사진 식별 — 공구',   [0,0,1,1,1,1,1,1], 6],
-    ['최고 허용 온도',     [1,1,1,0,1,1,0,1], 6],
-    ['분기회로 설계',      [0,1,1,1,1,1,1,1], 7],
-  ]},
-  { area: 'C 공사방법', color: '#D85A30', topics: [
-    ['부적절 공사방법',    [1,1,0,0,1,1,1,0], 5],
-    ['스타델타 기동',      [0,0,1,1,1,0,1,1], 5],
-    ['전선 접속 부적절',   [1,1,1,0,0,0,1,0], 4],
-    ['태양광·특수장소',    [0,1,1,0,0,0,1,1], 4],
-  ]},
-  { area: 'D 접지·측정·검사', color: '#D4537E', topics: [
-    ['측정기·회로계',      [0,1,1,0,1,1,1,1], 6],
-    ['D종 접지 생략',      [1,0,0,1,0,1,0,1], 4],
-    ['접지저항 측정법',    [0,1,0,0,0,0,0,1], 2],
-  ]},
-  { area: 'E 법령', color: '#7F77DD', topics: [
-    ['전기공사사법',       [1,1,1,1,1,1,1,1], 8],
-    ['기술기준 성령',      [1,1,1,1,1,1,1,1], 8],
-    ['특정 전기용품',      [1,1,1,1,1,1,1,1], 8],
-    ['전기용품 안전법',    [1,1,1,1,1,0,0,1], 6],
-  ]},
-  { area: 'F 배선도', color: '#639922', topics: [
-    ['최소 전선 본수',     [1,1,1,1,1,1,1,1], 8],
-    ['박스 내 접속(差込)', [1,1,1,1,1,1,1,1], 8],
-    ['도기호 명칭',        [1,1,1,0,1,1,1,1], 7],
-    ['절연저항(배선도)',    [1,1,1,1,1,1,0,1], 7],
-    ['미사용 스위치',      [0,0,0,0,0,1,0,1], 2],
-  ]},
-]
-const TOP_TERMS = [
-  { jp: 'VVF',                      ko: 'PVC 절연 PVC 시스 케이블 평형', cnt: 42 },
-  { jp: '漏電遮断器',                ko: '누전차단기',                   cnt: 29 },
-  { jp: '硬質ポリ塩化ビニル電線管',   ko: '경질 PVC 전선관',              cnt: 28 },
-  { jp: '配線用遮断器',              ko: '배선용 차단기',                 cnt: 27 },
-  { jp: 'ケーブル工事',              ko: '케이블 공사',                   cnt: 21 },
-  { jp: 'リングスリーブ',             ko: '링 슬리브',                    cnt: 21 },
-  { jp: '一般用電気工作物',           ko: '일반용 전기공작물',             cnt: 21 },
-  { jp: '金属管工事',                ko: '금속관 공사',                   cnt: 20 },
-  { jp: '合成樹脂製可とう電線管',     ko: '합성수지제 가요 전선관',        cnt: 18 },
-  { jp: '600V ビニル絶縁電線',       ko: '600V 비닐 절연 전선 (IV)',      cnt: 17 },
-  { jp: 'ジョイントボックス',         ko: '접속함 (조인트 박스)',           cnt: 15 },
-  { jp: '電気用品安全法',            ko: '전기용품 안전법',                cnt: 15 },
-  { jp: '特定電気用品',              ko: '특정 전기용품 (◇ 마크)',        cnt: 14 },
-  { jp: '過電流遮断器',              ko: '과전류 차단기',                 cnt: 13 },
-  { jp: '合成樹脂管工事',            ko: '합성수지관 공사',                cnt: 13 },
-]
-const QUESTION_PATTERNS = [
-  { pattern: '〜に関する記述として、誤っているものは。',  cnt: 20, tip: '법령·기술기준 문제에 집중 출제' },
-  { pattern: '〜の組合せとして、正しいものは。',         cnt: 16, tip: '배선도 기호, 링슬리브 각인 등' },
-  { pattern: '〜の施工方法として、適切なものは。',       cnt: 16, tip: '공사방법 적합성 판단' },
-  { pattern: '〜の最大値／最小値［単位］は。',           cnt: 13, tip: '허용전류, 절연저항 수치 암기' },
-  { pattern: '〜として、不適切なものは。',              cnt:  6, tip: '부적절 공사방법 — 틀린 걸 고르는 문제' },
-  { pattern: 'D種接地工事を省略できないものは。',        cnt:  3, tip: '4회/8회 출제 — 격년 패턴 의심' },
-]
 
 // ── 타입 ────────────────────────────────────────────────────────
 type DenkoshiSession = {
@@ -107,7 +40,7 @@ const scoreColor = (s: number | null) => {
 
 // ── 메인 ────────────────────────────────────────────────────────
 export default function DenkoshiHub() {
-  const [tab, setTab] = useState<'scores' | 'analysis'>('scores')
+  const tab = 'scores'
   const [sessions, setSessions] = useState<DenkoshiSession[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -186,23 +119,6 @@ export default function DenkoshiHub() {
           <span className="text-xs bg-yellow-600/30 text-yellow-400 px-2 py-0.5 rounded-full">준비 중</span>
         </div>
         <p className="text-gray-500 text-sm mb-6">일본 경제산업성 · 2025.5.28 CBT 시험</p>
-
-        {/* 탭 — 2개로 */}
-        <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6 w-fit">
-          {[
-            { key: 'scores',   label: '📈 기출풀이현황' },
-            { key: 'analysis', label: '📊 출제경향 분석' },
-          ].map(t => (
-            <button key={t.key}
-              onClick={() => setTab(t.key as typeof tab)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                tab === t.key ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
 
         {/* ── 탭: 기출풀이현황 ── */}
         {tab === 'scores' && (
@@ -284,6 +200,21 @@ export default function DenkoshiHub() {
                 </div>
 
                 <p className="text-gray-600 text-xs mt-3">클릭하면 PDF 뷰어 + 점수 기록으로 이동합니다.</p>
+
+                {/* 플래시카드 섹션 */}
+                <div className="mt-6 pt-6 border-t border-gray-800">
+                  <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">플래시카드</p>
+                  <Link
+                    href="/flashcard?exam=denkoshi"
+                    className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">🃏 第二種 전용 덱</p>
+                      <p className="text-xs text-gray-500 mt-0.5">법령·공사방법·배선재료·도기호·용어·패턴</p>
+                    </div>
+                    <span className="text-gray-600 text-xs">→</span>
+                  </Link>
+                </div>
 
                 {/* 풀이 기록 상세 편집 */}
                 {sessions.length > 0 && (
@@ -382,97 +313,6 @@ export default function DenkoshiHub() {
           </div>
         )}
 
-        {/* ── 탭: 출제경향 분석 ── */}
-        {tab === 'analysis' && (
-          <div className="space-y-8">
-            <div>
-              <h2 className="text-base font-bold mb-1">회차별 출제 유형 매트릭스</h2>
-              <p className="text-gray-500 text-xs mb-4">2022~2025 8회분 · 빨강 8/8 · 주황 7/8 · 파랑 6/8</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="text-left text-gray-500 pb-2 pr-4 font-normal whitespace-nowrap">유형</th>
-                      {PERIODS.map(p => (
-                        <th key={p} className="text-center text-gray-500 pb-2 px-1 font-normal whitespace-nowrap">{p}</th>
-                      ))}
-                      <th className="text-center text-gray-500 pb-2 pl-3 font-normal">합계</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {TOPIC_MATRIX.map(({ area, color, topics }) => (
-                      <>
-                        <tr key={area}>
-                          <td colSpan={10} className="pt-3 pb-1 text-xs font-semibold" style={{ color }}>{area}</td>
-                        </tr>
-                        {topics.map(([name, dots, total]) => (
-                          <tr key={name} className="border-b border-gray-800/50">
-                            <td className="py-1.5 pr-4 text-gray-300 whitespace-nowrap">{name}</td>
-                            {dots.map((d, i) => (
-                              <td key={i} className="text-center py-1.5 px-1">
-                                {d
-                                  ? <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-                                  : <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-700" />
-                                }
-                              </td>
-                            ))}
-                            <td className={`text-center pl-3 py-1.5 font-semibold ${
-                              total === 8 ? 'text-red-400' : total >= 7 ? 'text-yellow-400' : total >= 6 ? 'text-blue-400' : 'text-gray-500'
-                            }`}>{total}/8</td>
-                          </tr>
-                        ))}
-                      </>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div>
-              <h2 className="text-base font-bold mb-3">출제 패턴 문장</h2>
-              <div className="space-y-2">
-                {QUESTION_PATTERNS.map(({ pattern, cnt, tip }) => (
-                  <div key={pattern} className="bg-gray-900 rounded-xl p-4 flex gap-4 items-start">
-                    <span className={`text-sm font-bold tabular-nums shrink-0 ${
-                      cnt >= 16 ? 'text-red-400' : cnt >= 8 ? 'text-yellow-400' : 'text-blue-400'
-                    }`}>{cnt}회</span>
-                    <div>
-                      <p className="text-sm text-white font-medium">{pattern}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{tip}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h2 className="text-base font-bold mb-3">고빈도 전기용어 TOP 15</h2>
-              <div className="space-y-1">
-                {TOP_TERMS.map(({ jp, ko, cnt }, i) => (
-                  <div key={jp} className="flex items-center gap-3 bg-gray-900 rounded-lg px-4 py-2.5">
-                    <span className="text-xs text-gray-600 w-4 tabular-nums">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium text-white">{jp}</span>
-                      <span className="text-xs text-gray-500 ml-2">{ko}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="h-1.5 rounded-full bg-teal-600" style={{ width: `${Math.round((cnt / 42) * 80)}px` }} />
-                      <span className="text-xs text-gray-500 tabular-nums w-8 text-right">{cnt}회</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-gray-900 rounded-xl p-5">
-              <p className="text-sm text-gray-300 mb-3">위 용어를 플래시카드로 학습하려면</p>
-              <Link href="/flashcard?exam=denkoshi"
-                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">
-                🃏 第二種 전용 플래시카드 →
-              </Link>
-            </div>
-          </div>
-        )}
       </div>
     </main>
   )

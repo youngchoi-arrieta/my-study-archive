@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+// ── 기출 메타데이터 ───────────────────────────────────────────────
 const PAST_EXAMS: Record<string, { label: string; year: number; term: '상' | '하' }> = {
   '20210530': { label: '2021 상기', year: 2021, term: '상' },
   '20211024': { label: '2021 하기', year: 2021, term: '하' },
@@ -25,102 +26,70 @@ function toPreviewUrl(url: string): string | null {
   return null
 }
 
-type PeriodKey = '20220529'|'20221030'|'20230528'|'20231029'|'20240526'|'20241027'|'20250525'|'20251026'
-
-const PERIOD_TOPICS: Record<PeriodKey, { area: string; color: string; topics: string[] }[]> = {
-  '20220529': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '전력손실'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 기구', '최고 허용 온도'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['부적절 공사방법', '전선 접속 부적절'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['D종 접지 생략', '절연저항'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품', '전기용품 안전법'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)'] },
-  ],
-  '20221030': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '전력량 계산', '전압강하', '전력손실'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 기구', '최고 허용 온도', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['부적절 공사방법', '특수장소', '전선 접속 부적절'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['측정기·회로계', '접지저항 측정법'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품', '전기용품 안전법'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)'] },
-  ],
-  '20230528': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '전력량 계산', '전력손실'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 기구', '사진 식별 공구', '최고 허용 온도', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['스타델타 기동', '태양광발전', '전선 접속 부적절'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['측정기·회로계'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품', '전기용품 안전법'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)'] },
-  ],
-  '20231029': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '전력량 계산', '전력손실'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 공구', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['스타델타 기동', '전선 접속 부적절'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['D종 접지 생략'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품', '전기용품 안전법'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '절연저항(배선도)'] },
-  ],
-  '20240526': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '전압강하', '전동기 력률'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 기구', '사진 식별 공구', '최고 허용 온도', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['부적절 공사방법', '스타델타 기동'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['측정기·회로계'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품', '전기용품 안전법'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)'] },
-  ],
-  '20241027': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '합성저항 계산', '전력량 계산', '전동기 력률'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 기구', '사진 식별 공구', '최고 허용 온도', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['부적절 공사방법'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['측정기·회로계', 'D종 접지 생략'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)', '미사용 스위치'] },
-  ],
-  '20250525': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '합성저항 계산', '전력량 계산', '전압강하', '전동기 력률'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 기구', '사진 식별 공구', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['부적절 공사방법', '스타델타 기동', '태양광·특수장소', '전선 접속 부적절'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['측정기·회로계'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)'] },
-  ],
-  '20251026': [
-    { area: 'A 전기이론',       color: '#378ADD', topics: ['기타 회로이론', '합성저항 계산', '전력량 계산', '전동기 력률'] },
-    { area: 'B 배선재료·기자재', color: '#1D9E75', topics: ['사진 식별 재료', '사진 식별 기구', '사진 식별 공구', '최고 허용 온도', '분기회로 설계'] },
-    { area: 'C 공사방법',       color: '#D85A30', topics: ['스타델타 기동', '태양광·특수장소'] },
-    { area: 'D 접지·측정',      color: '#D4537E', topics: ['측정기·회로계', 'D종 접지 생략', '접지저항 측정법', '전자적 불평형'] },
-    { area: 'E 법령',           color: '#7F77DD', topics: ['전기공사사법', '기술기준 성령', '특정 전기용품', '전기용품 안전법'] },
-    { area: 'F 배선도',         color: '#639922', topics: ['최소 전선 본수', '박스 내 접속(差込)', '도기호 명칭', '절연저항(배선도)', '미사용 스위치'] },
-  ],
-}
-
-type DenkoshiSession = {
+// ── 타입 ─────────────────────────────────────────────────────────
+type Session = {
   id: string
   my_score: number | null
   comments: string | null
   drive_url: string | null
+  answer_drive_url: string | null
 }
 
+type Word = {
+  id: string
+  exam_id: string
+  jp: string
+  ko: string | null
+  memo: string | null
+}
+
+const scoreColor = (s: number | null) => {
+  if (s === null) return 'text-gray-500'
+  if (s >= 60) return 'text-green-400'
+  if (s >= 40) return 'text-yellow-400'
+  return 'text-red-400'
+}
+
+// ── 컴포넌트 ─────────────────────────────────────────────────────
 export default function DenkoshiDetail() {
   const params = useParams()
   const router = useRouter()
   const examId = params.id as string
   const exam = PAST_EXAMS[examId]
-  const topics = PERIOD_TOPICS[examId as PeriodKey] || null
 
-  const [session, setSession]         = useState<DenkoshiSession | null>(null)
-  const [editScore, setEditScore]     = useState('')
+  // PDF 탭: 문제 / 정답
+  const [pdfTab, setPdfTab] = useState<'question' | 'answer'>('question')
+
+  // URL 편집
+  const [editingUrl, setEditingUrl] = useState<'question' | 'answer' | null>(null)
+  const [urlInput, setUrlInput] = useState('')
+
+  // 세션 (점수·URL)
+  const [session, setSession] = useState<Session | null>(null)
+  const [editingScore, setEditingScore] = useState(false)
+  const [editScore, setEditScore] = useState('')
   const [editComment, setEditComment] = useState('')
-  const [editUrl, setEditUrl]         = useState('')
-  const [editingMemo, setEditingMemo] = useState(false)
-  const [editingUrl, setEditingUrl]   = useState(false)
-  const [saving, setSaving]           = useState(false)
 
+  // 단어장
+  const [words, setWords] = useState<Word[]>([])
+  const [newJp, setNewJp] = useState('')
+  const [newKo, setNewKo] = useState('')
+  const [newMemo, setNewMemo] = useState('')
+  const [addingWord, setAddingWord] = useState(false)
+  const [editingWordId, setEditingWordId] = useState<string | null>(null)
+  const [editWordJp, setEditWordJp] = useState('')
+  const [editWordKo, setEditWordKo] = useState('')
+  const [editWordMemo, setEditWordMemo] = useState('')
+
+  const [saving, setSaving] = useState(false)
+  const [converting, setConverting] = useState(false)
+
+  // ── fetch ────────────────────────────────────────────────────
   const fetchSession = useCallback(async () => {
     if (!exam) return
     const { data } = await supabase
       .from('exam_sessions')
-      .select('id, my_score, comments, drive_url')
+      .select('id, my_score, comments, drive_url, answer_drive_url')
       .eq('exam_type', 'denkoshi')
       .eq('year', exam.year)
       .eq('session', exam.term === '상' ? 1 : 2)
@@ -129,16 +98,33 @@ export default function DenkoshiDetail() {
     if (data) {
       setEditScore(data.my_score?.toString() || '')
       setEditComment(data.comments || '')
-      setEditUrl(data.drive_url || '')
     }
   }, [exam])
 
-  useEffect(() => { fetchSession() }, [fetchSession])
+  const fetchWords = useCallback(async () => {
+    const { data } = await supabase
+      .from('denkoshi_words')
+      .select('*')
+      .eq('exam_id', examId)
+      .order('created_at')
+    setWords(data || [])
+  }, [examId])
 
-  const upsert = async (extra: Partial<DenkoshiSession>) => {
+  useEffect(() => {
+    fetchSession()
+    fetchWords()
+  }, [fetchSession, fetchWords])
+
+  // ── upsert 세션 ───────────────────────────────────────────────
+  const upsert = async (extra: Partial<Session>) => {
     if (!exam) return
     setSaving(true)
-    const base = { exam_type: 'denkoshi', year: exam.year, session: exam.term === '상' ? 1 : 2, record_type: '기출문제' }
+    const base = {
+      exam_type: 'denkoshi',
+      year: exam.year,
+      session: exam.term === '상' ? 1 : 2,
+      record_type: '기출문제',
+    }
     if (session) {
       await supabase.from('exam_sessions').update({ ...base, ...extra }).eq('id', session.id)
     } else {
@@ -148,24 +134,101 @@ export default function DenkoshiDetail() {
     setSaving(false)
   }
 
-  const saveMemo = async () => {
-    await upsert({ my_score: editScore ? parseFloat(editScore) : null, comments: editComment || null })
-    setEditingMemo(false)
+  const saveScore = async () => {
+    await upsert({
+      my_score: editScore ? parseFloat(editScore) : null,
+      comments: editComment || null,
+    })
+    setEditingScore(false)
   }
 
-  const saveUrl = async () => {
-    await upsert({ drive_url: editUrl || null })
-    setEditingUrl(false)
+  const saveUrl = async (type: 'question' | 'answer') => {
+    const field = type === 'question' ? 'drive_url' : 'answer_drive_url'
+    await upsert({ [field]: urlInput || null })
+    setEditingUrl(null)
+    setUrlInput('')
   }
 
-  const scoreColor = (s: number | null) => {
-    if (s === null) return 'text-gray-500'
-    if (s >= 60) return 'text-green-400'
-    if (s >= 40) return 'text-yellow-400'
-    return 'text-red-400'
+  // ── 단어장 CRUD ───────────────────────────────────────────────
+  const addWord = async () => {
+    if (!newJp.trim()) return
+    setSaving(true)
+    await supabase.from('denkoshi_words').insert({
+      exam_id: examId,
+      jp: newJp.trim(),
+      ko: newKo.trim() || null,
+      memo: newMemo.trim() || null,
+    })
+    setNewJp(''); setNewKo(''); setNewMemo('')
+    setAddingWord(false)
+    await fetchWords()
+    setSaving(false)
   }
 
-  const previewUrl = toPreviewUrl(session?.drive_url || '')
+  const startEditWord = (w: Word) => {
+    setEditingWordId(w.id)
+    setEditWordJp(w.jp)
+    setEditWordKo(w.ko || '')
+    setEditWordMemo(w.memo || '')
+  }
+
+  const saveWord = async (id: string) => {
+    setSaving(true)
+    await supabase.from('denkoshi_words').update({
+      jp: editWordJp.trim(),
+      ko: editWordKo.trim() || null,
+      memo: editWordMemo.trim() || null,
+    }).eq('id', id)
+    setEditingWordId(null)
+    await fetchWords()
+    setSaving(false)
+  }
+
+  const deleteWord = async (id: string) => {
+    await supabase.from('denkoshi_words').delete().eq('id', id)
+    setWords(prev => prev.filter(w => w.id !== id))
+  }
+
+  // ── 플래시카드 변환 ───────────────────────────────────────────
+  const convertToFlashcard = async () => {
+    if (words.length === 0) return
+    setConverting(true)
+    const deckName = `${exam?.label} 단어장`
+
+    // 덱 생성
+    const { data: deck } = await supabase
+      .from('flashcard_decks')
+      .insert({
+        user_id: 'flashcard_user',
+        name: deckName,
+        description: `${exam?.label} 기출 단어·용어 모음`,
+        exam_type: 'denkoshi',
+      })
+      .select('id')
+      .single()
+
+    if (!deck) { setConverting(false); return }
+
+    // 카드 일괄 insert
+    const cards = words.map(w => ({
+      deck_id: deck.id,
+      card_type: 'basic',
+      fields: [
+        { name: '일본어', value: w.jp, type: 'text' },
+        { name: '한국어', value: w.ko || '', type: 'text' },
+        ...(w.memo ? [{ name: '메모', value: w.memo, type: 'text' }] : []),
+      ],
+    }))
+    await supabase.from('flashcard_cards').insert(cards)
+
+    setConverting(false)
+    alert(`"${deckName}" 덱이 생성됐어요! (${words.length}장)`)
+  }
+
+  // ── 렌더링 ───────────────────────────────────────────────────
+  const questionUrl = toPreviewUrl(session?.drive_url || '')
+  const answerUrl   = toPreviewUrl(session?.answer_drive_url || '')
+  const activeUrl   = pdfTab === 'question' ? questionUrl : answerUrl
 
   if (!exam) return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
@@ -177,60 +240,100 @@ export default function DenkoshiDetail() {
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* 헤더 */}
-      <div className="px-6 pt-5 pb-4 border-b border-gray-800 shrink-0">
-        <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm mb-2 block">
-          ← 기출문제 목록
-        </button>
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold">第二種電気工事士 — {exam.label}</h1>
-          {session?.my_score != null && (
-            <span className={`text-xl font-bold tabular-nums ${scoreColor(session.my_score)}`}>
-              {session.my_score}점
-            </span>
-          )}
+      <div className="px-6 pt-5 pb-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
+        <div>
+          <button onClick={() => router.back()} className="text-gray-500 hover:text-white text-sm mb-1 block">
+            ← 기출문제 목록
+          </button>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-bold">第二種電気工事士 — {exam.label}</h1>
+            {session?.my_score != null && (
+              <span className={`text-lg font-bold tabular-nums ${scoreColor(session.my_score)}`}>
+                {session.my_score}점
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* 좌우 분할 */}
+      {/* 본문 */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* 좌: PDF */}
-        <div className="flex-1 border-r border-gray-800 flex flex-col overflow-hidden">
-          {previewUrl ? (
-            <iframe src={previewUrl} className="w-full flex-1 block" allow="autoplay" />
-          ) : (
-            <div className="flex flex-col items-center justify-center flex-1 px-8 text-center gap-4">
-              <p className="text-gray-500 text-sm">PDF가 등록되지 않았습니다</p>
-              {!editingUrl ? (
+        {/* 좌: PDF 뷰어 */}
+        <div className="flex-1 flex flex-col border-r border-gray-800 overflow-hidden">
+          {/* PDF 탭 + URL 관리 */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
+            <div className="flex gap-1">
+              {(['question', 'answer'] as const).map(t => (
                 <button
-                  onClick={() => setEditingUrl(true)}
-                  className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                  key={t}
+                  onClick={() => setPdfTab(t)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    pdfTab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                  }`}
                 >
-                  + 구글 드라이브 링크 등록
+                  {t === 'question' ? '📄 문제' : '✅ 정답'}
+                  {t === 'question' && questionUrl && ' ●'}
+                  {t === 'answer'   && answerUrl   && ' ●'}
                 </button>
-              ) : (
-                <div className="w-full max-w-sm space-y-2">
-                  <p className="text-xs text-gray-500">구글 드라이브 공유 링크를 붙여넣으세요</p>
-                  <input
-                    autoFocus
-                    type="text"
-                    placeholder="https://drive.google.com/file/d/.../view"
-                    value={editUrl}
-                    onChange={e => setEditUrl(e.target.value)}
-                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <div className="flex gap-2 justify-center">
-                    <button onClick={saveUrl} disabled={saving}
-                      className="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
-                      {saving ? '저장 중...' : '등록'}
-                    </button>
-                    <button onClick={() => setEditingUrl(false)}
-                      className="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded-lg text-xs transition">
-                      취소
-                    </button>
-                  </div>
-                </div>
-              )}
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                setUrlInput(
+                  pdfTab === 'question'
+                    ? (session?.drive_url || '')
+                    : (session?.answer_drive_url || '')
+                )
+                setEditingUrl(pdfTab)
+              }}
+              className="text-xs text-gray-600 hover:text-gray-400 transition"
+            >
+              {(pdfTab === 'question' ? questionUrl : answerUrl) ? '🔗 링크 변경' : '+ 링크 등록'}
+            </button>
+          </div>
+
+          {/* URL 입력 */}
+          {editingUrl === pdfTab && (
+            <div className="px-3 py-2 border-b border-gray-800 bg-gray-900 flex gap-2 shrink-0">
+              <input
+                autoFocus
+                type="text"
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                placeholder="https://drive.google.com/file/d/.../view"
+                className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => saveUrl(editingUrl)}
+                disabled={saving}
+                className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50"
+              >
+                {saving ? '...' : '저장'}
+              </button>
+              <button
+                onClick={() => setEditingUrl(null)}
+                className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition"
+              >
+                취소
+              </button>
+            </div>
+          )}
+
+          {/* iframe */}
+          {activeUrl ? (
+            <iframe src={activeUrl} className="flex-1 w-full block" allow="autoplay" />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
+              <p className="text-gray-500 text-sm">
+                {pdfTab === 'question' ? '문제 PDF가 등록되지 않았습니다' : '정답 PDF가 등록되지 않았습니다'}
+              </p>
+              <button
+                onClick={() => { setUrlInput(''); setEditingUrl(pdfTab) }}
+                className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                + 구글 드라이브 링크 등록
+              </button>
             </div>
           )}
         </div>
@@ -238,115 +341,173 @@ export default function DenkoshiDetail() {
         {/* 우: 사이드 패널 */}
         <div className="w-72 flex flex-col overflow-y-auto shrink-0">
 
-          {/* PDF 링크 변경 (등록된 경우) */}
-          {previewUrl && (
-            <div className="px-5 pt-4 pb-3 border-b border-gray-800">
-              {!editingUrl ? (
-                <button
-                  onClick={() => { setEditUrl(session?.drive_url || ''); setEditingUrl(true) }}
-                  className="text-xs text-gray-600 hover:text-gray-400 transition"
-                >
-                  📎 PDF 링크 변경
-                </button>
-              ) : (
-                <div className="space-y-2">
-                  <input
-                    autoFocus type="text"
-                    value={editUrl}
-                    onChange={e => setEditUrl(e.target.value)}
-                    placeholder="구글 드라이브 공유 링크"
-                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <div className="flex gap-2">
-                    <button onClick={saveUrl} disabled={saving}
-                      className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
-                      {saving ? '...' : '저장'}
-                    </button>
-                    <button onClick={() => setEditingUrl(false)}
-                      className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
-                      취소
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* 점수 메모 */}
-          <div className="p-5 border-b border-gray-800">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-gray-300">내 점수 메모</h2>
-              {!editingMemo && (
+          <div className="p-4 border-b border-gray-800">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">점수 메모</h2>
+              {!editingScore && (
                 <button
                   onClick={() => {
                     setEditScore(session?.my_score?.toString() || '')
                     setEditComment(session?.comments || '')
-                    setEditingMemo(true)
+                    setEditingScore(true)
                   }}
-                  className="text-xs text-gray-500 hover:text-white transition"
+                  className="text-xs text-gray-600 hover:text-white transition"
                 >
                   {session?.my_score != null ? '편집' : '+ 기록'}
                 </button>
               )}
             </div>
-            {editingMemo ? (
+            {editingScore ? (
               <div className="space-y-2">
-                <input type="number" placeholder="점수 (예: 72)"
-                  value={editScore} onChange={e => setEditScore(e.target.value)}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                <input
+                  type="number" min="0" max="100"
+                  placeholder="점수"
+                  value={editScore}
+                  onChange={e => setEditScore(e.target.value)}
+                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
                 />
-                <textarea placeholder="메모 (취약 영역, 오답 패턴 등)"
-                  value={editComment} onChange={e => setEditComment(e.target.value)}
-                  rows={3}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                <textarea
+                  placeholder="메모"
+                  value={editComment}
+                  onChange={e => setEditComment(e.target.value)}
+                  rows={2}
+                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                 />
                 <div className="flex gap-2">
-                  <button onClick={saveMemo} disabled={saving}
-                    className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
-                    {saving ? '저장 중...' : '저장'}
+                  <button onClick={saveScore} disabled={saving}
+                    className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
+                    {saving ? '...' : '저장'}
                   </button>
-                  <button onClick={() => setEditingMemo(false)}
-                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
+                  <button onClick={() => setEditingScore(false)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
                     취소
                   </button>
                 </div>
               </div>
             ) : session?.my_score != null ? (
               <div>
-                <p className={`text-3xl font-bold tabular-nums mb-1 ${scoreColor(session.my_score)}`}>
+                <p className={`text-2xl font-bold tabular-nums ${scoreColor(session.my_score)}`}>
                   {session.my_score}점
                 </p>
                 {session.comments && (
-                  <p className="text-xs text-gray-500 leading-relaxed">{session.comments}</p>
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">{session.comments}</p>
                 )}
               </div>
             ) : (
-              <p className="text-xs text-gray-700">아직 기록 없음</p>
+              <p className="text-xs text-gray-700">기록 없음</p>
             )}
           </div>
 
-          {/* 이 회차 출제 유형 */}
-          <div className="p-5 flex-1">
-            <h2 className="text-sm font-bold text-gray-300 mb-3">이 회차 출제 유형</h2>
-            {topics ? (
-              <div className="space-y-3">
-                {topics.map(({ area, color, topics: ts }) => (
-                  <div key={area}>
-                    <p className="text-xs font-semibold mb-1.5" style={{ color }}>{area}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {ts.map(t => (
-                        <span key={t} className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: `${color}22`, color }}>
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+          {/* 단어장 */}
+          <div className="p-4 flex-1 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                단어장 {words.length > 0 && `(${words.length})`}
+              </h2>
+              <div className="flex gap-2">
+                {words.length > 0 && (
+                  <button
+                    onClick={convertToFlashcard}
+                    disabled={converting}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                    title="플래시카드 덱으로 변환"
+                  >
+                    {converting ? '변환 중...' : '🃏 덱으로'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setAddingWord(p => !p)}
+                  className="text-xs text-gray-500 hover:text-white transition"
+                >
+                  + 추가
+                </button>
               </div>
-            ) : (
-              <p className="text-xs text-gray-600">2021년 회차는 분석 데이터가 없습니다.</p>
+            </div>
+
+            {/* 새 단어 입력 */}
+            {addingWord && (
+              <div className="bg-gray-900 rounded-xl p-3 mb-3 space-y-1.5">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="일본어 *"
+                  value={newJp}
+                  onChange={e => setNewJp(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addWord()}
+                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="한국어"
+                  value={newKo}
+                  onChange={e => setNewKo(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addWord()}
+                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="메모 (선택)"
+                  value={newMemo}
+                  onChange={e => setNewMemo(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addWord()}
+                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <div className="flex gap-2 pt-1">
+                  <button onClick={addWord} disabled={saving || !newJp.trim()}
+                    className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
+                    추가
+                  </button>
+                  <button onClick={() => { setAddingWord(false); setNewJp(''); setNewKo(''); setNewMemo('') }}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
+                    취소
+                  </button>
+                </div>
+              </div>
             )}
+
+            {/* 단어 목록 */}
+            <div className="flex-1 space-y-1.5 overflow-y-auto">
+              {words.length === 0 && !addingWord && (
+                <p className="text-xs text-gray-700 text-center py-6">
+                  자주 나오는 단어·용어를<br />기록해두세요
+                </p>
+              )}
+              {words.map(w => (
+                <div key={w.id} className="bg-gray-900 rounded-xl p-3 group">
+                  {editingWordId === w.id ? (
+                    <div className="space-y-1.5">
+                      <input value={editWordJp} onChange={e => setEditWordJp(e.target.value)}
+                        className="w-full bg-gray-800 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                      <input value={editWordKo} onChange={e => setEditWordKo(e.target.value)}
+                        className="w-full bg-gray-800 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                      <input value={editWordMemo} onChange={e => setEditWordMemo(e.target.value)}
+                        className="w-full bg-gray-800 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                      <div className="flex gap-1.5">
+                        <button onClick={() => saveWord(w.id)} disabled={saving}
+                          className="bg-blue-600 hover:bg-blue-500 px-2 py-0.5 rounded text-xs transition disabled:opacity-50">저장</button>
+                        <button onClick={() => setEditingWordId(null)}
+                          className="bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded text-xs transition">취소</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white">{w.jp}</p>
+                        {w.ko && <p className="text-xs text-gray-400 mt-0.5">{w.ko}</p>}
+                        {w.memo && <p className="text-xs text-gray-600 mt-0.5">{w.memo}</p>}
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                        <button onClick={() => startEditWord(w)}
+                          className="text-gray-500 hover:text-white text-xs px-1">✏</button>
+                        <button onClick={() => deleteWord(w.id)}
+                          className="text-gray-600 hover:text-red-400 text-xs px-1">✕</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
