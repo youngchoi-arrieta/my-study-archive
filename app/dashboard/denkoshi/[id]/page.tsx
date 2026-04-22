@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-// ── 기출 메타데이터 ───────────────────────────────────────────────
 const PAST_EXAMS: Record<string, { label: string; year: number; term: '상' | '하' }> = {
   '20210530': { label: '2021 상기', year: 2021, term: '상' },
   '20211024': { label: '2021 하기', year: 2021, term: '하' },
@@ -26,7 +25,6 @@ function toPreviewUrl(url: string): string | null {
   return null
 }
 
-// ── 타입 ─────────────────────────────────────────────────────────
 type Session = {
   id: string
   my_score: number | null
@@ -39,6 +37,7 @@ type Word = {
   id: string
   exam_id: string
   jp: string
+  reading: string | null
   ko: string | null
   memo: string | null
 }
@@ -50,41 +49,37 @@ const scoreColor = (s: number | null) => {
   return 'text-red-400'
 }
 
-// ── 컴포넌트 ─────────────────────────────────────────────────────
 export default function DenkoshiDetail() {
   const params = useParams()
   const router = useRouter()
   const examId = params.id as string
   const exam = PAST_EXAMS[examId]
 
-  // PDF 탭: 문제 / 정답
   const [pdfTab, setPdfTab] = useState<'question' | 'answer'>('question')
-
-  // URL 편집
   const [editingUrl, setEditingUrl] = useState<'question' | 'answer' | null>(null)
   const [urlInput, setUrlInput] = useState('')
 
-  // 세션 (점수·URL)
   const [session, setSession] = useState<Session | null>(null)
   const [editingScore, setEditingScore] = useState(false)
   const [editScore, setEditScore] = useState('')
   const [editComment, setEditComment] = useState('')
 
-  // 단어장
   const [words, setWords] = useState<Word[]>([])
+  const [addingWord, setAddingWord] = useState(false)
   const [newJp, setNewJp] = useState('')
+  const [newReading, setNewReading] = useState('')
   const [newKo, setNewKo] = useState('')
   const [newMemo, setNewMemo] = useState('')
-  const [addingWord, setAddingWord] = useState(false)
+
   const [editingWordId, setEditingWordId] = useState<string | null>(null)
   const [editWordJp, setEditWordJp] = useState('')
+  const [editWordReading, setEditWordReading] = useState('')
   const [editWordKo, setEditWordKo] = useState('')
   const [editWordMemo, setEditWordMemo] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [converting, setConverting] = useState(false)
 
-  // ── fetch ────────────────────────────────────────────────────
   const fetchSession = useCallback(async () => {
     if (!exam) return
     const { data } = await supabase
@@ -115,7 +110,6 @@ export default function DenkoshiDetail() {
     fetchWords()
   }, [fetchSession, fetchWords])
 
-  // ── upsert 세션 ───────────────────────────────────────────────
   const upsert = async (extra: Partial<Session>) => {
     if (!exam) return
     setSaving(true)
@@ -135,10 +129,7 @@ export default function DenkoshiDetail() {
   }
 
   const saveScore = async () => {
-    await upsert({
-      my_score: editScore ? parseFloat(editScore) : null,
-      comments: editComment || null,
-    })
+    await upsert({ my_score: editScore ? parseFloat(editScore) : null, comments: editComment || null })
     setEditingScore(false)
   }
 
@@ -149,18 +140,17 @@ export default function DenkoshiDetail() {
     setUrlInput('')
   }
 
-  // ── 단어장 CRUD ───────────────────────────────────────────────
   const addWord = async () => {
     if (!newJp.trim()) return
     setSaving(true)
     await supabase.from('denkoshi_words').insert({
       exam_id: examId,
       jp: newJp.trim(),
+      reading: newReading.trim() || null,
       ko: newKo.trim() || null,
       memo: newMemo.trim() || null,
     })
-    setNewJp(''); setNewKo(''); setNewMemo('')
-    setAddingWord(false)
+    setNewJp(''); setNewReading(''); setNewKo(''); setNewMemo('')
     await fetchWords()
     setSaving(false)
   }
@@ -168,6 +158,7 @@ export default function DenkoshiDetail() {
   const startEditWord = (w: Word) => {
     setEditingWordId(w.id)
     setEditWordJp(w.jp)
+    setEditWordReading(w.reading || '')
     setEditWordKo(w.ko || '')
     setEditWordMemo(w.memo || '')
   }
@@ -176,6 +167,7 @@ export default function DenkoshiDetail() {
     setSaving(true)
     await supabase.from('denkoshi_words').update({
       jp: editWordJp.trim(),
+      reading: editWordReading.trim() || null,
       ko: editWordKo.trim() || null,
       memo: editWordMemo.trim() || null,
     }).eq('id', id)
@@ -185,23 +177,22 @@ export default function DenkoshiDetail() {
   }
 
   const deleteWord = async (id: string) => {
+    if (!confirm('삭제할까요?')) return
     await supabase.from('denkoshi_words').delete().eq('id', id)
     setWords(prev => prev.filter(w => w.id !== id))
   }
 
-  // ── 플래시카드 변환 ───────────────────────────────────────────
+  // 단어 1개 → 양방향 카드 2장 생성
   const convertToFlashcard = async () => {
     if (words.length === 0) return
     setConverting(true)
     const deckName = `${exam?.label} 단어장`
-
-    // 덱 생성
     const { data: deck } = await supabase
       .from('flashcard_decks')
       .insert({
         user_id: 'flashcard_user',
         name: deckName,
-        description: `${exam?.label} 기출 단어·용어 모음`,
+        description: `${exam?.label} 기출 단어·용어 (양방향)`,
         exam_type: 'denkoshi',
       })
       .select('id')
@@ -209,23 +200,32 @@ export default function DenkoshiDetail() {
 
     if (!deck) { setConverting(false); return }
 
-    // 카드 일괄 insert
-    const cards = words.map(w => ({
-      deck_id: deck.id,
-      card_type: 'basic',
-      fields: [
-        { name: '일본어', value: w.jp, type: 'text' },
-        { name: '한국어', value: w.ko || '', type: 'text' },
-        ...(w.memo ? [{ name: '메모', value: w.memo, type: 'text' }] : []),
-      ],
-    }))
-    await supabase.from('flashcard_cards').insert(cards)
+    const cards = words.flatMap(w => [
+      // 일→한: 앞면=한자, 뒷면=후리가나+한국어
+      {
+        deck_id: deck.id,
+        card_type: 'basic',
+        fields: [
+          { name: '앞면', value: w.jp, type: 'text' },
+          { name: '뒷면', value: [w.reading, w.ko].filter(Boolean).join('\n'), type: 'text' },
+        ],
+      },
+      // 한→일: 앞면=한국어, 뒷면=한자+후리가나
+      {
+        deck_id: deck.id,
+        card_type: 'basic',
+        fields: [
+          { name: '앞면', value: w.ko || w.jp, type: 'text' },
+          { name: '뒷면', value: [w.jp, w.reading].filter(Boolean).join('\n'), type: 'text' },
+        ],
+      },
+    ])
 
+    await supabase.from('flashcard_cards').insert(cards)
     setConverting(false)
-    alert(`"${deckName}" 덱이 생성됐어요! (${words.length}장)`)
+    alert(`"${deckName}" 덱 생성! (${words.length}단어 × 2방향 = ${words.length * 2}장)`)
   }
 
-  // ── 렌더링 ───────────────────────────────────────────────────
   const questionUrl = toPreviewUrl(session?.drive_url || '')
   const answerUrl   = toPreviewUrl(session?.answer_drive_url || '')
   const activeUrl   = pdfTab === 'question' ? questionUrl : answerUrl
@@ -240,81 +240,96 @@ export default function DenkoshiDetail() {
   return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* 헤더 */}
-      <div className="px-6 pt-5 pb-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
-        <div>
-          <button onClick={() => router.back()} className="text-gray-500 hover:text-white text-sm mb-1 block">
-            ← 기출문제 목록
-          </button>
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold">第二種電気工事士 — {exam.label}</h1>
-            {session?.my_score != null && (
-              <span className={`text-lg font-bold tabular-nums ${scoreColor(session.my_score)}`}>
-                {session.my_score}점
-              </span>
-            )}
-          </div>
-        </div>
+      <div className="px-5 pt-4 pb-3 border-b border-gray-800 shrink-0 flex items-center gap-3">
+        <button onClick={() => router.back()} className="text-gray-500 hover:text-white text-sm shrink-0">
+          ← 목록
+        </button>
+        <h1 className="text-sm font-bold truncate">第二種電気工事士 — {exam.label}</h1>
+        {session?.my_score != null && (
+          <span className={`text-sm font-bold tabular-nums shrink-0 ${scoreColor(session.my_score)}`}>
+            {session.my_score}점
+          </span>
+        )}
+        {/* 점수 메모 토글 */}
+        <button
+          onClick={() => {
+            setEditScore(session?.my_score?.toString() || '')
+            setEditComment(session?.comments || '')
+            setEditingScore(p => !p)
+          }}
+          className="text-xs text-gray-600 hover:text-gray-400 transition shrink-0 ml-auto"
+        >
+          ✏ 점수 메모
+        </button>
       </div>
 
-      {/* 본문 */}
+      {/* 점수 메모 — 헤더 아래 접이식 */}
+      {editingScore && (
+        <div className="px-5 py-3 border-b border-gray-800 bg-gray-900 flex gap-3 items-start shrink-0">
+          <input
+            type="number" min="0" max="100" placeholder="점수"
+            value={editScore} onChange={e => setEditScore(e.target.value)}
+            className="w-20 bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <input
+            type="text" placeholder="메모 (취약 영역 등)"
+            value={editComment} onChange={e => setEditComment(e.target.value)}
+            className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button onClick={saveScore} disabled={saving}
+            className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50 shrink-0">
+            {saving ? '...' : '저장'}
+          </button>
+          <button onClick={() => setEditingScore(false)}
+            className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition shrink-0">
+            닫기
+          </button>
+        </div>
+      )}
+
+      {/* 본문 — PDF 50% / 단어장 50% */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* 좌: PDF 뷰어 */}
-        <div className="flex-1 flex flex-col border-r border-gray-800 overflow-hidden">
-          {/* PDF 탭 + URL 관리 */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
+        {/* 좌: PDF (50%) */}
+        <div className="w-1/2 flex flex-col border-r border-gray-800 overflow-hidden">
+          {/* PDF 탭 바 */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0 bg-gray-900">
             <div className="flex gap-1">
               {(['question', 'answer'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setPdfTab(t)}
+                <button key={t} onClick={() => setPdfTab(t)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                     pdfTab === t ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
-                  }`}
-                >
+                  }`}>
                   {t === 'question' ? '📄 문제' : '✅ 정답'}
-                  {t === 'question' && questionUrl && ' ●'}
-                  {t === 'answer'   && answerUrl   && ' ●'}
+                  {t === 'question' && questionUrl ? ' ●' : ''}
+                  {t === 'answer'   && answerUrl   ? ' ●' : ''}
                 </button>
               ))}
             </div>
             <button
               onClick={() => {
-                setUrlInput(
-                  pdfTab === 'question'
-                    ? (session?.drive_url || '')
-                    : (session?.answer_drive_url || '')
-                )
+                setUrlInput(pdfTab === 'question' ? (session?.drive_url || '') : (session?.answer_drive_url || ''))
                 setEditingUrl(pdfTab)
               }}
               className="text-xs text-gray-600 hover:text-gray-400 transition"
             >
-              {(pdfTab === 'question' ? questionUrl : answerUrl) ? '🔗 링크 변경' : '+ 링크 등록'}
+              {(pdfTab === 'question' ? questionUrl : answerUrl) ? '🔗 변경' : '+ 링크 등록'}
             </button>
           </div>
 
           {/* URL 입력 */}
           {editingUrl === pdfTab && (
             <div className="px-3 py-2 border-b border-gray-800 bg-gray-900 flex gap-2 shrink-0">
-              <input
-                autoFocus
-                type="text"
-                value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
+              <input autoFocus type="text" value={urlInput} onChange={e => setUrlInput(e.target.value)}
                 placeholder="https://drive.google.com/file/d/.../view"
                 className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <button
-                onClick={() => saveUrl(editingUrl)}
-                disabled={saving}
-                className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50"
-              >
+              <button onClick={() => saveUrl(editingUrl)} disabled={saving}
+                className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50">
                 {saving ? '...' : '저장'}
               </button>
-              <button
-                onClick={() => setEditingUrl(null)}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition"
-              >
+              <button onClick={() => setEditingUrl(null)}
+                className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
                 취소
               </button>
             </div>
@@ -326,188 +341,155 @@ export default function DenkoshiDetail() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
               <p className="text-gray-500 text-sm">
-                {pdfTab === 'question' ? '문제 PDF가 등록되지 않았습니다' : '정답 PDF가 등록되지 않았습니다'}
+                {pdfTab === 'question' ? '문제 PDF 미등록' : '정답 PDF 미등록'}
               </p>
-              <button
-                onClick={() => { setUrlInput(''); setEditingUrl(pdfTab) }}
-                className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
-              >
+              <button onClick={() => { setUrlInput(''); setEditingUrl(pdfTab) }}
+                className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">
                 + 구글 드라이브 링크 등록
               </button>
             </div>
           )}
         </div>
 
-        {/* 우: 사이드 패널 */}
-        <div className="w-72 flex flex-col overflow-y-auto shrink-0">
-
-          {/* 점수 메모 */}
-          <div className="p-4 border-b border-gray-800">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">점수 메모</h2>
-              {!editingScore && (
-                <button
-                  onClick={() => {
-                    setEditScore(session?.my_score?.toString() || '')
-                    setEditComment(session?.comments || '')
-                    setEditingScore(true)
-                  }}
-                  className="text-xs text-gray-600 hover:text-white transition"
-                >
-                  {session?.my_score != null ? '편집' : '+ 기록'}
+        {/* 우: 단어장 (50%) */}
+        <div className="w-1/2 flex flex-col overflow-hidden">
+          {/* 단어장 헤더 */}
+          <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-900 flex items-center justify-between shrink-0">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+              단어장 {words.length > 0 && <span className="text-gray-600 font-normal">({words.length})</span>}
+            </span>
+            <div className="flex gap-3 items-center">
+              {words.length > 0 && (
+                <button onClick={convertToFlashcard} disabled={converting}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50">
+                  {converting ? '변환 중...' : `🃏 덱으로 (${words.length * 2}장)`}
                 </button>
               )}
+              <button onClick={() => setAddingWord(p => !p)}
+                className={`text-xs px-3 py-1 rounded-lg transition ${
+                  addingWord ? 'bg-gray-700 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
+                }`}>
+                {addingWord ? '닫기' : '+ 추가'}
+              </button>
             </div>
-            {editingScore ? (
-              <div className="space-y-2">
-                <input
-                  type="number" min="0" max="100"
-                  placeholder="점수"
-                  value={editScore}
-                  onChange={e => setEditScore(e.target.value)}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <textarea
-                  placeholder="메모"
-                  value={editComment}
-                  onChange={e => setEditComment(e.target.value)}
-                  rows={2}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                />
-                <div className="flex gap-2">
-                  <button onClick={saveScore} disabled={saving}
-                    className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
-                    {saving ? '...' : '저장'}
-                  </button>
-                  <button onClick={() => setEditingScore(false)}
-                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
-                    취소
-                  </button>
-                </div>
-              </div>
-            ) : session?.my_score != null ? (
-              <div>
-                <p className={`text-2xl font-bold tabular-nums ${scoreColor(session.my_score)}`}>
-                  {session.my_score}점
-                </p>
-                {session.comments && (
-                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">{session.comments}</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-700">기록 없음</p>
-            )}
           </div>
 
-          {/* 단어장 */}
-          <div className="p-4 flex-1 flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                단어장 {words.length > 0 && `(${words.length})`}
-              </h2>
+          {/* 새 단어 입력 폼 */}
+          {addingWord && (
+            <div className="border-b border-gray-800 bg-gray-900 p-4 shrink-0">
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">한자 (일본어) *</label>
+                  <input autoFocus type="text" value={newJp} onChange={e => setNewJp(e.target.value)}
+                    placeholder="例: 漏電遮断器"
+                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">후리가나 (독음)</label>
+                  <input type="text" value={newReading} onChange={e => setNewReading(e.target.value)}
+                    placeholder="例: ろうでんしゃだんき"
+                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">한국어 의미</label>
+                  <input type="text" value={newKo} onChange={e => setNewKo(e.target.value)}
+                    placeholder="例: 누전차단기"
+                    onKeyDown={e => e.key === 'Enter' && addWord()}
+                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">메모</label>
+                  <input type="text" value={newMemo} onChange={e => setNewMemo(e.target.value)}
+                    placeholder="예: 8회 연속 출제"
+                    onKeyDown={e => e.key === 'Enter' && addWord()}
+                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
               <div className="flex gap-2">
-                {words.length > 0 && (
-                  <button
-                    onClick={convertToFlashcard}
-                    disabled={converting}
-                    className="text-xs text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
-                    title="플래시카드 덱으로 변환"
-                  >
-                    {converting ? '변환 중...' : '🃏 덱으로'}
-                  </button>
-                )}
-                <button
-                  onClick={() => setAddingWord(p => !p)}
-                  className="text-xs text-gray-500 hover:text-white transition"
-                >
-                  + 추가
+                <button onClick={addWord} disabled={saving || !newJp.trim()}
+                  className="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                  {saving ? '추가 중...' : '추가'}
+                </button>
+                <button onClick={() => { setAddingWord(false); setNewJp(''); setNewReading(''); setNewKo(''); setNewMemo('') }}
+                  className="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded-lg text-xs transition">
+                  취소
                 </button>
               </div>
             </div>
+          )}
 
-            {/* 새 단어 입력 */}
-            {addingWord && (
-              <div className="bg-gray-900 rounded-xl p-3 mb-3 space-y-1.5">
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="일본어 *"
-                  value={newJp}
-                  onChange={e => setNewJp(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addWord()}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="한국어"
-                  value={newKo}
-                  onChange={e => setNewKo(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addWord()}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="메모 (선택)"
-                  value={newMemo}
-                  onChange={e => setNewMemo(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addWord()}
-                  className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <div className="flex gap-2 pt-1">
-                  <button onClick={addWord} disabled={saving || !newJp.trim()}
-                    className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
-                    추가
-                  </button>
-                  <button onClick={() => { setAddingWord(false); setNewJp(''); setNewKo(''); setNewMemo('') }}
-                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
-                    취소
-                  </button>
-                </div>
+          {/* 단어 목록 */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {words.length === 0 && !addingWord ? (
+              <div className="text-center py-12">
+                <p className="text-gray-700 text-sm">자주 나오는 한자·용어를 기록해두세요</p>
+                <p className="text-gray-700 text-xs mt-1">한자 + 후리가나 + 한국어 → 양방향 플래시카드로 변환 가능</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {words.map(w => (
+                  <div key={w.id} className="bg-gray-900 rounded-xl p-3 group">
+                    {editingWordId === w.id ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">한자</label>
+                          <input value={editWordJp} onChange={e => setEditWordJp(e.target.value)}
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">후리가나</label>
+                          <input value={editWordReading} onChange={e => setEditWordReading(e.target.value)}
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">한국어</label>
+                          <input value={editWordKo} onChange={e => setEditWordKo(e.target.value)}
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">메모</label>
+                          <input value={editWordMemo} onChange={e => setEditWordMemo(e.target.value)}
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                        </div>
+                        <div className="col-span-2 flex gap-2 mt-1">
+                          <button onClick={() => saveWord(w.id)} disabled={saving}
+                            className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
+                            저장
+                          </button>
+                          <button onClick={() => setEditingWordId(null)}
+                            className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className="text-base font-bold text-white">{w.jp}</span>
+                            {w.reading && (
+                              <span className="text-xs text-blue-400">{w.reading}</span>
+                            )}
+                          </div>
+                          {w.ko && <p className="text-sm text-gray-300 mt-0.5">{w.ko}</p>}
+                          {w.memo && <p className="text-xs text-gray-600 mt-0.5">{w.memo}</p>}
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                          <button onClick={() => startEditWord(w)}
+                            className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded">✏</button>
+                          <button onClick={() => deleteWord(w.id)}
+                            className="text-gray-600 hover:text-red-400 text-xs px-2 py-1 rounded">✕</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
-
-            {/* 단어 목록 */}
-            <div className="flex-1 space-y-1.5 overflow-y-auto">
-              {words.length === 0 && !addingWord && (
-                <p className="text-xs text-gray-700 text-center py-6">
-                  자주 나오는 단어·용어를<br />기록해두세요
-                </p>
-              )}
-              {words.map(w => (
-                <div key={w.id} className="bg-gray-900 rounded-xl p-3 group">
-                  {editingWordId === w.id ? (
-                    <div className="space-y-1.5">
-                      <input value={editWordJp} onChange={e => setEditWordJp(e.target.value)}
-                        className="w-full bg-gray-800 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
-                      <input value={editWordKo} onChange={e => setEditWordKo(e.target.value)}
-                        className="w-full bg-gray-800 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
-                      <input value={editWordMemo} onChange={e => setEditWordMemo(e.target.value)}
-                        className="w-full bg-gray-800 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-500" />
-                      <div className="flex gap-1.5">
-                        <button onClick={() => saveWord(w.id)} disabled={saving}
-                          className="bg-blue-600 hover:bg-blue-500 px-2 py-0.5 rounded text-xs transition disabled:opacity-50">저장</button>
-                        <button onClick={() => setEditingWordId(null)}
-                          className="bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded text-xs transition">취소</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-white">{w.jp}</p>
-                        {w.ko && <p className="text-xs text-gray-400 mt-0.5">{w.ko}</p>}
-                        {w.memo && <p className="text-xs text-gray-600 mt-0.5">{w.memo}</p>}
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
-                        <button onClick={() => startEditWord(w)}
-                          className="text-gray-500 hover:text-white text-xs px-1">✏</button>
-                        <button onClick={() => deleteWord(w.id)}
-                          className="text-gray-600 hover:text-red-400 text-xs px-1">✕</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>
