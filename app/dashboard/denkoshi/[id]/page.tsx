@@ -79,9 +79,6 @@ export default function DenkoshiDetail() {
 
   const [saving, setSaving] = useState(false)
   const [converting, setConverting] = useState(false)
-  const [analyzeInput, setAnalyzeInput] = useState('')
-  const [analyzing, setAnalyzing] = useState(false)
-  const [showAnalyze, setShowAnalyze] = useState(false)
 
   const fetchSession = useCallback(async () => {
     if (!exam) return
@@ -183,88 +180,6 @@ export default function DenkoshiDetail() {
     if (!confirm('삭제할까요?')) return
     await supabase.from('denkoshi_words').delete().eq('id', id)
     setWords(prev => prev.filter(w => w.id !== id))
-  }
-
-  // Claude API로 문장 분석 → 단어장 자동 추가
-  const analyzeAndAdd = async () => {
-    if (!analyzeInput.trim()) return
-    setAnalyzing(true)
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: `다음 일본어 문장을 분석해줘. JSON만 반환하고 다른 텍스트는 절대 없이.
-
-문장: ${analyzeInput}
-
-반환 형식:
-{
-  "sentence": {
-    "jp": "원문 문장",
-    "reading": "전체 후리가나 (romaji 병기, 예: かんとくいん(kan-to-ku-in))",
-    "ko": "한국어 해석. は:주제/の:수식/が:주어/で:~에서 등 조사를 인라인으로 표시. 예: 감독관(監督員)의[の=수식] 지시(指示)가[が=주어]",
-    "memo": "출처나 핵심 문형 한 줄"
-  },
-  "words": [
-    {
-      "jp": "한자",
-      "reading": "후리가나 (romaji)",
-      "ko": "한국어 의미",
-      "memo": ""
-    }
-  ]
-}`
-          }]
-        })
-      })
-      const data = await response.json()
-      const text = data.content?.[0]?.text || ''
-      const clean = text.replace(/\`\`\`json|\`\`\`/g, '').trim()
-      const parsed = JSON.parse(clean)
-
-      const inserts = []
-
-      // 문장 카드
-      if (parsed.sentence) {
-        inserts.push({
-          exam_id: examId,
-          jp: parsed.sentence.jp,
-          reading: parsed.sentence.reading || null,
-          ko: parsed.sentence.ko || null,
-          memo: parsed.sentence.memo || null,
-        })
-      }
-
-      // 단어 카드들
-      if (parsed.words?.length) {
-        for (const w of parsed.words) {
-          inserts.push({
-            exam_id: examId,
-            jp: w.jp,
-            reading: w.reading || null,
-            ko: w.ko || null,
-            memo: w.memo || null,
-          })
-        }
-      }
-
-      if (inserts.length > 0) {
-        await supabase.from('denkoshi_words').insert(inserts)
-        await fetchWords()
-      }
-
-      setAnalyzeInput('')
-      setShowAnalyze(false)
-    } catch (e) {
-      alert('분석 실패. 다시 시도해줘.')
-      console.error(e)
-    }
-    setAnalyzing(false)
   }
 
   // 단어 1개 → 양방향 카드 2장 생성
@@ -464,13 +379,7 @@ export default function DenkoshiDetail() {
                   {converting ? '변환 중...' : `🃏 덱으로 (${words.length * 2}장)`}
                 </button>
               )}
-              <button onClick={() => { setShowAnalyze(p => !p); setAddingWord(false) }}
-                className={`text-xs px-3 py-1 rounded-lg transition ${
-                  showAnalyze ? 'bg-purple-700 text-white' : 'bg-purple-600 hover:bg-purple-500 text-white'
-                }`}>
-                {showAnalyze ? '닫기' : '✨ AI 분석'}
-              </button>
-              <button onClick={() => { setAddingWord(p => !p); setShowAnalyze(false) }}
+              <button onClick={() => { setAddingWord(p => !p) }}
                 className={`text-xs px-3 py-1 rounded-lg transition ${
                   addingWord ? 'bg-gray-700 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
                 }`}>
@@ -478,31 +387,6 @@ export default function DenkoshiDetail() {
               </button>
             </div>
           </div>
-
-          {/* AI 분석 입력창 */}
-          {showAnalyze && (
-            <div className="border-b border-gray-800 bg-gray-900 p-4 shrink-0">
-              <p className="text-xs text-gray-500 mb-2">일본어 문장을 붙여넣으면 자동으로 분석해서 단어장에 추가해줘요</p>
-              <textarea
-                autoFocus
-                value={analyzeInput}
-                onChange={e => setAnalyzeInput(e.target.value)}
-                placeholder="次頁以降は，監督員の指示があるまで，開いてはいけません。"
-                rows={3}
-                className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-purple-500 resize-none mb-2"
-              />
-              <div className="flex gap-2">
-                <button onClick={analyzeAndAdd} disabled={analyzing || !analyzeInput.trim()}
-                  className="bg-purple-600 hover:bg-purple-500 px-4 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
-                  {analyzing ? '✨ 분석 중...' : '✨ 분석 & 추가'}
-                </button>
-                <button onClick={() => { setShowAnalyze(false); setAnalyzeInput('') }}
-                  className="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded-lg text-xs transition">
-                  취소
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* 새 단어 입력 폼 */}
           {addingWord && (
