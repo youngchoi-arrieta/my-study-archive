@@ -590,7 +590,6 @@ export default function DenkoshiDetail() {
                           </div>
                         </div>
                       )}
-                    )}
                   </div>
                 ))}
               </div>
