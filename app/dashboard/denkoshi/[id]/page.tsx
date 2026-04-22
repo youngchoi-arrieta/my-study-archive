@@ -394,9 +394,10 @@ export default function DenkoshiDetail() {
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">한자 (일본어) *</label>
-                  <input autoFocus type="text" value={newJp} onChange={e => setNewJp(e.target.value)}
-                    placeholder="例: 漏電遮断器"
-                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  <textarea autoFocus value={newJp} onChange={e => setNewJp(e.target.value)}
+                    placeholder="例: 漏電遮断器 또는 문장 전체"
+                    rows={2}
+                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                   />
                 </div>
                 <div>
@@ -408,10 +409,10 @@ export default function DenkoshiDetail() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">한국어 의미</label>
-                  <input type="text" value={newKo} onChange={e => setNewKo(e.target.value)}
-                    placeholder="例: 누전차단기"
-                    onKeyDown={e => e.key === 'Enter' && addWord()}
-                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  <textarea value={newKo} onChange={e => setNewKo(e.target.value)}
+                    placeholder="例: 누전차단기 또는 해석+조사분석"
+                    rows={2}
+                    className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                   />
                 </div>
                 <div>
@@ -451,8 +452,9 @@ export default function DenkoshiDetail() {
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">한자</label>
-                          <input value={editWordJp} onChange={e => setEditWordJp(e.target.value)}
-                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                          <textarea value={editWordJp} onChange={e => setEditWordJp(e.target.value)}
+                            rows={2}
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
                         </div>
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">후리가나</label>
@@ -461,8 +463,9 @@ export default function DenkoshiDetail() {
                         </div>
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">한국어</label>
-                          <input value={editWordKo} onChange={e => setEditWordKo(e.target.value)}
-                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                          <textarea value={editWordKo} onChange={e => setEditWordKo(e.target.value)}
+                            rows={2}
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
                         </div>
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">메모</label>
