@@ -79,6 +79,10 @@ export default function DenkoshiDetail() {
 
   const [saving, setSaving] = useState(false)
   const [converting, setConverting] = useState(false)
+  const [decks, setDecks] = useState<{ id: string; name: string }[]>([])
+  const [deckPickWordId, setDeckPickWordId] = useState<string | null>(null)
+  const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([])
+  const [addingToDecks, setAddingToDecks] = useState(false)
 
   const fetchSession = useCallback(async () => {
     if (!exam) return
@@ -105,10 +109,20 @@ export default function DenkoshiDetail() {
     setWords(data || [])
   }, [examId])
 
+  const fetchDecks = useCallback(async () => {
+    const { data } = await supabase
+      .from('flashcard_decks')
+      .select('id, name')
+      .eq('exam_type', 'denkoshi')
+      .order('created_at')
+    setDecks(data || [])
+  }, [])
+
   useEffect(() => {
     fetchSession()
     fetchWords()
-  }, [fetchSession, fetchWords])
+    fetchDecks()
+  }, [fetchSession, fetchWords, fetchDecks])
 
   const upsert = async (extra: Partial<Session>) => {
     if (!exam) return
@@ -180,6 +194,34 @@ export default function DenkoshiDetail() {
     if (!confirm('삭제할까요?')) return
     await supabase.from('denkoshi_words').delete().eq('id', id)
     setWords(prev => prev.filter(w => w.id !== id))
+  }
+
+  // 선택한 덱들에 단어 카드 추가
+  const addToDecks = async (w: Word) => {
+    if (selectedDeckIds.length === 0) return
+    setAddingToDecks(true)
+    const cards = selectedDeckIds.flatMap(deckId => [
+      {
+        deck_id: deckId,
+        card_type: 'basic',
+        fields: [
+          { name: '앞면', value: w.jp, type: 'text' },
+          { name: '뒷면', value: [w.reading, w.ko].filter(Boolean).join('\n'), type: 'text' },
+        ],
+      },
+      {
+        deck_id: deckId,
+        card_type: 'basic',
+        fields: [
+          { name: '앞면', value: w.ko || w.jp, type: 'text' },
+          { name: '뒷면', value: [w.jp, w.reading].filter(Boolean).join('\n'), type: 'text' },
+        ],
+      },
+    ])
+    await supabase.from('flashcard_cards').insert(cards)
+    setDeckPickWordId(null)
+    setSelectedDeckIds([])
+    setAddingToDecks(false)
   }
 
   // 단어 1개 → 양방향 카드 2장 생성
@@ -496,12 +538,58 @@ export default function DenkoshiDetail() {
                           {w.memo && <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{w.memo}</p>}
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                          <button onClick={() => { setDeckPickWordId(w.id); setSelectedDeckIds([]) }}
+                            className="text-blue-500 hover:text-blue-300 text-xs px-2 py-1 rounded" title="덱에 추가">＋</button>
                           <button onClick={() => startEditWord(w)}
                             className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded">✏</button>
                           <button onClick={() => deleteWord(w.id)}
                             className="text-gray-600 hover:text-red-400 text-xs px-2 py-1 rounded">✕</button>
                         </div>
                       </div>
+                      {/* 덱 선택 드롭다운 */}
+                      {deckPickWordId === w.id && (
+                        <div className="mt-2 pt-2 border-t border-gray-800">
+                          <p className="text-xs text-gray-500 mb-1.5">추가할 덱 선택 (복수 가능)</p>
+                          {decks.length === 0 ? (
+                            <p className="text-xs text-gray-700">먼저 플래시카드에서 덱을 만들어주세요.</p>
+                          ) : (
+                            <div className="space-y-1 mb-2">
+                              {decks.map(deck => (
+                                <label key={deck.id} className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDeckIds.includes(deck.id)}
+                                    onChange={e => {
+                                      if (e.target.checked) {
+                                        setSelectedDeckIds(prev => [...prev, deck.id])
+                                      } else {
+                                        setSelectedDeckIds(prev => prev.filter(id => id !== deck.id))
+                                      }
+                                    }}
+                                    className="accent-blue-500"
+                                  />
+                                  <span className="text-xs text-gray-300">{deck.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => addToDecks(w)}
+                              disabled={addingToDecks || selectedDeckIds.length === 0}
+                              className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50"
+                            >
+                              {addingToDecks ? '추가 중...' : `추가 (${selectedDeckIds.length}개 덱 · ${selectedDeckIds.length * 2}장)`}
+                            </button>
+                            <button
+                              onClick={() => { setDeckPickWordId(null); setSelectedDeckIds([]) }}
+                              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     )}
                   </div>
                 ))}
