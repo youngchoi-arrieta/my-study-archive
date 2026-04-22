@@ -69,8 +69,7 @@ export default function Home() {
 
         {/* 도구 — 최상단 */}
         <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">🛠 도구</p>
-        <div className="grid grid-cols-3 gap-3 mb-10">
-          <ToolCard href="/lifeops"  emoji="🧭" title="생활 작전실"        desc="마일스톤 · 일일 로그 · 예산" />
+        <div className="grid grid-cols-2 gap-3 mb-10">
           <ToolCard href="/jobs"     emoji="💼" title="구직 대시보드"       desc="칸반 · 마감일 · AI 파싱" />
           <ToolCard href="/library"  emoji="📖" title="레퍼런스 라이브러리" desc="주제별 PDF · 구글 드라이브" />
         </div>
