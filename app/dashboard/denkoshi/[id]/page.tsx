@@ -487,13 +487,13 @@ export default function DenkoshiDetail() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-2 flex-wrap">
-                            <span className="text-base font-bold text-white">{w.jp}</span>
+                            <span className="text-base font-bold text-white whitespace-pre-wrap">{w.jp}</span>
                             {w.reading && (
                               <span className="text-xs text-blue-400">{w.reading}</span>
                             )}
                           </div>
-                          {w.ko && <p className="text-sm text-gray-300 mt-0.5">{w.ko}</p>}
-                          {w.memo && <p className="text-xs text-gray-600 mt-0.5">{w.memo}</p>}
+                          {w.ko && <p className="text-sm text-gray-300 mt-0.5 whitespace-pre-wrap">{w.ko}</p>}
+                          {w.memo && <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{w.memo}</p>}
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
                           <button onClick={() => startEditWord(w)}
