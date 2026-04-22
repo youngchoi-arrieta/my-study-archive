@@ -306,15 +306,29 @@ export default function DenkoshiDetail() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => {
-                setUrlInput(pdfTab === 'question' ? (session?.drive_url || '') : (session?.answer_drive_url || ''))
-                setEditingUrl(pdfTab)
-              }}
-              className="text-xs text-gray-600 hover:text-gray-400 transition"
-            >
-              {(pdfTab === 'question' ? questionUrl : answerUrl) ? '🔗 변경' : '+ 링크 등록'}
-            </button>
+            <div className="flex items-center gap-3">
+              {/* 새 탭에서 열기 */}
+              {(pdfTab === 'question' ? session?.drive_url : session?.answer_drive_url) && (
+                <a
+                  href={(pdfTab === 'question' ? session?.drive_url : session?.answer_drive_url) || ''}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-gray-500 hover:text-white transition"
+                  title="드라이브에서 열기 (텍스트 복사 가능)"
+                >
+                  ↗ 새 탭
+                </a>
+              )}
+              <button
+                onClick={() => {
+                  setUrlInput(pdfTab === 'question' ? (session?.drive_url || '') : (session?.answer_drive_url || ''))
+                  setEditingUrl(pdfTab)
+                }}
+                className="text-xs text-gray-600 hover:text-gray-400 transition"
+              >
+                {(pdfTab === 'question' ? questionUrl : answerUrl) ? '🔗 변경' : '+ 링크 등록'}
+              </button>
+            </div>
           </div>
 
           {/* URL 입력 */}
