@@ -101,6 +101,7 @@ export default function DenkoshiDetail() {
   // 출제 주제
   const [topics, setTopics] = useState<Topic[]>([])
   const [showTopics, setShowTopics] = useState(false)
+  const [showWords, setShowWords] = useState(true)
   const [addingTopic, setAddingTopic] = useState(false)
   const [newQFrom, setNewQFrom] = useState('')
   const [newQTo, setNewQTo] = useState('')
@@ -484,9 +485,9 @@ export default function DenkoshiDetail() {
                             <input value={editUnit} onChange={e => setEditUnit(e.target.value)}
                               placeholder="소단원명 (예: 직류회로)"
                               className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-                            <input value={editTopic} onChange={e => setEditTopic(e.target.value)}
-                              placeholder="주제 (예: 합성저항 계산)"
-                              className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                            <textarea value={editTopic} onChange={e => setEditTopic(e.target.value)}
+                              placeholder="주제" rows={3}
+                              className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
                             <div className="flex gap-2">
                               <button onClick={() => saveTopic(t.id)} disabled={saving}
                                 className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
@@ -502,8 +503,8 @@ export default function DenkoshiDetail() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <span className="text-xs font-bold text-blue-400">문{t.q_from}~{t.q_to}</span>
-                              {t.unit && <span className="text-xs text-gray-400 ml-2">{t.unit}</span>}
-                              {t.topic && <p className="text-sm text-white mt-0.5">{t.topic}</p>}
+                              {t.unit && <span className="text-xs text-gray-400 ml-2 whitespace-pre-wrap">{t.unit}</span>}
+                              {t.topic && <p className="text-sm text-white mt-0.5 whitespace-pre-wrap">{t.topic}</p>}
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
                               <button onClick={() => startEditTopic(t)}
@@ -535,10 +536,9 @@ export default function DenkoshiDetail() {
                     <input value={newUnit} onChange={e => setNewUnit(e.target.value)}
                       placeholder="소단원명 (예: 直流回路)"
                       className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-                    <input value={newTopic} onChange={e => setNewTopic(e.target.value)}
-                      placeholder="주제 (예: 합성저항 계산)"
-                      onKeyDown={e => e.key === 'Enter' && addTopic()}
-                      className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                    <textarea value={newTopic} onChange={e => setNewTopic(e.target.value)}
+                      placeholder="주제 (예: 합성저항 계산&#10;여러 줄 입력 가능)" rows={3}
+                      className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
                     <div className="flex gap-2">
                       <button onClick={addTopic} disabled={saving || !newQFrom || !newQTo}
                         className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50">
@@ -560,23 +560,33 @@ export default function DenkoshiDetail() {
             )}
           </div>
 
-          {/* 단어장 헤더 */}
-          <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-900 flex items-center justify-between shrink-0">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-              단어장 {words.length > 0 && <span className="text-gray-600 font-normal ml-1">({words.length})</span>}
-            </span>
-            <button
-              onClick={() => { setAddingWord(p => !p); setDeckPickWordId(null) }}
-              className={`text-xs px-3 py-1 rounded-lg transition ${
-                addingWord ? 'bg-gray-700 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
-              }`}
-            >
-              {addingWord ? '닫기' : '+ 추가'}
-            </button>
+          {/* 단어장 헤더 — 접이식 */}
+          <div className="border-b border-gray-800 shrink-0">
+            <div className="px-4 py-2.5 bg-gray-900 flex items-center justify-between">
+              <button
+                onClick={() => setShowWords(p => !p)}
+                className="flex items-center gap-2 text-left flex-1"
+              >
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  단어장 {words.length > 0 && <span className="text-gray-600 font-normal ml-1">({words.length})</span>}
+                </span>
+                <span className="text-gray-600 text-xs">{showWords ? '▲' : '▼'}</span>
+              </button>
+              {showWords && (
+                <button
+                  onClick={() => { setAddingWord(p => !p); setDeckPickWordId(null) }}
+                  className={`text-xs px-3 py-1 rounded-lg transition ml-2 ${
+                    addingWord ? 'bg-gray-700 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
+                  }`}
+                >
+                  {addingWord ? '닫기' : '+ 추가'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* 새 단어 입력 폼 */}
-          {addingWord && (
+          {showWords && addingWord && (
             <div className="border-b border-gray-800 bg-gray-900 p-4 shrink-0">
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div>
@@ -622,7 +632,7 @@ export default function DenkoshiDetail() {
           )}
 
           {/* 단어 목록 */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {showWords && <div className="flex-1 overflow-y-auto p-4">
             {words.length === 0 && !addingWord ? (
               <div className="text-center py-12">
                 <p className="text-gray-700 text-sm">자주 나오는 한자·용어·문장을 기록해두세요</p>
@@ -747,7 +757,7 @@ export default function DenkoshiDetail() {
                 ))}
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
     </main>
