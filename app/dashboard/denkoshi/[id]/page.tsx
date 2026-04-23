@@ -526,6 +526,7 @@ export default function DenkoshiDetail() {
                         </div>
                       </div>
                     ) : (
+                      <>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-2 flex-wrap">
@@ -590,6 +591,7 @@ export default function DenkoshiDetail() {
                           </div>
                         </div>
                       )}
+                      </>
                   </div>
                 ))}
               </div>
