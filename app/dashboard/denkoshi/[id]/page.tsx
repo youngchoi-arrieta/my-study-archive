@@ -89,6 +89,20 @@ export default function DenkoshiDetail() {
 
   const [saving, setSaving] = useState(false)
 
+  // 출제 주제
+  const [topics, setTopics] = useState<Topic[]>([])
+  const [showTopics, setShowTopics] = useState(false)
+  const [addingTopic, setAddingTopic] = useState(false)
+  const [newQFrom, setNewQFrom] = useState('')
+  const [newQTo, setNewQTo] = useState('')
+  const [newUnit, setNewUnit] = useState('')
+  const [newTopic, setNewTopic] = useState('')
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null)
+  const [editQFrom, setEditQFrom] = useState('')
+  const [editQTo, setEditQTo] = useState('')
+  const [editUnit, setEditUnit] = useState('')
+  const [editTopic, setEditTopic] = useState('')
+
   const fetchSession = useCallback(async () => {
     if (!exam) return
     const { data } = await supabase
@@ -123,11 +137,21 @@ export default function DenkoshiDetail() {
     setDecks(data || [])
   }, [])
 
+  const fetchTopics = useCallback(async () => {
+    const { data } = await supabase
+      .from('denkoshi_topics')
+      .select('*')
+      .eq('exam_id', examId)
+      .order('q_from')
+    setTopics(data || [])
+  }, [examId])
+
   useEffect(() => {
     fetchSession()
     fetchWords()
     fetchDecks()
-  }, [fetchSession, fetchWords, fetchDecks])
+    fetchTopics()
+  }, [fetchSession, fetchWords, fetchDecks, fetchTopics])
 
   const upsert = async (extra: Partial<Session>) => {
     if (!exam) return
@@ -199,6 +223,48 @@ export default function DenkoshiDetail() {
     if (!confirm('삭제할까요?')) return
     await supabase.from('denkoshi_words').delete().eq('id', id)
     setWords(prev => prev.filter(w => w.id !== id))
+  }
+
+  const addTopic = async () => {
+    if (!newQFrom || !newQTo) return
+    setSaving(true)
+    await supabase.from('denkoshi_topics').insert({
+      exam_id: examId,
+      q_from: parseInt(newQFrom),
+      q_to: parseInt(newQTo),
+      unit: newUnit.trim() || null,
+      topic: newTopic.trim() || null,
+    })
+    setNewQFrom(''); setNewQTo(''); setNewUnit(''); setNewTopic('')
+    setAddingTopic(false)
+    await fetchTopics()
+    setSaving(false)
+  }
+
+  const startEditTopic = (t: Topic) => {
+    setEditingTopicId(t.id)
+    setEditQFrom(t.q_from.toString())
+    setEditQTo(t.q_to.toString())
+    setEditUnit(t.unit || '')
+    setEditTopic(t.topic || '')
+  }
+
+  const saveTopic = async (id: string) => {
+    setSaving(true)
+    await supabase.from('denkoshi_topics').update({
+      q_from: parseInt(editQFrom),
+      q_to: parseInt(editQTo),
+      unit: editUnit.trim() || null,
+      topic: editTopic.trim() || null,
+    }).eq('id', id)
+    setEditingTopicId(null)
+    await fetchTopics()
+    setSaving(false)
+  }
+
+  const deleteTopic = async (id: string) => {
+    await supabase.from('denkoshi_topics').delete().eq('id', id)
+    setTopics(prev => prev.filter(t => t.id !== id))
   }
 
   const toggleDeck = (deckId: string) => {
@@ -368,8 +434,122 @@ export default function DenkoshiDetail() {
           )}
         </div>
 
-        {/* 우: 단어장 */}
+        {/* 우: 출제주제 + 단어장 */}
         <div className="w-1/2 flex flex-col overflow-hidden">
+
+          {/* 출제 주제 섹션 */}
+          <div className="border-b border-gray-800 shrink-0">
+            <button
+              onClick={() => setShowTopics(p => !p)}
+              className="w-full px-4 py-2.5 bg-gray-900 flex items-center justify-between text-left hover:bg-gray-800 transition"
+            >
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                출제 주제
+                {topics.length > 0 && <span className="text-gray-600 font-normal ml-1">({topics.length})</span>}
+              </span>
+              <span className="text-gray-600 text-xs">{showTopics ? '▲' : '▼'}</span>
+            </button>
+
+            {showTopics && (
+              <div className="bg-gray-950 px-4 pb-4">
+                {/* 주제 목록 */}
+                {topics.length > 0 && (
+                  <div className="space-y-1.5 mb-3 mt-3">
+                    {topics.map(t => (
+                      <div key={t.id} className="bg-gray-900 rounded-xl p-3 group">
+                        {editingTopicId === t.id ? (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <label className="text-xs text-gray-500 mb-1 block">문제 범위</label>
+                                <div className="flex gap-1 items-center">
+                                  <input type="number" value={editQFrom} onChange={e => setEditQFrom(e.target.value)}
+                                    className="w-14 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
+                                  <span className="text-gray-500 text-xs">~</span>
+                                  <input type="number" value={editQTo} onChange={e => setEditQTo(e.target.value)}
+                                    className="w-14 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
+                                  <span className="text-gray-500 text-xs">번</span>
+                                </div>
+                              </div>
+                            </div>
+                            <input value={editUnit} onChange={e => setEditUnit(e.target.value)}
+                              placeholder="소단원명 (예: 직류회로)"
+                              className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                            <input value={editTopic} onChange={e => setEditTopic(e.target.value)}
+                              placeholder="주제 (예: 합성저항 계산)"
+                              className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                            <div className="flex gap-2">
+                              <button onClick={() => saveTopic(t.id)} disabled={saving}
+                                className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
+                                저장
+                              </button>
+                              <button onClick={() => setEditingTopicId(null)}
+                                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-xs font-bold text-blue-400">문{t.q_from}~{t.q_to}</span>
+                              {t.unit && <span className="text-xs text-gray-400 ml-2">{t.unit}</span>}
+                              {t.topic && <p className="text-sm text-white mt-0.5">{t.topic}</p>}
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                              <button onClick={() => startEditTopic(t)}
+                                className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded">✏</button>
+                              <button onClick={() => deleteTopic(t.id)}
+                                className="text-gray-600 hover:text-red-400 text-xs px-2 py-1 rounded">✕</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 추가 폼 */}
+                {addingTopic ? (
+                  <div className="space-y-2 mt-2">
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-gray-500 shrink-0">문제</label>
+                      <input type="number" value={newQFrom} onChange={e => setNewQFrom(e.target.value)}
+                        placeholder="1" min="1" max="50"
+                        className="w-16 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
+                      <span className="text-gray-500 text-xs">~</span>
+                      <input type="number" value={newQTo} onChange={e => setNewQTo(e.target.value)}
+                        placeholder="7" min="1" max="50"
+                        className="w-16 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
+                      <span className="text-gray-500 text-xs">번</span>
+                    </div>
+                    <input value={newUnit} onChange={e => setNewUnit(e.target.value)}
+                      placeholder="소단원명 (예: 直流回路)"
+                      className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                    <input value={newTopic} onChange={e => setNewTopic(e.target.value)}
+                      placeholder="주제 (예: 합성저항 계산)"
+                      onKeyDown={e => e.key === 'Enter' && addTopic()}
+                      className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                    <div className="flex gap-2">
+                      <button onClick={addTopic} disabled={saving || !newQFrom || !newQTo}
+                        className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50">
+                        추가
+                      </button>
+                      <button onClick={() => { setAddingTopic(false); setNewQFrom(''); setNewQTo(''); setNewUnit(''); setNewTopic('') }}
+                        className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setAddingTopic(true)}
+                    className="mt-2 text-xs text-gray-600 hover:text-gray-400 transition">
+                    + 구간 추가
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* 단어장 헤더 */}
           <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-900 flex items-center justify-between shrink-0">
