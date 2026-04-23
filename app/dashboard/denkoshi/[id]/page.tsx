@@ -47,6 +47,15 @@ type Deck = {
   name: string
 }
 
+type Topic = {
+  id: string
+  exam_id: string
+  q_from: number
+  q_to: number
+  unit: string | null
+  topic: string | null
+}
+
 const scoreColor = (s: number | null) => {
   if (s === null) return 'text-gray-500'
   if (s >= 60) return 'text-green-400'
