@@ -72,7 +72,7 @@ export default function DeckEditPage() {
     if (d) { setDeck(d); setDeckName(d.name); setDeckDesc(d.description ?? '') }
     const { data: c } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId).order('created_at')
     if (c) setCards(c)
-    const { data: allD } = await supabase.from('flashcard_decks').select('id, name, description').neq('id', deckId)
+    const { data: allD } = await supabase.from('flashcard_decks').select('id, name, description, exam_type').neq('id', deckId)
     if (allD) setAllDecks(allD)
     setLoading(false)
   }
