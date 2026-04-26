@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { SEITO_TOC, SECTION_MAP, CHAPTER_COLOR_MAP } from '@/lib/constants-denkoshi'
@@ -244,6 +244,23 @@ export default function DenkoshiDetail() {
   const [addingToDecks, setAddingToDecks] = useState(false)
 
   const [saving, setSaving] = useState(false)
+  const [splitPct, setSplitPct] = useState(58) // 좌측 PDF 비율 %
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  const onDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100
+      setSplitPct(Math.round(Math.min(78, Math.max(28, pct))))
+    }
+    const onUp = () => { dragging.current = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   // 섹션 태그
   const [tags, setTags] = useState<SectionTag[]>([])
@@ -505,11 +522,11 @@ export default function DenkoshiDetail() {
         </div>
       )}
 
-      {/* 본문 — PDF 50% / 우측 50% */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* 본문 — 드래그 가능 분할 */}
+      <div ref={containerRef} className="flex flex-1 overflow-hidden select-none">
 
         {/* 좌: PDF */}
-        <div className="w-1/2 flex flex-col border-r border-gray-800 overflow-hidden">
+        <div className="flex flex-col border-r border-gray-800 overflow-hidden" style={{ width: `${splitPct}%` }}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0 bg-gray-900">
             <div className="flex gap-1">
               {(['question', 'answer'] as const).map(t => (
@@ -575,8 +592,16 @@ export default function DenkoshiDetail() {
           )}
         </div>
 
+        {/* 드래그 분할선 */}
+        <div
+          className="drag-divider w-1.5 cursor-col-resize bg-gray-800 hover:bg-blue-600/60 active:bg-blue-500 transition-colors shrink-0 flex items-center justify-center group"
+          onMouseDown={onDividerMouseDown}
+        >
+          <div className="w-px h-8 bg-gray-600 group-hover:bg-blue-400 rounded-full" />
+        </div>
+
         {/* 우: 섹션 태그 + 단어장 */}
-        <div className="w-1/2 flex flex-col overflow-hidden">
+        <div className="flex flex-col overflow-hidden" style={{ flex: 1 }}>
 
           {/* ── 섹션 태그 섹션 ── */}
           <div className="border-b border-gray-800 shrink-0">
