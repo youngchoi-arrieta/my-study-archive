@@ -456,7 +456,7 @@ export default function DenkoshiDetail() {
   )
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <main className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
 
       {/* 헤더 */}
       <div className="px-5 pt-4 pb-3 border-b border-gray-800 shrink-0 flex items-center gap-3">
