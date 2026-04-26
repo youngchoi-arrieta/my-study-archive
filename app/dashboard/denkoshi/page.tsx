@@ -69,6 +69,7 @@ function heatColor(count: number, max: number): string {
 function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
   const [filterCh, setFilterCh] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<'bar' | 'heatmap'>('bar')
+  const [sortMode, setSortMode] = useState<'freq' | 'section'>('freq')
 
   // 섹션별 총 출제 횟수
   const sectionCounts = useMemo(() => {
@@ -100,9 +101,16 @@ function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
     ? SEITO_TOC.filter(c => c.ch === filterCh)
     : SEITO_TOC
 
-  const visibleSections = chapters.flatMap(ch =>
-    ch.sections.filter(s => sectionCounts.has(s.code))
-  ).sort((a, b) => (sectionCounts.get(b.code) || 0) - (sectionCounts.get(a.code) || 0))
+  const visibleSections = useMemo(() => {
+    const base = chapters.flatMap(ch =>
+      ch.sections.filter(s => sectionCounts.has(s.code))
+    )
+    if (sortMode === 'freq') {
+      return base.sort((a, b) => (sectionCounts.get(b.code) || 0) - (sectionCounts.get(a.code) || 0))
+    } else {
+      return base.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
+    }
+  }, [chapters, sectionCounts, sortMode])
 
   const maxCount = Math.max(...[...sectionCounts.values()], 1)
 
@@ -157,15 +165,27 @@ function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
             </button>
           ))}
         </div>
-        <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
-          {(['bar', 'heatmap'] as const).map(m => (
-            <button key={m} onClick={() => setViewMode(m)}
-              className={`px-2.5 py-1 rounded-md text-xs transition ${
-                viewMode === m ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-gray-300'
-              }`}>
-              {m === 'bar' ? '바 차트' : '히트맵'}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+            {(['freq', 'section'] as const).map(s => (
+              <button key={s} onClick={() => setSortMode(s)}
+                className={`px-2.5 py-1 rounded-md text-xs transition ${
+                  sortMode === s ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}>
+                {s === 'freq' ? '빈도순' : '단원순'}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+            {(['bar', 'heatmap'] as const).map(m => (
+              <button key={m} onClick={() => setViewMode(m)}
+                className={`px-2.5 py-1 rounded-md text-xs transition ${
+                  viewMode === m ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}>
+                {m === 'bar' ? '바 차트' : '히트맵'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
