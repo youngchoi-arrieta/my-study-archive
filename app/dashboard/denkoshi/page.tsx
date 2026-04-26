@@ -33,6 +33,7 @@ type DenkoshiSession = {
 
 type SectionTagRow = {
   exam_id: string
+  q_num: number
   section_code: string
   result: 'correct' | 'wrong' | null
 }
@@ -70,26 +71,34 @@ function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
   const [filterCh, setFilterCh] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<'bar' | 'heatmap'>('bar')
   const [sortMode, setSortMode] = useState<'freq' | 'section'>('freq')
+  const [qRange, setQRange] = useState<'all' | 'general' | 'wiring'>('all')
+
+  // qRange 필터 적용 태그
+  const filteredTags = useMemo(() => {
+    if (qRange === 'general') return allTags.filter(t => t.q_num <= 30)
+    if (qRange === 'wiring')  return allTags.filter(t => t.q_num >= 31)
+    return allTags
+  }, [allTags, qRange])
 
   // 섹션별 총 출제 횟수
   const sectionCounts = useMemo(() => {
     const map = new Map<string, number>()
-    allTags.forEach(t => {
+    filteredTags.forEach(t => {
       map.set(t.section_code, (map.get(t.section_code) || 0) + 1)
     })
     return map
-  }, [allTags])
+  }, [filteredTags])
 
   // 섹션 × 회차 매트릭스
   const matrix = useMemo(() => {
     const map = new Map<string, Map<string, number>>()
-    allTags.forEach(t => {
+    filteredTags.forEach(t => {
       if (!map.has(t.section_code)) map.set(t.section_code, new Map())
       const examMap = map.get(t.section_code)!
       examMap.set(t.exam_id, (examMap.get(t.exam_id) || 0) + 1)
     })
     return map
-  }, [allTags])
+  }, [filteredTags])
 
   const taggedExamIds = useMemo(() =>
     [...new Set(allTags.map(t => t.exam_id))]
@@ -139,6 +148,25 @@ function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
           <p className="text-xs text-gray-500 mb-1">분석된 회차</p>
           <p className="text-2xl font-bold text-purple-400">{taggedExamIds.length}</p>
         </div>
+      </div>
+
+      {/* 문제 구분 탭 */}
+      <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-3">
+        {([
+          { key: 'all',     label: '전체 (1~50번)' },
+          { key: 'general', label: '一般問題 (1~30번)' },
+          { key: 'wiring',  label: '配線図問題 (31~50번)' },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setQRange(key)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition ${
+              qRange === key ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* 장 필터 + 뷰 전환 */}
@@ -296,7 +324,7 @@ export default function DenkoshiHub() {
   const fetchAllTags = useCallback(async () => {
     const { data } = await supabase
       .from('denkoshi_section_tags')
-      .select('exam_id, section_code, result')
+      .select('exam_id, q_num, section_code, result')
     setAllTags((data || []) as SectionTagRow[])
   }, [])
 

@@ -588,13 +588,19 @@ export default function DenkoshiDetail() {
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
                   출제 소단원 매핑
                 </span>
-                {taggedCount > 0 && (
-                  <span className="text-gray-600 text-xs">
-                    {taggedCount}/50
-                    {correctCount > 0 && <span className="text-green-600 ml-1">✓{correctCount}</span>}
-                    {wrongCount > 0 && <span className="text-red-600 ml-1">✗{wrongCount}</span>}
-                  </span>
-                )}
+                {taggedCount > 0 && (() => {
+                  const general = tags.filter(t => t.q_num <= 30)
+                  const wiring  = tags.filter(t => t.q_num >= 31)
+                  return (
+                    <span className="text-gray-600 text-xs flex gap-2">
+                      <span>一般 {general.length}/30</span>
+                      <span className="text-gray-700">·</span>
+                      <span>配線 {wiring.length}/20</span>
+                      {correctCount > 0 && <span className="text-green-600">✓{correctCount}</span>}
+                      {wrongCount > 0 && <span className="text-red-600">✗{wrongCount}</span>}
+                    </span>
+                  )
+                })()}
               </div>
               <span className="text-gray-600 text-xs">{showTags ? '▲' : '▼'}</span>
             </button>
@@ -602,7 +608,29 @@ export default function DenkoshiDetail() {
             {showTags && (
               <div className="bg-gray-950 px-4 py-3 max-h-80 overflow-y-auto">
                 <div className="divide-y divide-gray-800/50">
-                  {Array.from({ length: 50 }, (_, i) => i + 1).map(qNum => (
+                  {/* 일반문제 구분 헤더 */}
+                  <div className="py-1.5 px-1">
+                    <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">
+                      一般問題 · 1~30번
+                    </span>
+                  </div>
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map(qNum => (
+                    <QuestionRow
+                      key={qNum}
+                      qNum={qNum}
+                      tag={tags.find(t => t.q_num === qNum)}
+                      onTagSelect={handleTagSelect}
+                      onResultToggle={handleResultToggle}
+                      onRemove={handleRemoveTag}
+                    />
+                  ))}
+                  {/* 배선도문제 구분 헤더 */}
+                  <div className="py-1.5 px-1 mt-1">
+                    <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">
+                      配線図問題 · 31~50번
+                    </span>
+                  </div>
+                  {Array.from({ length: 20 }, (_, i) => i + 31).map(qNum => (
                     <QuestionRow
                       key={qNum}
                       qNum={qNum}
