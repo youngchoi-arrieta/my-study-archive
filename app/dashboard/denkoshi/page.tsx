@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { DenkoshiChart, type ChartItem } from './DenkoshiChart'
+import { SEITO_TOC, SECTION_MAP } from '@/lib/constants-denkoshi'
 
 // ── 기출 메타데이터 ──────────────────────────────────────────────
 const PAST_EXAMS = [
@@ -20,7 +21,6 @@ const PAST_EXAMS = [
 ]
 const YEARS = [2025, 2024, 2023, 2022, 2021]
 
-
 // ── 타입 ────────────────────────────────────────────────────────
 type DenkoshiSession = {
   id: string
@@ -31,6 +31,12 @@ type DenkoshiSession = {
   drive_url: string | null
 }
 
+type SectionTagRow = {
+  exam_id: string
+  section_code: string
+  result: 'correct' | 'wrong' | null
+}
+
 const scoreColor = (s: number | null) => {
   if (s === null) return 'text-gray-500'
   if (s >= 60) return 'text-green-400'
@@ -38,10 +44,218 @@ const scoreColor = (s: number | null) => {
   return 'text-red-400'
 }
 
+// 장번호 → 색상 (tailwind inline style 대신 hex 사용)
+const CH_COLORS: Record<number, string> = {
+  1: '#0284c7', // sky
+  2: '#059669', // emerald
+  3: '#7c3aed', // violet
+  4: '#b45309', // amber
+  5: '#be123c', // rose
+  6: '#c2410c', // orange
+  7: '#0f766e', // teal
+}
+
+function heatColor(count: number, max: number): string {
+  if (count === 0) return 'bg-gray-800'
+  const ratio = count / Math.max(max, 1)
+  if (ratio >= 0.8) return 'bg-blue-500'
+  if (ratio >= 0.6) return 'bg-blue-600/80'
+  if (ratio >= 0.4) return 'bg-blue-700/60'
+  if (ratio >= 0.2) return 'bg-blue-800/50'
+  return 'bg-blue-900/40'
+}
+
+// ── 빈도 히트맵 컴포넌트 ─────────────────────────────────────────
+function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
+  const [filterCh, setFilterCh] = useState<number | null>(null)
+  const [viewMode, setViewMode] = useState<'bar' | 'heatmap'>('bar')
+
+  // 섹션별 총 출제 횟수
+  const sectionCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    allTags.forEach(t => {
+      map.set(t.section_code, (map.get(t.section_code) || 0) + 1)
+    })
+    return map
+  }, [allTags])
+
+  // 섹션 × 회차 매트릭스
+  const matrix = useMemo(() => {
+    const map = new Map<string, Map<string, number>>()
+    allTags.forEach(t => {
+      if (!map.has(t.section_code)) map.set(t.section_code, new Map())
+      const examMap = map.get(t.section_code)!
+      examMap.set(t.exam_id, (examMap.get(t.exam_id) || 0) + 1)
+    })
+    return map
+  }, [allTags])
+
+  const taggedExamIds = useMemo(() =>
+    [...new Set(allTags.map(t => t.exam_id))]
+      .sort((a, b) => b.localeCompare(a)),
+    [allTags]
+  )
+
+  const chapters = filterCh !== null
+    ? SEITO_TOC.filter(c => c.ch === filterCh)
+    : SEITO_TOC
+
+  const visibleSections = chapters.flatMap(ch =>
+    ch.sections.filter(s => sectionCounts.has(s.code))
+  ).sort((a, b) => (sectionCounts.get(b.code) || 0) - (sectionCounts.get(a.code) || 0))
+
+  const maxCount = Math.max(...[...sectionCounts.values()], 1)
+
+  if (allTags.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-gray-600 text-sm">아직 태그된 문제가 없어요.</p>
+        <p className="text-gray-700 text-xs mt-1">기출 회차를 열어 소단원을 태그하면 여기에 빈도가 집계됩니다.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* 요약 */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="bg-gray-900 rounded-xl p-4 text-center">
+          <p className="text-xs text-gray-500 mb-1">태그된 문제</p>
+          <p className="text-2xl font-bold">{allTags.length}</p>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-4 text-center">
+          <p className="text-xs text-gray-500 mb-1">출제된 소단원</p>
+          <p className="text-2xl font-bold text-blue-400">{sectionCounts.size}</p>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-4 text-center">
+          <p className="text-xs text-gray-500 mb-1">분석된 회차</p>
+          <p className="text-2xl font-bold text-purple-400">{taggedExamIds.length}</p>
+        </div>
+      </div>
+
+      {/* 장 필터 + 뷰 전환 */}
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setFilterCh(null)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+              filterCh === null ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            전체
+          </button>
+          {SEITO_TOC.filter(ch => ch.sections.some(s => sectionCounts.has(s.code))).map(ch => (
+            <button
+              key={ch.ch}
+              onClick={() => setFilterCh(filterCh === ch.ch ? null : ch.ch)}
+              style={{ backgroundColor: filterCh === ch.ch ? CH_COLORS[ch.ch] : undefined }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                filterCh === ch.ch ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {ch.ch}장
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 bg-gray-800 rounded-lg p-0.5">
+          {(['bar', 'heatmap'] as const).map(m => (
+            <button key={m} onClick={() => setViewMode(m)}
+              className={`px-2.5 py-1 rounded-md text-xs transition ${
+                viewMode === m ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-gray-300'
+              }`}>
+              {m === 'bar' ? '바 차트' : '히트맵'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 바 차트 뷰 ── */}
+      {viewMode === 'bar' && (
+        <div className="space-y-1.5">
+          {visibleSections.map(s => {
+            const count = sectionCounts.get(s.code) || 0
+            const chNum = parseInt(s.code.split('-')[0])
+            const color = CH_COLORS[chNum]
+            const pct = (count / maxCount) * 100
+            return (
+              <div key={s.code} className="flex items-center gap-2 group">
+                <span className="text-xs text-gray-600 w-8 text-right shrink-0 font-mono">{s.code}</span>
+                <div className="flex-1 bg-gray-800 rounded-full h-5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full flex items-center px-2 transition-all duration-300"
+                    style={{ width: `${Math.max(pct, 4)}%`, backgroundColor: color }}
+                  >
+                    <span className="text-white text-[10px] font-bold whitespace-nowrap">{count}문</span>
+                  </div>
+                </div>
+                <span className="text-xs text-gray-500 w-32 truncate shrink-0 hidden md:block">{s.ko}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── 히트맵 뷰 ── */}
+      {viewMode === 'heatmap' && taggedExamIds.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr>
+                <th className="text-left text-gray-600 font-normal pb-2 pr-3 w-20">소단원</th>
+                {taggedExamIds.map(eid => {
+                  const ex = PAST_EXAMS.find(e => e.id === eid)
+                  return (
+                    <th key={eid} className="text-gray-600 font-normal pb-2 px-1 text-center min-w-[36px]">
+                      {ex ? `${String(ex.year).slice(2)}${ex.term}` : eid.slice(2, 6)}
+                    </th>
+                  )
+                })}
+                <th className="text-gray-400 font-bold pb-2 pl-2 text-center">계</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleSections.map(s => {
+                const total = sectionCounts.get(s.code) || 0
+                const examMap = matrix.get(s.code)
+                return (
+                  <tr key={s.code} className="group hover:bg-gray-900/50">
+                    <td className="pr-3 py-0.5">
+                      <div>
+                        <span className="font-mono text-gray-400">{s.code}</span>
+                        <span className="text-gray-600 ml-1 hidden md:inline truncate max-w-[120px]">{s.ko}</span>
+                      </div>
+                    </td>
+                    {taggedExamIds.map(eid => {
+                      const cnt = examMap?.get(eid) || 0
+                      return (
+                        <td key={eid} className="px-1 py-0.5 text-center">
+                          {cnt > 0 ? (
+                            <span className={`inline-block w-7 h-5 rounded text-[10px] font-bold leading-5 text-white ${heatColor(cnt, 5)}`}>
+                              {cnt}
+                            </span>
+                          ) : (
+                            <span className="inline-block w-7 h-5 rounded bg-gray-800/30" />
+                          )}
+                        </td>
+                      )
+                    })}
+                    <td className="pl-2 py-0.5 text-center font-bold text-blue-400">{total}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── 메인 ────────────────────────────────────────────────────────
 export default function DenkoshiHub() {
-  const tab = 'scores'
+  const [activeTab, setActiveTab] = useState<'scores' | 'frequency'>('scores')
   const [sessions, setSessions] = useState<DenkoshiSession[]>([])
+  const [allTags, setAllTags] = useState<SectionTagRow[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
@@ -59,7 +273,17 @@ export default function DenkoshiHub() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchSessions() }, [fetchSessions])
+  const fetchAllTags = useCallback(async () => {
+    const { data } = await supabase
+      .from('denkoshi_section_tags')
+      .select('exam_id, section_code, result')
+    setAllTags((data || []) as SectionTagRow[])
+  }, [])
+
+  useEffect(() => {
+    fetchSessions()
+    fetchAllTags()
+  }, [fetchSessions, fetchAllTags])
 
   const getSession = (year: number, term: '상' | '하') =>
     sessions.find(s => s.year === year && s.session === (term === '상' ? 1 : 2)) ?? null
@@ -118,12 +342,31 @@ export default function DenkoshiHub() {
           <h1 className="text-2xl font-bold">第二種電気工事士 학과시험</h1>
           <span className="text-xs bg-yellow-600/30 text-yellow-400 px-2 py-0.5 rounded-full">준비 중</span>
         </div>
-        <p className="text-gray-500 text-sm mb-6">일본 경제산업성 · 2025.5.28 CBT 시험</p>
+        <p className="text-gray-500 text-sm mb-5">일본 경제산업성 · 2025.5.28 CBT 시험</p>
+
+        {/* 탭 */}
+        <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">
+          {([
+            { key: 'scores', label: '📋 기출 풀이 현황' },
+            { key: 'frequency', label: '📊 소단원 출제 빈도' },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                activeTab === key
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* ── 탭: 기출풀이현황 ── */}
-        {tab === 'scores' && (
+        {activeTab === 'scores' && (
           <div>
-            {/* 요약 통계 */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="bg-gray-900 rounded-xl p-4 text-center">
                 <p className="text-xs text-gray-500 mb-1">풀이 완료</p>
@@ -143,7 +386,6 @@ export default function DenkoshiHub() {
               </div>
             </div>
 
-            {/* 점수 추이 차트 */}
             {chartData.length > 0 && (
               <div className="bg-gray-900 rounded-xl p-4 mb-5">
                 <p className="text-xs text-gray-500 mb-3">점수 추이</p>
@@ -151,13 +393,11 @@ export default function DenkoshiHub() {
               </div>
             )}
 
-            {/* 연도별 기출 그리드 — 풀이현황 통합 */}
             {loading ? (
               <p className="text-gray-500 text-sm">불러오는 중...</p>
             ) : (
               <div>
                 <div className="grid grid-cols-[40px_1fr_1fr] gap-x-2 gap-y-1.5 items-start">
-                  {/* 헤더 */}
                   <div />
                   <div className="text-xs text-gray-600 text-center pb-1">상기</div>
                   <div className="text-xs text-gray-600 text-center pb-1">하기</div>
@@ -172,6 +412,8 @@ export default function DenkoshiHub() {
                       ...(['상', '하'] as const).map(term => {
                         const s = term === '상' ? termS : termH
                         const examId = getExamId(year, term)
+                        // 해당 회차에 태그된 문제 수
+                        const tagCount = allTags.filter(t => t.exam_id === examId).length
                         return (
                           <button
                             key={`${year}-${term}`}
@@ -180,16 +422,21 @@ export default function DenkoshiHub() {
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-medium">{year} {term}기</span>
-                              {s?.my_score != null && (
-                                <span className={`text-xs font-bold tabular-nums ${scoreColor(s.my_score)}`}>
-                                  {s.my_score}점
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {tagCount > 0 && (
+                                  <span className="text-[10px] text-blue-500">{tagCount}태그</span>
+                                )}
+                                {s?.my_score != null && (
+                                  <span className={`text-xs font-bold tabular-nums ${scoreColor(s.my_score)}`}>
+                                    {s.my_score}점
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             {s?.comments && (
                               <p className="text-xs text-gray-600 truncate mt-0.5">{s.comments}</p>
                             )}
-                            {!s && (
+                            {!s && tagCount === 0 && (
                               <p className="text-xs text-gray-700 mt-0.5">미풀이</p>
                             )}
                           </button>
@@ -199,9 +446,9 @@ export default function DenkoshiHub() {
                   })}
                 </div>
 
-                <p className="text-gray-600 text-xs mt-3">클릭하면 PDF 뷰어 + 점수 기록으로 이동합니다.</p>
+                <p className="text-gray-600 text-xs mt-3">클릭하면 PDF 뷰어 + 소단원 매핑으로 이동합니다.</p>
 
-                {/* 플래시카드 섹션 */}
+                {/* 플래시카드 */}
                 <div className="mt-6 pt-6 border-t border-gray-800">
                   <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">플래시카드</p>
                   <Link
@@ -313,6 +560,10 @@ export default function DenkoshiHub() {
           </div>
         )}
 
+        {/* ── 탭: 소단원 출제 빈도 ── */}
+        {activeTab === 'frequency' && (
+          <FrequencyMatrix allTags={allTags} />
+        )}
       </div>
     </main>
   )

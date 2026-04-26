@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { SEITO_TOC, SECTION_MAP, CHAPTER_COLOR_MAP } from '@/lib/constants-denkoshi'
 
 const PAST_EXAMS: Record<string, { label: string; year: number; term: '상' | '하' }> = {
   '20210530': { label: '2021 상기', year: 2021, term: '상' },
@@ -47,13 +48,12 @@ type Deck = {
   name: string
 }
 
-type Topic = {
+type SectionTag = {
   id: string
   exam_id: string
-  q_from: number
-  q_to: number
-  unit: string | null
-  topic: string | null
+  q_num: number
+  section_code: string
+  result: 'correct' | 'wrong' | null
 }
 
 const scoreColor = (s: number | null) => {
@@ -63,6 +63,153 @@ const scoreColor = (s: number | null) => {
   return 'text-red-400'
 }
 
+// ── 섹션 태그 팔레트 컴포넌트 ─────────────────────────────────────
+function SectionPalette({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (code: string) => void
+  onClose: () => void
+}) {
+  const [selectedCh, setSelectedCh] = useState<number | null>(null)
+  const chapter = selectedCh !== null ? SEITO_TOC.find(c => c.ch === selectedCh) : null
+
+  return (
+    <div className="mt-1.5 bg-gray-800 rounded-xl p-3 border border-gray-700 space-y-2">
+      {/* 장 선택 */}
+      <div className="flex flex-wrap gap-1.5">
+        {SEITO_TOC.map(ch => (
+          <button
+            key={ch.ch}
+            onClick={() => setSelectedCh(ch.ch === selectedCh ? null : ch.ch)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+              selectedCh === ch.ch
+                ? `${ch.color} text-white`
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            {ch.ch}장
+          </button>
+        ))}
+        <button
+          onClick={onClose}
+          className="ml-auto px-2 py-1 rounded-lg text-xs text-gray-500 hover:text-gray-300 transition"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* 소단원 선택 */}
+      {chapter && (
+        <div className="flex flex-wrap gap-1.5 border-t border-gray-700 pt-2">
+          <p className="w-full text-xs text-gray-500 mb-0.5">{chapter.ja} — {chapter.ko}</p>
+          {chapter.sections.map(s => (
+            <button
+              key={s.code}
+              onClick={() => onSelect(s.code)}
+              className="flex flex-col items-start px-2.5 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 transition text-left"
+            >
+              <span className="text-xs font-bold text-white">{s.code}</span>
+              <span className="text-[10px] text-gray-400">{s.ko}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 문제 태그 행 ──────────────────────────────────────────────────
+function QuestionRow({
+  qNum,
+  tag,
+  onTagSelect,
+  onResultToggle,
+  onRemove,
+}: {
+  qNum: number
+  tag: SectionTag | undefined
+  onTagSelect: (qNum: number, code: string) => void
+  onResultToggle: (qNum: number, current: 'correct' | 'wrong' | null) => void
+  onRemove: (qNum: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const section = tag ? SECTION_MAP.get(tag.section_code) : null
+  const chNum = tag ? parseInt(tag.section_code.split('-')[0]) : null
+  const chColor = chNum ? CHAPTER_COLOR_MAP.get(chNum) : null
+
+  return (
+    <div className="group">
+      <div className="flex items-center gap-2 py-1">
+        {/* 문제 번호 */}
+        <span className="text-xs text-gray-600 w-6 text-right shrink-0">{qNum}</span>
+
+        {/* 태그 버튼 */}
+        {tag && section ? (
+          <button
+            onClick={() => setOpen(p => !p)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition ${chColor} text-white hover:opacity-80`}
+          >
+            <span className="font-bold">{tag.section_code}</span>
+            <span className="text-white/80 hidden sm:inline">{section.ko}</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setOpen(p => !p)}
+            className="px-2.5 py-1 rounded-lg text-xs text-gray-600 border border-dashed border-gray-700 hover:border-gray-500 hover:text-gray-400 transition"
+          >
+            + 소단원 태그
+          </button>
+        )}
+
+        {/* 정오답 버튼 — 태그 있을 때만 */}
+        {tag && (
+          <div className="flex gap-1 ml-auto opacity-0 group-hover:opacity-100 transition">
+            <button
+              onClick={() => onResultToggle(qNum, tag.result)}
+              className={`px-2 py-0.5 rounded text-xs font-bold transition ${
+                tag.result === 'correct'
+                  ? 'bg-green-600 text-white'
+                  : 'text-gray-600 hover:text-green-400'
+              }`}
+            >
+              ✓
+            </button>
+            <button
+              onClick={() => onResultToggle(qNum, tag.result === 'wrong' ? 'wrong' : null)}
+              className={`px-2 py-0.5 rounded text-xs font-bold transition ${
+                tag.result === 'wrong'
+                  ? 'bg-red-600 text-white'
+                  : 'text-gray-600 hover:text-red-400'
+              }`}
+            >
+              ✗
+            </button>
+            <button
+              onClick={() => onRemove(qNum)}
+              className="px-1.5 py-0.5 rounded text-xs text-gray-700 hover:text-red-400 transition"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 팔레트 */}
+      {open && (
+        <SectionPalette
+          onSelect={(code) => {
+            onTagSelect(qNum, code)
+            setOpen(false)
+          }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── 메인 ─────────────────────────────────────────────────────────
 export default function DenkoshiDetail() {
   const params = useParams()
   const router = useRouter()
@@ -98,21 +245,12 @@ export default function DenkoshiDetail() {
 
   const [saving, setSaving] = useState(false)
 
-  // 출제 주제
-  const [topics, setTopics] = useState<Topic[]>([])
-  const [showTopics, setShowTopics] = useState(false)
+  // 섹션 태그
+  const [tags, setTags] = useState<SectionTag[]>([])
+  const [showTags, setShowTags] = useState(true)
   const [showWords, setShowWords] = useState(true)
-  const [addingTopic, setAddingTopic] = useState(false)
-  const [newQFrom, setNewQFrom] = useState('')
-  const [newQTo, setNewQTo] = useState('')
-  const [newUnit, setNewUnit] = useState('')
-  const [newTopic, setNewTopic] = useState('')
-  const [editingTopicId, setEditingTopicId] = useState<string | null>(null)
-  const [editQFrom, setEditQFrom] = useState('')
-  const [editQTo, setEditQTo] = useState('')
-  const [editUnit, setEditUnit] = useState('')
-  const [editTopic, setEditTopic] = useState('')
 
+  // ── fetch ──────────────────────────────────────────────────────
   const fetchSession = useCallback(async () => {
     if (!exam) return
     const { data } = await supabase
@@ -147,22 +285,23 @@ export default function DenkoshiDetail() {
     setDecks(data || [])
   }, [])
 
-  const fetchTopics = useCallback(async () => {
+  const fetchTags = useCallback(async () => {
     const { data } = await supabase
-      .from('denkoshi_topics')
+      .from('denkoshi_section_tags')
       .select('*')
       .eq('exam_id', examId)
-      .order('q_from')
-    setTopics(data || [])
+      .order('q_num')
+    setTags((data || []) as SectionTag[])
   }, [examId])
 
   useEffect(() => {
     fetchSession()
     fetchWords()
     fetchDecks()
-    fetchTopics()
-  }, [fetchSession, fetchWords, fetchDecks, fetchTopics])
+    fetchTags()
+  }, [fetchSession, fetchWords, fetchDecks, fetchTags])
 
+  // ── 세션 upsert ───────────────────────────────────────────────
   const upsert = async (extra: Partial<Session>) => {
     if (!exam) return
     setSaving(true)
@@ -193,6 +332,39 @@ export default function DenkoshiDetail() {
     setUrlInput('')
   }
 
+  // ── 섹션 태그 조작 ────────────────────────────────────────────
+  const handleTagSelect = async (qNum: number, code: string) => {
+    await supabase
+      .from('denkoshi_section_tags')
+      .upsert(
+        { exam_id: examId, q_num: qNum, section_code: code, result: null },
+        { onConflict: 'exam_id,q_num' }
+      )
+    await fetchTags()
+  }
+
+  const handleResultToggle = async (qNum: number, current: 'correct' | 'wrong' | null) => {
+    const tag = tags.find(t => t.q_num === qNum)
+    if (!tag) return
+    let next: 'correct' | 'wrong' | null
+    if (current === null) next = 'correct'
+    else if (current === 'correct') next = 'wrong'
+    else next = null
+    await supabase
+      .from('denkoshi_section_tags')
+      .update({ result: next })
+      .eq('id', tag.id)
+    await fetchTags()
+  }
+
+  const handleRemoveTag = async (qNum: number) => {
+    const tag = tags.find(t => t.q_num === qNum)
+    if (!tag) return
+    await supabase.from('denkoshi_section_tags').delete().eq('id', tag.id)
+    setTags(prev => prev.filter(t => t.q_num !== qNum))
+  }
+
+  // ── 단어장 조작 ───────────────────────────────────────────────
   const addWord = async () => {
     if (!newJp.trim()) return
     setSaving(true)
@@ -235,48 +407,6 @@ export default function DenkoshiDetail() {
     setWords(prev => prev.filter(w => w.id !== id))
   }
 
-  const addTopic = async () => {
-    if (!newQFrom || !newQTo) return
-    setSaving(true)
-    await supabase.from('denkoshi_topics').insert({
-      exam_id: examId,
-      q_from: parseInt(newQFrom),
-      q_to: parseInt(newQTo),
-      unit: newUnit.trim() || null,
-      topic: newTopic.trim() || null,
-    })
-    setNewQFrom(''); setNewQTo(''); setNewUnit(''); setNewTopic('')
-    setAddingTopic(false)
-    await fetchTopics()
-    setSaving(false)
-  }
-
-  const startEditTopic = (t: Topic) => {
-    setEditingTopicId(t.id)
-    setEditQFrom(t.q_from.toString())
-    setEditQTo(t.q_to.toString())
-    setEditUnit(t.unit || '')
-    setEditTopic(t.topic || '')
-  }
-
-  const saveTopic = async (id: string) => {
-    setSaving(true)
-    await supabase.from('denkoshi_topics').update({
-      q_from: parseInt(editQFrom),
-      q_to: parseInt(editQTo),
-      unit: editUnit.trim() || null,
-      topic: editTopic.trim() || null,
-    }).eq('id', id)
-    setEditingTopicId(null)
-    await fetchTopics()
-    setSaving(false)
-  }
-
-  const deleteTopic = async (id: string) => {
-    await supabase.from('denkoshi_topics').delete().eq('id', id)
-    setTopics(prev => prev.filter(t => t.id !== id))
-  }
-
   const toggleDeck = (deckId: string) => {
     setSelectedDeckIds(prev =>
       prev.includes(deckId) ? prev.filter(id => id !== deckId) : [...prev, deckId]
@@ -313,6 +443,10 @@ export default function DenkoshiDetail() {
   const questionUrl = toPreviewUrl(session?.drive_url || '')
   const answerUrl   = toPreviewUrl(session?.answer_drive_url || '')
   const activeUrl   = pdfTab === 'question' ? questionUrl : answerUrl
+
+  const taggedCount = tags.length
+  const correctCount = tags.filter(t => t.result === 'correct').length
+  const wrongCount = tags.filter(t => t.result === 'wrong').length
 
   if (!exam) return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
@@ -371,12 +505,11 @@ export default function DenkoshiDetail() {
         </div>
       )}
 
-      {/* 본문 — PDF 50% / 단어장 50% */}
+      {/* 본문 — PDF 50% / 우측 50% */}
       <div className="flex flex-1 overflow-hidden">
 
         {/* 좌: PDF */}
         <div className="w-1/2 flex flex-col border-r border-gray-800 overflow-hidden">
-          {/* PDF 탭 바 */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0 bg-gray-900">
             <div className="flex gap-1">
               {(['question', 'answer'] as const).map(t => (
@@ -410,14 +543,13 @@ export default function DenkoshiDetail() {
             </div>
           </div>
 
-          {/* URL 입력 */}
           {editingUrl === pdfTab && (
             <div className="px-3 py-2 border-b border-gray-800 bg-gray-900 flex gap-2 shrink-0">
               <input autoFocus type="text" value={urlInput} onChange={e => setUrlInput(e.target.value)}
                 placeholder="https://drive.google.com/file/d/.../view"
                 className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <button onClick={() => saveUrl(editingUrl)} disabled={saving}
+              <button onClick={() => saveUrl(editingUrl!)} disabled={saving}
                 className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50">
                 {saving ? '...' : '저장'}
               </button>
@@ -428,7 +560,6 @@ export default function DenkoshiDetail() {
             </div>
           )}
 
-          {/* iframe */}
           {activeUrl ? (
             <iframe src={activeUrl} className="flex-1 w-full block" allow="autoplay" />
           ) : (
@@ -444,123 +575,49 @@ export default function DenkoshiDetail() {
           )}
         </div>
 
-        {/* 우: 출제주제 + 단어장 */}
+        {/* 우: 섹션 태그 + 단어장 */}
         <div className="w-1/2 flex flex-col overflow-hidden">
 
-          {/* 출제 주제 섹션 */}
+          {/* ── 섹션 태그 섹션 ── */}
           <div className="border-b border-gray-800 shrink-0">
             <button
-              onClick={() => setShowTopics(p => !p)}
+              onClick={() => setShowTags(p => !p)}
               className="w-full px-4 py-2.5 bg-gray-900 flex items-center justify-between text-left hover:bg-gray-800 transition"
             >
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                출제 주제
-                {topics.length > 0 && <span className="text-gray-600 font-normal ml-1">({topics.length})</span>}
-              </span>
-              <span className="text-gray-600 text-xs">{showTopics ? '▲' : '▼'}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  출제 소단원 매핑
+                </span>
+                {taggedCount > 0 && (
+                  <span className="text-gray-600 text-xs">
+                    {taggedCount}/50
+                    {correctCount > 0 && <span className="text-green-600 ml-1">✓{correctCount}</span>}
+                    {wrongCount > 0 && <span className="text-red-600 ml-1">✗{wrongCount}</span>}
+                  </span>
+                )}
+              </div>
+              <span className="text-gray-600 text-xs">{showTags ? '▲' : '▼'}</span>
             </button>
 
-            {showTopics && (
-              <div className="bg-gray-950 px-4 pb-4">
-                {/* 주제 목록 */}
-                {topics.length > 0 && (
-                  <div className="space-y-1.5 mb-3 mt-3">
-                    {topics.map(t => (
-                      <div key={t.id} className="bg-gray-900 rounded-xl p-3 group">
-                        {editingTopicId === t.id ? (
-                          <div className="space-y-2">
-                            <div className="flex gap-2">
-                              <div className="flex-1">
-                                <label className="text-xs text-gray-500 mb-1 block">문제 범위</label>
-                                <div className="flex gap-1 items-center">
-                                  <input type="number" value={editQFrom} onChange={e => setEditQFrom(e.target.value)}
-                                    className="w-14 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
-                                  <span className="text-gray-500 text-xs">~</span>
-                                  <input type="number" value={editQTo} onChange={e => setEditQTo(e.target.value)}
-                                    className="w-14 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
-                                  <span className="text-gray-500 text-xs">번</span>
-                                </div>
-                              </div>
-                            </div>
-                            <input value={editUnit} onChange={e => setEditUnit(e.target.value)}
-                              placeholder="소단원명 (예: 직류회로)"
-                              className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-                            <textarea value={editTopic} onChange={e => setEditTopic(e.target.value)}
-                              placeholder="주제" rows={3}
-                              className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
-                            <div className="flex gap-2">
-                              <button onClick={() => saveTopic(t.id)} disabled={saving}
-                                className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
-                                저장
-                              </button>
-                              <button onClick={() => setEditingTopicId(null)}
-                                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
-                                취소
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <span className="text-xs font-bold text-blue-400">문{t.q_from}~{t.q_to}</span>
-                              {t.unit && <span className="text-xs text-gray-400 ml-2 whitespace-pre-wrap">{t.unit}</span>}
-                              {t.topic && <p className="text-sm text-white mt-0.5 whitespace-pre-wrap">{t.topic}</p>}
-                            </div>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
-                              <button onClick={() => startEditTopic(t)}
-                                className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded">✏</button>
-                              <button onClick={() => deleteTopic(t.id)}
-                                className="text-gray-600 hover:text-red-400 text-xs px-2 py-1 rounded">✕</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* 추가 폼 */}
-                {addingTopic ? (
-                  <div className="space-y-2 mt-2">
-                    <div className="flex gap-2 items-center">
-                      <label className="text-xs text-gray-500 shrink-0">문제</label>
-                      <input type="number" value={newQFrom} onChange={e => setNewQFrom(e.target.value)}
-                        placeholder="1" min="1" max="50"
-                        className="w-16 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
-                      <span className="text-gray-500 text-xs">~</span>
-                      <input type="number" value={newQTo} onChange={e => setNewQTo(e.target.value)}
-                        placeholder="7" min="1" max="50"
-                        className="w-16 bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 text-center" />
-                      <span className="text-gray-500 text-xs">번</span>
-                    </div>
-                    <input value={newUnit} onChange={e => setNewUnit(e.target.value)}
-                      placeholder="소단원명 (예: 直流回路)"
-                      className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-                    <textarea value={newTopic} onChange={e => setNewTopic(e.target.value)}
-                      placeholder="주제 (예: 합성저항 계산&#10;여러 줄 입력 가능)" rows={3}
-                      className="w-full bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
-                    <div className="flex gap-2">
-                      <button onClick={addTopic} disabled={saving || !newQFrom || !newQTo}
-                        className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50">
-                        추가
-                      </button>
-                      <button onClick={() => { setAddingTopic(false); setNewQFrom(''); setNewQTo(''); setNewUnit(''); setNewTopic('') }}
-                        className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
-                        취소
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button onClick={() => setAddingTopic(true)}
-                    className="mt-2 text-xs text-gray-600 hover:text-gray-400 transition">
-                    + 구간 추가
-                  </button>
-                )}
+            {showTags && (
+              <div className="bg-gray-950 px-4 py-3 max-h-80 overflow-y-auto">
+                <div className="divide-y divide-gray-800/50">
+                  {Array.from({ length: 50 }, (_, i) => i + 1).map(qNum => (
+                    <QuestionRow
+                      key={qNum}
+                      qNum={qNum}
+                      tag={tags.find(t => t.q_num === qNum)}
+                      onTagSelect={handleTagSelect}
+                      onResultToggle={handleResultToggle}
+                      onRemove={handleRemoveTag}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {/* 단어장 헤더 — 접이식 */}
+          {/* ── 단어장 섹션 ── */}
           <div className="border-b border-gray-800 shrink-0">
             <div className="px-4 py-2.5 bg-gray-900 flex items-center justify-between">
               <button
@@ -585,14 +642,13 @@ export default function DenkoshiDetail() {
             </div>
           </div>
 
-          {/* 새 단어 입력 폼 */}
           {showWords && addingWord && (
             <div className="border-b border-gray-800 bg-gray-900 p-4 shrink-0">
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">한자 (일본어) *</label>
                   <textarea autoFocus value={newJp} onChange={e => setNewJp(e.target.value)}
-                    placeholder="例: 漏電遮断器 또는 문장 전체" rows={2}
+                    placeholder="例: 漏電遮断器" rows={2}
                     className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                   />
                 </div>
@@ -606,7 +662,7 @@ export default function DenkoshiDetail() {
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">한국어 의미</label>
                   <textarea value={newKo} onChange={e => setNewKo(e.target.value)}
-                    placeholder="例: 누전차단기 또는 해석+조사분석" rows={2}
+                    placeholder="例: 누전차단기" rows={2}
                     className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                   />
                 </div>
@@ -631,133 +687,125 @@ export default function DenkoshiDetail() {
             </div>
           )}
 
-          {/* 단어 목록 */}
-          {showWords && <div className="flex-1 overflow-y-auto p-4">
-            {words.length === 0 && !addingWord ? (
-              <div className="text-center py-12">
-                <p className="text-gray-700 text-sm">자주 나오는 한자·용어·문장을 기록해두세요</p>
-                <p className="text-gray-700 text-xs mt-1">한자 + 후리가나 + 한국어 → 덱에 바로 추가 가능</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {words.map(w => (
-                  <div key={w.id} className="bg-gray-900 rounded-xl p-3 group">
-                    {editingWordId === w.id ? (
-                      /* 편집 폼 */
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">한자</label>
-                          <textarea value={editWordJp} onChange={e => setEditWordJp(e.target.value)} rows={2}
-                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">후리가나</label>
-                          <input value={editWordReading} onChange={e => setEditWordReading(e.target.value)}
-                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">한국어</label>
-                          <textarea value={editWordKo} onChange={e => setEditWordKo(e.target.value)} rows={2}
-                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">메모</label>
-                          <input value={editWordMemo} onChange={e => setEditWordMemo(e.target.value)}
-                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
-                        </div>
-                        <div className="col-span-2 flex gap-2 mt-1">
-                          <button onClick={() => saveWord(w.id)} disabled={saving}
-                            className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
-                            저장
-                          </button>
-                          <button onClick={() => setEditingWordId(null)}
-                            className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
-                            취소
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      /* 카드 표시 */
-                      <div>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                              <span className="text-base font-bold text-white whitespace-pre-wrap">{w.jp}</span>
-                              {w.reading && (
-                                <span className="text-xs text-blue-400">{w.reading}</span>
-                              )}
-                            </div>
-                            {w.ko && (
-                              <p className="text-sm text-gray-300 mt-0.5 whitespace-pre-wrap">{w.ko}</p>
-                            )}
-                            {w.memo && (
-                              <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{w.memo}</p>
-                            )}
+          {showWords && (
+            <div className="flex-1 overflow-y-auto p-4">
+              {words.length === 0 && !addingWord ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-700 text-sm">자주 나오는 한자·용어·문장을 기록해두세요</p>
+                  <p className="text-gray-700 text-xs mt-1">한자 + 후리가나 + 한국어 → 덱에 바로 추가 가능</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {words.map(w => (
+                    <div key={w.id} className="bg-gray-900 rounded-xl p-3 group">
+                      {editingWordId === w.id ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">한자</label>
+                            <textarea value={editWordJp} onChange={e => setEditWordJp(e.target.value)} rows={2}
+                              className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
                           </div>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
-                            <button
-                              onClick={() => { setDeckPickWordId(deckPickWordId === w.id ? null : w.id); setSelectedDeckIds([]) }}
-                              className="text-blue-500 hover:text-blue-300 text-xs px-2 py-1 rounded"
-                              title="덱에 추가"
-                            >
-                              ＋
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">후리가나</label>
+                            <input value={editWordReading} onChange={e => setEditWordReading(e.target.value)}
+                              className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">한국어</label>
+                            <textarea value={editWordKo} onChange={e => setEditWordKo(e.target.value)} rows={2}
+                              className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">메모</label>
+                            <input value={editWordMemo} onChange={e => setEditWordMemo(e.target.value)}
+                              className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+                          </div>
+                          <div className="col-span-2 flex gap-2 mt-1">
+                            <button onClick={() => saveWord(w.id)} disabled={saving}
+                              className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50">
+                              저장
                             </button>
-                            <button onClick={() => startEditWord(w)}
-                              className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded">
-                              ✏
-                            </button>
-                            <button onClick={() => deleteWord(w.id)}
-                              className="text-gray-600 hover:text-red-400 text-xs px-2 py-1 rounded">
-                              ✕
+                            <button onClick={() => setEditingWordId(null)}
+                              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition">
+                              취소
                             </button>
                           </div>
                         </div>
-
-                        {/* 덱 선택 패널 */}
-                        {deckPickWordId === w.id && (
-                          <div className="mt-2 pt-2 border-t border-gray-800">
-                            <p className="text-xs text-gray-500 mb-2">추가할 덱 선택 (복수 가능)</p>
-                            {decks.length === 0 ? (
-                              <p className="text-xs text-gray-700">먼저 플래시카드에서 덱을 만들어주세요.</p>
-                            ) : (
-                              <div className="space-y-1 mb-2">
-                                {decks.map(deck => (
-                                  <label key={deck.id} className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedDeckIds.includes(deck.id)}
-                                      onChange={() => toggleDeck(deck.id)}
-                                      className="accent-blue-500"
-                                    />
-                                    <span className="text-xs text-gray-300">{deck.name}</span>
-                                  </label>
-                                ))}
+                      ) : (
+                        <div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className="text-base font-bold text-white whitespace-pre-wrap">{w.jp}</span>
+                                {w.reading && <span className="text-xs text-blue-400">{w.reading}</span>}
                               </div>
-                            )}
-                            <div className="flex gap-2">
+                              {w.ko && <p className="text-sm text-gray-300 mt-0.5 whitespace-pre-wrap">{w.ko}</p>}
+                              {w.memo && <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{w.memo}</p>}
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
                               <button
-                                onClick={() => addToDecks(w)}
-                                disabled={addingToDecks || selectedDeckIds.length === 0}
-                                className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50"
+                                onClick={() => { setDeckPickWordId(deckPickWordId === w.id ? null : w.id); setSelectedDeckIds([]) }}
+                                className="text-blue-500 hover:text-blue-300 text-xs px-2 py-1 rounded"
+                                title="덱에 추가"
                               >
-                                {addingToDecks ? '추가 중...' : `추가 (${selectedDeckIds.length * 2}장)`}
+                                ＋
                               </button>
-                              <button
-                                onClick={() => { setDeckPickWordId(null); setSelectedDeckIds([]) }}
-                                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition"
-                              >
-                                취소
+                              <button onClick={() => startEditWord(w)}
+                                className="text-gray-500 hover:text-white text-xs px-2 py-1 rounded">
+                                ✏
+                              </button>
+                              <button onClick={() => deleteWord(w.id)}
+                                className="text-gray-600 hover:text-red-400 text-xs px-2 py-1 rounded">
+                                ✕
                               </button>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>}
+
+                          {deckPickWordId === w.id && (
+                            <div className="mt-2 pt-2 border-t border-gray-800">
+                              <p className="text-xs text-gray-500 mb-2">추가할 덱 선택 (복수 가능)</p>
+                              {decks.length === 0 ? (
+                                <p className="text-xs text-gray-700">먼저 플래시카드에서 덱을 만들어주세요.</p>
+                              ) : (
+                                <div className="space-y-1 mb-2">
+                                  {decks.map(deck => (
+                                    <label key={deck.id} className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedDeckIds.includes(deck.id)}
+                                        onChange={() => toggleDeck(deck.id)}
+                                        className="accent-blue-500"
+                                      />
+                                      <span className="text-xs text-gray-300">{deck.name}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => addToDecks(w)}
+                                  disabled={addingToDecks || selectedDeckIds.length === 0}
+                                  className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-xs transition disabled:opacity-50"
+                                >
+                                  {addingToDecks ? '추가 중...' : `추가 (${selectedDeckIds.length * 2}장)`}
+                                </button>
+                                <button
+                                  onClick={() => { setDeckPickWordId(null); setSelectedDeckIds([]) }}
+                                  className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-xs transition"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </main>
