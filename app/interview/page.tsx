@@ -1,118 +1,220 @@
 'use client'
-import { useState, useMemo } from 'react'
-import { QUESTIONS, CATEGORIES } from './data'
+import { useState, useMemo, useEffect } from 'react'
+import { Question, CATEGORIES, DEFAULT_QUESTIONS } from './data'
+
+const STORAGE_KEY = 'interview_questions'
+const NOTES_KEY   = 'interview_notes'
+
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
+
+const COMPANY_FILTERS = [
+  { id: 'all',       label: '전체' },
+  { id: 'universal', label: '보편' },
+  { id: 'company',   label: '기업 특화' },
+]
+
+const EMPTY_FORM: Omit<Question, 'id'> = {
+  category: 'self', company: 'universal',
+  question: '', intent: '', frame: '', warning: '',
+}
 
 export default function InterviewPage() {
-  const [cat, setCat] = useState('all')
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [notes, setNotes] = useState<Record<string, string>>({})
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [notes, setNotes]         = useState<Record<string, string>>({})
+  const [cat, setCat]             = useState('all')
+  const [companyFilter, setCompanyFilter] = useState('all')
+  const [openId, setOpenId]       = useState<string | null>(null)
+  const [modal, setModal]         = useState<{ mode: 'add' | 'edit'; q?: Question } | null>(null)
+  const [form, setForm]           = useState<Omit<Question, 'id'>>(EMPTY_FORM)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
-  const filtered = useMemo(
-    () => cat === 'all' ? QUESTIONS : QUESTIONS.filter(q => q.category === cat),
-    [cat]
-  )
+  // Load from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      setQuestions(raw ? JSON.parse(raw) : DEFAULT_QUESTIONS)
+      const rawNotes = localStorage.getItem(NOTES_KEY)
+      setNotes(rawNotes ? JSON.parse(rawNotes) : {})
+    } catch { setQuestions(DEFAULT_QUESTIONS) }
+  }, [])
 
-  function toggle(id: string) {
-    setOpenId(prev => prev === id ? null : id)
+  function save(next: Question[]) {
+    setQuestions(next)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
+
+  function saveNote(id: string, val: string) {
+    const next = { ...notes, [id]: val }
+    setNotes(next)
+    localStorage.setItem(NOTES_KEY, JSON.stringify(next))
+  }
+
+  function openAdd() {
+    setForm(EMPTY_FORM)
+    setModal({ mode: 'add' })
+  }
+
+  function openEdit(q: Question) {
+    setForm({ category: q.category, company: q.company, question: q.question, intent: q.intent, frame: q.frame, warning: q.warning ?? '' })
+    setModal({ mode: 'edit', q })
+    setOpenId(null)
+  }
+
+  function submitForm() {
+    if (!form.question.trim() || !form.intent.trim() || !form.frame.trim()) return
+    if (modal?.mode === 'add') {
+      save([...questions, { id: genId(), ...form }])
+    } else if (modal?.mode === 'edit' && modal.q) {
+      save(questions.map(q => q.id === modal.q!.id ? { ...q, ...form } : q))
+    }
+    setModal(null)
+  }
+
+  function confirmDelete(id: string) { setDeleteTarget(id) }
+  function doDelete() {
+    if (!deleteTarget) return
+    save(questions.filter(q => q.id !== deleteTarget))
+    setDeleteTarget(null)
+    setOpenId(null)
+  }
+
+  function resetToDefault() {
+    save(DEFAULT_QUESTIONS)
+    setNotes({})
+    localStorage.removeItem(NOTES_KEY)
+  }
+
+  // Get all unique companies for filter chips
+  const companies = useMemo(() => {
+    const set = new Set(questions.map(q => q.company).filter(c => c !== 'universal'))
+    return Array.from(set)
+  }, [questions])
+
+  const filtered = useMemo(() => questions.filter(q => {
+    const catOk = cat === 'all' || q.category === cat
+    const compOk =
+      companyFilter === 'all' ? true :
+      companyFilter === 'universal' ? q.company === 'universal' :
+      companyFilter === 'company' ? q.company !== 'universal' :
+      q.company === companyFilter
+    return catOk && compOk
+  }), [questions, cat, companyFilter])
+
+  const catLabel = (id: string) => CATEGORIES.find(c => c.id === id)?.label ?? id
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-2xl mx-auto">
 
         {/* 헤더 */}
-        <div className="mb-8">
+        <div className="mb-6">
           <a href="/" className="text-xs text-gray-600 hover:text-gray-400 transition mb-4 inline-block">← 홈</a>
-          <h1 className="text-2xl font-bold mb-1">🎤 면접 대비</h1>
-          <p className="text-gray-500 text-sm">질문 패턴 · 면접관 의도 · 답변 프레임</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold mb-1">🎤 면접 대비</h1>
+              <p className="text-gray-500 text-sm">질문 패턴 · 면접관 의도 · 답변 프레임</p>
+            </div>
+            <button onClick={openAdd} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 rounded-lg transition">
+              + 질문 추가
+            </button>
+          </div>
         </div>
 
-        {/* 카테고리 필터 */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {CATEGORIES.map(c => (
-            <button
-              key={c.id}
-              onClick={() => setCat(c.id)}
-              className={`text-xs px-3 py-1.5 rounded-full transition ${
-                cat === c.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              {c.label}
-              <span className="ml-1.5 opacity-50">
-                {c.id === 'all'
-                  ? QUESTIONS.length
-                  : QUESTIONS.filter(q => q.category === c.id).length}
-              </span>
+        {/* 회사 필터 */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {COMPANY_FILTERS.map(f => (
+            <button key={f.id} onClick={() => setCompanyFilter(f.id)}
+              className={`text-xs px-3 py-1.5 rounded-full transition ${companyFilter === f.id ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+              {f.label}
+            </button>
+          ))}
+          {companies.map(c => (
+            <button key={c} onClick={() => setCompanyFilter(c)}
+              className={`text-xs px-3 py-1.5 rounded-full transition ${companyFilter === c ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+              {c}
             </button>
           ))}
         </div>
 
+        {/* 카테고리 필터 */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {CATEGORIES.map(c => {
+            const count = questions.filter(q => {
+              const compOk = companyFilter === 'all' ? true : companyFilter === 'universal' ? q.company === 'universal' : companyFilter === 'company' ? q.company !== 'universal' : q.company === companyFilter
+              return (c.id === 'all' || q.category === c.id) && compOk
+            }).length
+            return (
+              <button key={c.id} onClick={() => setCat(c.id)}
+                className={`text-xs px-3 py-1.5 rounded-full transition ${cat === c.id ? 'bg-gray-200 text-gray-900 font-semibold' : 'bg-gray-800/60 text-gray-500 hover:bg-gray-700'}`}>
+                {c.label} <span className="ml-1 opacity-50">{count}</span>
+              </button>
+            )
+          })}
+        </div>
+
         {/* 질문 카드 목록 */}
         <div className="space-y-2">
+          {filtered.length === 0 && (
+            <div className="text-center text-gray-600 py-12 text-sm">질문이 없습니다.</div>
+          )}
           {filtered.map(q => {
             const isOpen = openId === q.id
-            const catLabel = CATEGORIES.find(c => c.id === q.category)?.label ?? ''
+            const isUniversal = q.company === 'universal'
             return (
-              <div
-                key={q.id}
-                className="bg-gray-900 rounded-xl overflow-hidden"
-              >
+              <div key={q.id} className="bg-gray-900 rounded-xl overflow-hidden">
                 {/* 질문 헤더 */}
-                <button
-                  onClick={() => toggle(q.id)}
-                  className="w-full text-left p-4 flex items-start justify-between gap-3 hover:bg-gray-800 transition"
-                >
+                <button onClick={() => setOpenId(isOpen ? null : q.id)}
+                  className="w-full text-left p-4 flex items-start justify-between gap-3 hover:bg-gray-800 transition">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs text-gray-600 uppercase tracking-widest">{catLabel}</span>
-                      {q.warning && (
-                        <span className="text-xs bg-yellow-500/10 text-yellow-400 px-1.5 py-0.5 rounded">⚠️ 핵심</span>
-                      )}
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-xs text-gray-600 uppercase tracking-widest">{catLabel(q.category)}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${isUniversal ? 'bg-gray-700 text-gray-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                        {isUniversal ? '보편' : q.company}
+                      </span>
+                      {q.warning && <span className="text-xs bg-yellow-500/10 text-yellow-400 px-1.5 py-0.5 rounded">⚠️ 핵심</span>}
                     </div>
                     <p className="text-sm font-medium leading-snug">{q.question}</p>
                   </div>
-                  <span className="text-gray-600 text-xs mt-0.5 flex-shrink-0">
-                    {isOpen ? '▲' : '▼'}
-                  </span>
+                  <span className="text-gray-600 text-xs mt-0.5 flex-shrink-0">{isOpen ? '▲' : '▼'}</span>
                 </button>
 
-                {/* 펼쳐지는 상세 */}
+                {/* 상세 */}
                 {isOpen && (
                   <div className="px-4 pb-4 space-y-3 border-t border-gray-800 pt-3">
-
-                    {/* 면접관 의도 */}
                     <div>
                       <p className="text-xs text-blue-400 font-semibold mb-1">🎯 면접관 의도</p>
                       <p className="text-sm text-gray-300 leading-relaxed">{q.intent}</p>
                     </div>
-
-                    {/* 답변 프레임 */}
                     <div>
                       <p className="text-xs text-green-400 font-semibold mb-1">💡 답변 프레임</p>
                       <p className="text-sm text-gray-300 leading-relaxed">{q.frame}</p>
                     </div>
-
-                    {/* 경고 */}
                     {q.warning && (
                       <div className="bg-yellow-500/10 rounded-lg px-3 py-2">
                         <p className="text-xs text-yellow-400 leading-relaxed">⚠️ {q.warning}</p>
                       </div>
                     )}
-
-                    {/* 내 메모 */}
                     <div>
                       <p className="text-xs text-gray-500 font-semibold mb-1">📝 내 메모</p>
                       <textarea
                         value={notes[q.id] ?? ''}
-                        onChange={e => setNotes(prev => ({ ...prev, [q.id]: e.target.value }))}
+                        onChange={e => saveNote(q.id, e.target.value)}
                         placeholder="내 답변 초안이나 키워드를 메모하세요..."
                         rows={3}
                         className="w-full bg-gray-800 text-sm text-gray-200 rounded-lg px-3 py-2 resize-none placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
                       />
                     </div>
-
+                    {/* 편집/삭제 */}
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => openEdit(q)}
+                        className="text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition">
+                        ✏️ 편집
+                      </button>
+                      <button onClick={() => confirmDelete(q.id)}
+                        className="text-xs text-red-400 hover:text-red-300 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition">
+                        🗑 삭제
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -120,31 +222,90 @@ export default function InterviewPage() {
           })}
         </div>
 
-        {/* 전략 메모 */}
-        <div className="mt-8 bg-gray-900 rounded-xl p-4">
-          <p className="text-xs text-gray-500 font-semibold mb-3 uppercase tracking-widest">📌 핵심 전략</p>
-          <div className="space-y-2 text-sm text-gray-400">
-            <p>• 면접관의 진짜 질문은 두 개 — <span className="text-gray-200">이탈 리스크</span> + <span className="text-gray-200">역량 증명</span></p>
-            <p>• 답변의 절반은 "오래 있을 사람"을 안심시키는 데 써야 한다</p>
-            <p>• 역질문 4~5개 준비 → 분위기 보고 2~3개만. 즉석 질문이 점수 더 높다</p>
-            <p>• 캐나다/일본 계획은 자진 신고 금지. 직접 질문 들어오면 그때 정직하게</p>
-            <p>• 6/12 기사 최종합격 변수 → 입사 시점 협의 가능으로 미리 공개</p>
-          </div>
-        </div>
-
-        {/* 역질문 섹션 */}
-        <div className="mt-4 bg-gray-900 rounded-xl p-4">
-          <p className="text-xs text-gray-500 font-semibold mb-3 uppercase tracking-widest">🔄 내가 던질 역질문</p>
-          <div className="space-y-2 text-sm text-gray-400">
-            <p>• 연구원의 하루 업무 구성을 비율로 알 수 있을까요? (콘텐츠 기획 / QNA / 자료 정리 등)</p>
-            <p>• 입사 후 1년 차에 기대하시는 산출물이 있다면?</p>
-            <p>• 기존 연구원분들은 어떤 백그라운드를 가지고 계신가요?</p>
-            <p>• PLC·설비보전 등 신규 분야 콘텐츠 개발에도 참여하게 되나요?</p>
-            <p>• 성과 평가는 어떤 기준으로 이뤄지나요?</p>
-          </div>
+        {/* 초기화 */}
+        <div className="mt-8 text-center">
+          <button onClick={resetToDefault}
+            className="text-xs text-gray-700 hover:text-gray-500 transition">
+            기본값으로 초기화
+          </button>
         </div>
 
       </div>
+
+      {/* ── 편집/추가 모달 ── */}
+      {modal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4">
+            <h2 className="text-base font-bold">{modal.mode === 'add' ? '질문 추가' : '질문 편집'}</h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">카테고리</label>
+                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full bg-gray-800 text-sm text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-600">
+                  {CATEGORIES.filter(c => c.id !== 'all').map(c => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">구분</label>
+                <input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                  placeholder="universal 또는 회사명"
+                  className="w-full bg-gray-800 text-sm text-white rounded-lg px-3 py-2 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-600" />
+              </div>
+            </div>
+
+            {[
+              { key: 'question', label: '질문', rows: 2 },
+              { key: 'intent',   label: '면접관 의도', rows: 3 },
+              { key: 'frame',    label: '답변 프레임', rows: 3 },
+              { key: 'warning',  label: '경고 (선택)', rows: 2 },
+            ].map(({ key, label, rows }) => (
+              <div key={key}>
+                <label className="text-xs text-gray-500 mb-1 block">{label}</label>
+                <textarea
+                  value={(form as any)[key] ?? ''}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  rows={rows}
+                  className="w-full bg-gray-800 text-sm text-gray-200 rounded-lg px-3 py-2 resize-none placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                />
+              </div>
+            ))}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={submitForm}
+                disabled={!form.question.trim() || !form.intent.trim() || !form.frame.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm py-2 rounded-lg transition">
+                {modal.mode === 'add' ? '추가' : '저장'}
+              </button>
+              <button onClick={() => setModal(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 삭제 확인 ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm text-center space-y-4">
+            <p className="text-sm text-gray-300">이 질문을 삭제할까요?</p>
+            <div className="flex gap-2">
+              <button onClick={doDelete}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white text-sm py-2 rounded-lg transition">
+                삭제
+              </button>
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
