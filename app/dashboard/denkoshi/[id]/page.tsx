@@ -52,7 +52,8 @@ type SectionTag = {
   id: string
   exam_id: string
   q_num: number
-  section_code: string
+  section_code: string        // legacy fallback
+  section_codes: string[]     // multi-tag (primary)
   result: 'correct' | 'wrong' | null
 }
 
@@ -67,15 +68,29 @@ const scoreColor = (s: number | null) => {
 function SectionPalette({
   onSelect,
   onClose,
+  selectedCodes = [],
 }: {
   onSelect: (code: string) => void
   onClose: () => void
+  selectedCodes?: string[]
 }) {
   const [selectedCh, setSelectedCh] = useState<number | null>(null)
   const chapter = selectedCh !== null ? SEITO_TOC.find(c => c.ch === selectedCh) : null
 
   return (
     <div className="mt-1.5 bg-gray-800 rounded-xl p-3 border border-gray-700 space-y-2">
+      {/* 현재 선택된 태그 */}
+      {selectedCodes.length > 0 && (
+        <div className="flex flex-wrap gap-1 pb-2 border-b border-gray-700">
+          <span className="text-xs text-gray-500 w-full mb-0.5">선택됨 (클릭하면 제거)</span>
+          {selectedCodes.map(code => (
+            <button key={code} onClick={() => onSelect(code)}
+              className="px-2 py-0.5 rounded bg-blue-600 text-white text-xs font-bold hover:bg-red-600 transition">
+              {code} ✕
+            </button>
+          ))}
+        </div>
+      )}
       {/* 장 선택 */}
       <div className="flex flex-wrap gap-1.5">
         {SEITO_TOC.map(ch => (
@@ -95,7 +110,7 @@ function SectionPalette({
           onClick={onClose}
           className="ml-auto px-2 py-1 rounded-lg text-xs text-gray-500 hover:text-gray-300 transition"
         >
-          ✕
+          ✕ 닫기
         </button>
       </div>
 
@@ -103,16 +118,21 @@ function SectionPalette({
       {chapter && (
         <div className="flex flex-wrap gap-1.5 border-t border-gray-700 pt-2">
           <p className="w-full text-xs text-gray-500 mb-0.5">{chapter.ja} — {chapter.ko}</p>
-          {chapter.sections.map(s => (
-            <button
-              key={s.code}
-              onClick={() => onSelect(s.code)}
-              className="flex flex-col items-start px-2.5 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 transition text-left"
-            >
-              <span className="text-xs font-bold text-white">{s.code}</span>
-              <span className="text-[10px] text-gray-400">{s.ko}</span>
-            </button>
-          ))}
+          {chapter.sections.map(s => {
+            const isSelected = selectedCodes.includes(s.code)
+            return (
+              <button
+                key={s.code}
+                onClick={() => onSelect(s.code)}
+                className={`flex flex-col items-start px-2.5 py-1.5 rounded-lg transition text-left ${
+                  isSelected ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+              >
+                <span className="text-xs font-bold text-white">{s.code}</span>
+                <span className="text-[10px] text-gray-400">{s.ko}</span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -124,35 +144,52 @@ function QuestionRow({
   qNum,
   tag,
   onTagSelect,
-  onResultToggle,
+  onResultSet,
   onRemove,
 }: {
   qNum: number
   tag: SectionTag | undefined
   onTagSelect: (qNum: number, code: string) => void
-  onResultToggle: (qNum: number, current: 'correct' | 'wrong' | null) => void
+  onResultSet: (qNum: number, value: 'correct' | 'wrong') => void
   onRemove: (qNum: number) => void
 }) {
   const [open, setOpen] = useState(false)
-  const section = tag ? SECTION_MAP.get(tag.section_code) : null
-  const chNum = tag ? parseInt(tag.section_code.split('-')[0]) : null
+  const codes = tag?.section_codes ?? (tag?.section_code ? [tag.section_code] : [])
+  const firstCode = codes[0] ?? null
+  const chNum = firstCode ? parseInt(firstCode.split('-')[0]) : null
   const chColor = chNum ? CHAPTER_COLOR_MAP.get(chNum) : null
 
   return (
     <div className="group">
-      <div className="flex items-center gap-2 py-1">
+      <div className="flex items-center gap-2 py-1 flex-wrap">
         {/* 문제 번호 */}
         <span className="text-xs text-gray-600 w-6 text-right shrink-0">{qNum}</span>
 
-        {/* 태그 버튼 */}
-        {tag && section ? (
-          <button
-            onClick={() => setOpen(p => !p)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition ${chColor} text-white hover:opacity-80`}
-          >
-            <span className="font-bold">{tag.section_code}</span>
-            <span className="text-white/80 hidden sm:inline">{section.ko}</span>
-          </button>
+        {/* 태그 버튼들 (다중) */}
+        {codes.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {codes.map(code => {
+              const section = SECTION_MAP.get(code)
+              const cNum = parseInt(code.split('-')[0])
+              const cColor = CHAPTER_COLOR_MAP.get(cNum)
+              return (
+                <button
+                  key={code}
+                  onClick={() => setOpen(p => !p)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition ${cColor} text-white hover:opacity-80`}
+                >
+                  <span className="font-bold">{code}</span>
+                  {section && <span className="text-white/80 hidden sm:inline">{section.ko}</span>}
+                </button>
+              )
+            })}
+            <button
+              onClick={() => setOpen(p => !p)}
+              className="px-2 py-1 rounded-lg text-xs text-gray-600 border border-dashed border-gray-700 hover:border-gray-500 hover:text-gray-400 transition"
+            >
+              +
+            </button>
+          </div>
         ) : (
           <button
             onClick={() => setOpen(p => !p)}
@@ -166,7 +203,7 @@ function QuestionRow({
         {tag && (
           <div className="flex gap-1 ml-auto opacity-0 group-hover:opacity-100 transition">
             <button
-              onClick={() => onResultToggle(qNum, tag.result)}
+              onClick={() => onResultSet(qNum, 'correct')}
               className={`px-2 py-0.5 rounded text-xs font-bold transition ${
                 tag.result === 'correct'
                   ? 'bg-green-600 text-white'
@@ -176,7 +213,7 @@ function QuestionRow({
               ✓
             </button>
             <button
-              onClick={() => onResultToggle(qNum, tag.result === 'wrong' ? 'wrong' : null)}
+              onClick={() => onResultSet(qNum, 'wrong')}
               className={`px-2 py-0.5 rounded text-xs font-bold transition ${
                 tag.result === 'wrong'
                   ? 'bg-red-600 text-white'
@@ -198,11 +235,9 @@ function QuestionRow({
       {/* 팔레트 */}
       {open && (
         <SectionPalette
-          onSelect={(code) => {
-            onTagSelect(qNum, code)
-            setOpen(false)
-          }}
+          onSelect={(code) => onTagSelect(qNum, code)}
           onClose={() => setOpen(false)}
+          selectedCodes={codes}
         />
       )}
     </div>
@@ -351,22 +386,26 @@ export default function DenkoshiDetail() {
 
   // ── 섹션 태그 조작 ────────────────────────────────────────────
   const handleTagSelect = async (qNum: number, code: string) => {
-    await supabase
-      .from('denkoshi_section_tags')
-      .upsert(
-        { exam_id: examId, q_num: qNum, section_code: code, result: null },
-        { onConflict: 'exam_id,q_num' }
-      )
+    const existing = tags.find(t => t.q_num === qNum)
+    if (existing) {
+      const prev = existing.section_codes?.length ? existing.section_codes : (existing.section_code ? [existing.section_code] : [])
+      const next = prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+      await supabase
+        .from('denkoshi_section_tags')
+        .update({ section_codes: next, section_code: next[0] ?? code })
+        .eq('id', existing.id)
+    } else {
+      await supabase
+        .from('denkoshi_section_tags')
+        .insert({ exam_id: examId, q_num: qNum, section_code: code, section_codes: [code], result: null })
+    }
     await fetchTags()
   }
 
-  const handleResultToggle = async (qNum: number, current: 'correct' | 'wrong' | null) => {
+  const handleResultSet = async (qNum: number, value: 'correct' | 'wrong') => {
     const tag = tags.find(t => t.q_num === qNum)
     if (!tag) return
-    let next: 'correct' | 'wrong' | null
-    if (current === null) next = 'correct'
-    else if (current === 'correct') next = 'wrong'
-    else next = null
+    const next = tag.result === value ? null : value
     await supabase
       .from('denkoshi_section_tags')
       .update({ result: next })
@@ -477,7 +516,7 @@ export default function DenkoshiDetail() {
 
       {/* 헤더 */}
       <div className="px-5 pt-4 pb-3 border-b border-gray-800 shrink-0 flex items-center gap-3">
-        <button onClick={() => router.back()} className="text-gray-500 hover:text-white text-sm shrink-0">
+        <button onClick={() => router.push('/dashboard/denkoshi')} className="text-gray-500 hover:text-white text-sm shrink-0">
           ← 목록
         </button>
         <h1 className="text-sm font-bold truncate">第二種電気工事士 — {exam.label}</h1>
@@ -645,7 +684,7 @@ export default function DenkoshiDetail() {
                       qNum={qNum}
                       tag={tags.find(t => t.q_num === qNum)}
                       onTagSelect={handleTagSelect}
-                      onResultToggle={handleResultToggle}
+                      onResultSet={handleResultSet}
                       onRemove={handleRemoveTag}
                     />
                   ))}
@@ -661,7 +700,7 @@ export default function DenkoshiDetail() {
                       qNum={qNum}
                       tag={tags.find(t => t.q_num === qNum)}
                       onTagSelect={handleTagSelect}
-                      onResultToggle={handleResultToggle}
+                      onResultSet={handleResultSet}
                       onRemove={handleRemoveTag}
                     />
                   ))}
