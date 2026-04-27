@@ -396,7 +396,10 @@ export default function DenkoshiDetail() {
       const tempId = `temp-${qNum}`
       setTags(ts => [...ts, { id: tempId, exam_id: examId, q_num: qNum, section_code: code, section_codes: [code], result: null }])
       supabase.from('denkoshi_section_tags')
-        .insert({ exam_id: examId, q_num: qNum, section_code: code, section_codes: [code], result: null })
+        .upsert(
+          { exam_id: examId, q_num: qNum, section_code: code, section_codes: [code], result: null },
+          { onConflict: 'exam_id,q_num' }
+        )
         .then(() => fetchTags())
     }
   }
