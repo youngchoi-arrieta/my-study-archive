@@ -161,47 +161,38 @@ function QuestionRow({
 
   return (
     <div className="group">
-      <div className="flex items-center gap-2 py-1 flex-wrap">
+      <div className="flex items-center gap-2 py-1">
         {/* 문제 번호 */}
         <span className="text-xs text-gray-600 w-6 text-right shrink-0">{qNum}</span>
 
         {/* 태그 버튼들 (다중) */}
-        {codes.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {codes.map(code => {
-              const section = SECTION_MAP.get(code)
-              const cNum = parseInt(code.split('-')[0])
-              const cColor = CHAPTER_COLOR_MAP.get(cNum)
-              return (
-                <button
-                  key={code}
-                  onClick={() => setOpen(p => !p)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition ${cColor} text-white hover:opacity-80`}
-                >
-                  <span className="font-bold">{code}</span>
-                  {section && <span className="text-white/80 hidden sm:inline">{section.ko}</span>}
-                </button>
-              )
-            })}
-            <button
-              onClick={() => setOpen(p => !p)}
-              className="px-2 py-1 rounded-lg text-xs text-gray-600 border border-dashed border-gray-700 hover:border-gray-500 hover:text-gray-400 transition"
-            >
-              +
-            </button>
-          </div>
-        ) : (
+        <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+          {codes.map(code => {
+            const section = SECTION_MAP.get(code)
+            const cNum = parseInt(code.split('-')[0])
+            const cColor = CHAPTER_COLOR_MAP.get(cNum)
+            return (
+              <button
+                key={code}
+                onClick={() => setOpen(p => !p)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition ${cColor} text-white hover:opacity-80`}
+              >
+                <span className="font-bold">{code}</span>
+                {section && <span className="text-white/80 hidden sm:inline">{section.ko}</span>}
+              </button>
+            )
+          })}
           <button
             onClick={() => setOpen(p => !p)}
-            className="px-2.5 py-1 rounded-lg text-xs text-gray-600 border border-dashed border-gray-700 hover:border-gray-500 hover:text-gray-400 transition"
+            className="px-2 py-1 rounded-lg text-xs text-gray-600 border border-dashed border-gray-700 hover:border-gray-500 hover:text-gray-400 transition"
           >
-            + 소단원 태그
+            {codes.length === 0 ? '+ 소단원 태그' : '+'}
           </button>
-        )}
+        </div>
 
-        {/* 정오답 버튼 — 태그 있을 때만 */}
+        {/* 정오답 + 삭제 — 태그 있을 때만, 항상 표시 */}
         {tag && (
-          <div className="flex gap-1 ml-auto opacity-0 group-hover:opacity-100 transition">
+          <div className="flex gap-1 shrink-0">
             <button
               onClick={() => onResultSet(qNum, 'correct')}
               className={`px-2 py-0.5 rounded text-xs font-bold transition ${
@@ -385,39 +376,51 @@ export default function DenkoshiDetail() {
   }
 
   // ── 섹션 태그 조작 ────────────────────────────────────────────
+  // 옵티미스틱 업데이트: 로컬 state 먼저 반영 → 백그라운드 supabase sync
   const handleTagSelect = async (qNum: number, code: string) => {
     const existing = tags.find(t => t.q_num === qNum)
     if (existing) {
       const prev = existing.section_codes?.length ? existing.section_codes : (existing.section_code ? [existing.section_code] : [])
       const next = prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
-      await supabase
-        .from('denkoshi_section_tags')
+      // 즉시 반영
+      setTags(ts => ts.map(t => t.q_num === qNum
+        ? { ...t, section_codes: next, section_code: next[0] ?? '' }
+        : t
+      ))
+      // 백그라운드 sync
+      supabase.from('denkoshi_section_tags')
         .update({ section_codes: next, section_code: next[0] ?? code })
         .eq('id', existing.id)
+        .then(() => fetchTags())
     } else {
-      await supabase
-        .from('denkoshi_section_tags')
+      const tempId = `temp-${qNum}`
+      setTags(ts => [...ts, { id: tempId, exam_id: examId, q_num: qNum, section_code: code, section_codes: [code], result: null }])
+      supabase.from('denkoshi_section_tags')
         .insert({ exam_id: examId, q_num: qNum, section_code: code, section_codes: [code], result: null })
+        .then(() => fetchTags())
     }
-    await fetchTags()
   }
 
   const handleResultSet = async (qNum: number, value: 'correct' | 'wrong') => {
     const tag = tags.find(t => t.q_num === qNum)
     if (!tag) return
     const next = tag.result === value ? null : value
-    await supabase
-      .from('denkoshi_section_tags')
+    // 즉시 반영
+    setTags(ts => ts.map(t => t.q_num === qNum ? { ...t, result: next } : t))
+    // 백그라운드 sync
+    supabase.from('denkoshi_section_tags')
       .update({ result: next })
       .eq('id', tag.id)
-    await fetchTags()
+      .then(() => {})
   }
 
   const handleRemoveTag = async (qNum: number) => {
     const tag = tags.find(t => t.q_num === qNum)
     if (!tag) return
-    await supabase.from('denkoshi_section_tags').delete().eq('id', tag.id)
+    // 즉시 반영
     setTags(prev => prev.filter(t => t.q_num !== qNum))
+    // 백그라운드 sync
+    supabase.from('denkoshi_section_tags').delete().eq('id', tag.id).then(() => {})
   }
 
   // ── 단어장 조작 ───────────────────────────────────────────────
