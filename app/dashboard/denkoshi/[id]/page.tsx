@@ -248,8 +248,7 @@ export default function DenkoshiDetail() {
 
   const [session, setSession] = useState<Session | null>(null)
   const [editingScore, setEditingScore] = useState(false)
-  const [editScore, setEditScore] = useState('')
-  const [editComment, setEditComment] = useState('')
+  const [wrongMemos, setWrongMemos] = useState<Record<number, string>>({})  // qNum -> memo
 
   const [words, setWords] = useState<Word[]>([])
   const [decks, setDecks] = useState<Deck[]>([])
@@ -304,9 +303,11 @@ export default function DenkoshiDetail() {
       .eq('session', exam.term === '상' ? 1 : 2)
       .maybeSingle()
     setSession(data)
-    if (data) {
-      setEditScore(data.my_score?.toString() || '')
-      setEditComment(data.comments || '')
+    if (data?.comments) {
+      try {
+        const parsed = JSON.parse(data.comments)
+        if (parsed?.wrongMemos) setWrongMemos(parsed.wrongMemos)
+      } catch { /* legacy plain text, ignore */ }
     }
   }, [exam])
 
@@ -363,8 +364,11 @@ export default function DenkoshiDetail() {
     setSaving(false)
   }
 
-  const saveScore = async () => {
-    await upsert({ my_score: editScore ? parseFloat(editScore) : null, comments: editComment || null })
+  const saveScore = async (autoScore: number, memos: Record<number, string>) => {
+    await upsert({
+      my_score: autoScore,
+      comments: JSON.stringify({ wrongMemos: memos })
+    })
     setEditingScore(false)
   }
 
@@ -521,51 +525,97 @@ export default function DenkoshiDetail() {
     <main className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
 
       {/* 헤더 */}
-      <div className="px-5 pt-4 pb-3 border-b border-gray-800 shrink-0 flex items-center gap-3">
-        <button onClick={() => router.push('/dashboard/denkoshi')} className="text-gray-500 hover:text-white text-sm shrink-0">
-          ← 목록
-        </button>
-        <h1 className="text-sm font-bold truncate">第二種電気工事士 — {exam.label}</h1>
-        {session?.my_score != null && (
-          <span className={`text-sm font-bold tabular-nums shrink-0 ${scoreColor(session.my_score)}`}>
-            {session.my_score}점
-          </span>
-        )}
-        <button
-          onClick={() => {
-            setEditScore(session?.my_score?.toString() || '')
-            setEditComment(session?.comments || '')
-            setEditingScore(p => !p)
-          }}
-          className="text-xs text-gray-600 hover:text-gray-400 transition shrink-0 ml-auto"
-        >
-          ✏ 점수 메모
-        </button>
-      </div>
+      {/* 헤더 */}
+      {(() => {
+        const correctCount = tags.filter(t => t.result === 'correct').length
+        const wrongTags = tags.filter(t => t.result === 'wrong').sort((a,b) => a.q_num - b.q_num)
+        const autoScore = correctCount * 2
+        return (
+          <>
+            <div className="px-5 pt-4 pb-3 border-b border-gray-800 shrink-0 flex items-center gap-3">
+              <button onClick={() => router.push('/dashboard/denkoshi')} className="text-gray-500 hover:text-white text-sm shrink-0">
+                ← 목록
+              </button>
+              <h1 className="text-sm font-bold truncate">第二種電気工事士 — {exam.label}</h1>
+              {tags.some(t => t.result) && (
+                <span className={`text-sm font-bold tabular-nums shrink-0 ${scoreColor(autoScore)}`}>
+                  {autoScore}점
+                </span>
+              )}
+              <button
+                onClick={() => setEditingScore(p => !p)}
+                className="text-xs text-gray-600 hover:text-gray-400 transition shrink-0 ml-auto"
+              >
+                {editingScore ? '▲ 닫기' : '— 점수 메모'}
+              </button>
+            </div>
 
-      {/* 점수 메모 */}
-      {editingScore && (
-        <div className="px-5 py-3 border-b border-gray-800 bg-gray-900 flex gap-3 items-start shrink-0">
-          <input
-            type="number" min="0" max="100" placeholder="점수"
-            value={editScore} onChange={e => setEditScore(e.target.value)}
-            className="w-20 bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <input
-            type="text" placeholder="메모"
-            value={editComment} onChange={e => setEditComment(e.target.value)}
-            className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <button onClick={saveScore} disabled={saving}
-            className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50 shrink-0">
-            {saving ? '...' : '저장'}
-          </button>
-          <button onClick={() => setEditingScore(false)}
-            className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition shrink-0">
-            닫기
-          </button>
-        </div>
-      )}
+            {/* 점수 메모 패널 */}
+            {editingScore && (
+              <div className="px-5 py-4 border-b border-gray-800 bg-gray-900 shrink-0 space-y-4">
+                {/* 자동 총점 */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500">총점 (자동계산)</span>
+                  <span className={`text-xl font-bold tabular-nums ${scoreColor(autoScore)}`}>
+                    {autoScore}점
+                  </span>
+                  <span className="text-xs text-gray-600">
+                    정답 {correctCount}개 × 2점
+                    {wrongTags.length > 0 && ` · 오답 ${wrongTags.length}개`}
+                  </span>
+                  <button
+                    onClick={() => saveScore(autoScore, wrongMemos)}
+                    disabled={saving}
+                    className="ml-auto bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50"
+                  >
+                    {saving ? '...' : '저장'}
+                  </button>
+                </div>
+
+                {/* 오답 목록 + 메모 */}
+                {wrongTags.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-red-400 font-semibold">오답 문제 ({wrongTags.length}개)</p>
+                    {wrongTags.map(t => {
+                      const codes = t.section_codes?.length ? t.section_codes : (t.section_code ? [t.section_code] : [])
+                      return (
+                        <div key={t.q_num} className="flex items-start gap-3">
+                          <div className="flex items-center gap-1.5 shrink-0 w-28">
+                            <span className="text-xs font-bold text-red-400 w-5 text-right">{t.q_num}</span>
+                            <div className="flex flex-wrap gap-0.5">
+                              {codes.map(c => {
+                                const cNum = parseInt(c.split('-')[0])
+                                const cColor = CHAPTER_COLOR_MAP.get(cNum)
+                                return (
+                                  <span key={c} className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${cColor} text-white`}>{c}</span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                          <textarea
+                            value={wrongMemos[t.q_num] ?? ''}
+                            onChange={e => setWrongMemos(prev => ({ ...prev, [t.q_num]: e.target.value }))}
+                            placeholder="오답 사유 메모.."
+                            rows={1}
+                            className="flex-1 bg-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 resize-none placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {wrongTags.length === 0 && correctCount > 0 && (
+                  <p className="text-xs text-green-400">✓ 오답 없음</p>
+                )}
+                {correctCount === 0 && wrongTags.length === 0 && (
+                  <p className="text-xs text-gray-600">소단원 매핑에서 ✓ / ✗ 를 채점하면 자동으로 계산됩니다.</p>
+                )}
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {/* 본문 — 드래그 가능 분할 */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden select-none">
