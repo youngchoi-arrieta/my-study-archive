@@ -502,38 +502,58 @@ export default function DenkoshiHub() {
                   })}
                 </div>
 
-                {/* 단원별 정답률 */}
+                {/* 단원별 정답률 — 一般/配線 분리 바 */}
                 {chapterStats.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-600 mb-3">단원별 정답률</p>
-                    <div className="space-y-2">
-                      {chapterStats.map(({ ch, rate, genRate, wirRate, total }) => {
+                    <div className="flex items-center gap-4 mb-3">
+                      <p className="text-xs text-gray-600">단원별 정답률</p>
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 text-[10px] text-blue-400">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />一般 1~30
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] text-orange-400">
+                          <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />配線 31~50
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {chapterStats.map(({ ch, genRate, wirRate }) => {
                         const chData = SEITO_TOC.find(c => c.ch === ch)
-                        const barColor = rate === null ? 'bg-gray-700'
-                          : rate >= 70 ? 'bg-green-500'
-                          : rate >= 50 ? 'bg-yellow-500'
-                          : 'bg-red-500'
+                        const barColor = (rate: number) =>
+                          rate >= 70 ? 'bg-green-500' : rate >= 50 ? 'bg-yellow-500' : 'bg-red-500'
                         return (
-                          <div key={ch} className="flex items-center gap-3">
-                            <span className="text-xs text-gray-500 w-4 text-right shrink-0">{ch}장</span>
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between mb-0.5">
-                                <span className="text-xs text-gray-400 truncate">{chData?.ko}</span>
-                                <div className="flex items-center gap-2 shrink-0 ml-2">
-                                  {genRate !== null && (
-                                    <span className="text-[10px] text-blue-400">一般 {genRate}%</span>
-                                  )}
-                                  {wirRate !== null && (
-                                    <span className="text-[10px] text-orange-400">配線 {wirRate}%</span>
-                                  )}
-                                  <span className="text-xs font-bold text-white">{rate}%</span>
+                          <div key={ch} className="flex items-start gap-3">
+                            <span className="text-xs text-gray-500 w-4 text-right shrink-0 mt-1">{ch}장</span>
+                            <div className="flex-1 space-y-1.5">
+                              <span className="text-xs text-gray-400">{chData?.ko}</span>
+                              {/* 一般 바 */}
+                              {genRate !== null ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-blue-400 w-16 shrink-0">一般 {genRate}%</span>
+                                  <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                                    <div className={`${barColor(genRate)} h-1.5 rounded-full`} style={{ width: `${genRate}%` }} />
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="w-full bg-gray-800 rounded-full h-1.5">
-                                <div className={`${barColor} h-1.5 rounded-full transition-all`}
-                                  style={{ width: `${rate ?? 0}%` }} />
-                              </div>
-                              <p className="text-[10px] text-gray-700 mt-0.5">{total}문제 채점</p>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-700 w-16 shrink-0">一般 —</span>
+                                  <div className="flex-1 bg-gray-800/40 rounded-full h-1.5" />
+                                </div>
+                              )}
+                              {/* 配線 바 */}
+                              {wirRate !== null ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-orange-400 w-16 shrink-0">配線 {wirRate}%</span>
+                                  <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+                                    <div className={`${barColor(wirRate)} h-1.5 rounded-full`} style={{ width: `${wirRate}%` }} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-700 w-16 shrink-0">配線 —</span>
+                                  <div className="flex-1 bg-gray-800/40 rounded-full h-1.5" />
+                                </div>
+                              )}
                             </div>
                           </div>
                         )
