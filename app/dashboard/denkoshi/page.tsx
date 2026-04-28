@@ -35,6 +35,7 @@ type SectionTagRow = {
   exam_id: string
   q_num: number
   section_code: string
+  section_codes?: string[]
   result: 'correct' | 'wrong' | null
 }
 
@@ -324,7 +325,7 @@ export default function DenkoshiHub() {
   const fetchAllTags = useCallback(async () => {
     const { data } = await supabase
       .from('denkoshi_section_tags')
-      .select('exam_id, q_num, section_code, result')
+      .select('exam_id, q_num, section_code, section_codes, result')
     setAllTags((data || []) as SectionTagRow[])
   }, [])
 
@@ -365,9 +366,35 @@ export default function DenkoshiHub() {
 
   const scored = sessions.filter(s => s.my_score !== null)
   const passed = scored.filter(s => (s.my_score ?? 0) >= 60)
-  const avgScore = scored.length > 0
-    ? Math.round(scored.reduce((a, s) => a + (s.my_score ?? 0), 0) / scored.length)
+  const bestScore = scored.length > 0
+    ? Math.max(...scored.map(s => s.my_score ?? 0))
     : null
+
+  // 오답 분석 — result 있는 태그만
+  const resultTags = allTags.filter(t => t.result !== null)
+  const generalTags = resultTags.filter(t => t.q_num <= 30)
+  const wiringTags  = resultTags.filter(t => t.q_num >= 31)
+
+  const correctRate = (tags: SectionTagRow[]) =>
+    tags.length === 0 ? null : Math.round(tags.filter(t => t.result === 'correct').length / tags.length * 100)
+
+  // 단원별 정답률 (1~7장)
+  const chapterStats = Array.from({ length: 7 }, (_, i) => {
+    const ch = i + 1
+    const chTags = resultTags.filter(t => {
+      const codes = t.section_codes?.length ? t.section_codes : (t.section_code ? [t.section_code] : [])
+      return codes.some(c => parseInt(c.split('-')[0]) === ch)
+    })
+    const genTags = chTags.filter(t => t.q_num <= 30)
+    const wirTags = chTags.filter(t => t.q_num >= 31)
+    return {
+      ch,
+      total: chTags.length,
+      rate: correctRate(chTags),
+      genRate: correctRate(genTags),
+      wirRate: correctRate(wirTags),
+    }
+  }).filter(c => c.total > 0)
 
   const chartData: ChartItem[] = [...sessions]
     .filter((s): s is DenkoshiSession & { my_score: number } => s.my_score !== null)
@@ -421,15 +448,15 @@ export default function DenkoshiHub() {
                 <p className="text-2xl font-bold">{scored.length}<span className="text-sm text-gray-500 ml-1">/ 10</span></p>
               </div>
               <div className="bg-gray-900 rounded-xl p-4 text-center">
-                <p className="text-xs text-gray-500 mb-1">60점 이상</p>
+                <p className="text-xs text-gray-500 mb-1">합격권 도달</p>
                 <p className={`text-2xl font-bold ${passed.length > 0 ? 'text-green-400' : 'text-gray-500'}`}>
                   {passed.length}회
                 </p>
               </div>
               <div className="bg-gray-900 rounded-xl p-4 text-center">
-                <p className="text-xs text-gray-500 mb-1">평균 점수</p>
-                <p className={`text-2xl font-bold ${scoreColor(avgScore)}`}>
-                  {avgScore !== null ? `${avgScore}점` : '—'}
+                <p className="text-xs text-gray-500 mb-1">최고 점수</p>
+                <p className={`text-2xl font-bold ${scoreColor(bestScore)}`}>
+                  {bestScore !== null ? `${bestScore}점` : '—'}
                 </p>
               </div>
             </div>
@@ -438,6 +465,82 @@ export default function DenkoshiHub() {
               <div className="bg-gray-900 rounded-xl p-4 mb-5">
                 <p className="text-xs text-gray-500 mb-3">점수 추이</p>
                 <DenkoshiChart data={chartData} />
+              </div>
+            )}
+
+            {/* 오답 분석 */}
+            {resultTags.length > 0 && (
+              <div className="bg-gray-900 rounded-xl p-4 mb-5 space-y-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">오답 분석</p>
+
+                {/* 一般 vs 配線 */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: '一般問題 (1~30번)', tags: generalTags, color: 'bg-blue-500' },
+                    { label: '配線図問題 (31~50번)', tags: wiringTags, color: 'bg-orange-500' },
+                  ].map(({ label, tags, color }) => {
+                    const rate = correctRate(tags)
+                    const correct = tags.filter(t => t.result === 'correct').length
+                    return (
+                      <div key={label} className="bg-gray-800 rounded-xl p-3">
+                        <p className="text-xs text-gray-500 mb-2">{label}</p>
+                        {rate === null ? (
+                          <p className="text-xs text-gray-600">데이터 없음</p>
+                        ) : (
+                          <>
+                            <p className={`text-2xl font-bold mb-1 ${rate >= 60 ? 'text-green-400' : rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {rate}%
+                            </p>
+                            <div className="w-full bg-gray-700 rounded-full h-1.5 mb-1">
+                              <div className={`${color} h-1.5 rounded-full`} style={{ width: `${rate}%` }} />
+                            </div>
+                            <p className="text-xs text-gray-600">{correct} / {tags.length}문제</p>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* 단원별 정답률 */}
+                {chapterStats.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-600 mb-3">단원별 정답률</p>
+                    <div className="space-y-2">
+                      {chapterStats.map(({ ch, rate, genRate, wirRate, total }) => {
+                        const chData = SEITO_TOC.find(c => c.ch === ch)
+                        const barColor = rate === null ? 'bg-gray-700'
+                          : rate >= 70 ? 'bg-green-500'
+                          : rate >= 50 ? 'bg-yellow-500'
+                          : 'bg-red-500'
+                        return (
+                          <div key={ch} className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500 w-4 text-right shrink-0">{ch}장</span>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="text-xs text-gray-400 truncate">{chData?.ko}</span>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  {genRate !== null && (
+                                    <span className="text-[10px] text-blue-400">一般 {genRate}%</span>
+                                  )}
+                                  {wirRate !== null && (
+                                    <span className="text-[10px] text-orange-400">配線 {wirRate}%</span>
+                                  )}
+                                  <span className="text-xs font-bold text-white">{rate}%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-gray-800 rounded-full h-1.5">
+                                <div className={`${barColor} h-1.5 rounded-full transition-all`}
+                                  style={{ width: `${rate ?? 0}%` }} />
+                              </div>
+                              <p className="text-[10px] text-gray-700 mt-0.5">{total}문제 채점</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
