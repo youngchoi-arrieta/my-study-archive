@@ -2,7 +2,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../../lib/supabase'
 import Link from 'next/link'
-import { ScoreChart, type ChartItem } from './ScoreChart'
+import dynamic from 'next/dynamic'
+import type { ChartItem } from './ScoreChart'
+const ScoreChart = dynamic(
+  () => import('./ScoreChart').then(m => ({ default: m.ScoreChart })),
+  { ssr: false, loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} /> }
+)
 
 type ExamSession = {
   id: string

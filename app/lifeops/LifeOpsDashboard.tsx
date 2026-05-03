@@ -5,7 +5,11 @@ import { supabase } from '../../lib/supabase'
 import { Milestone, DailyLog, BudgetConfig } from './types'
 import MilestonesView from './components/MilestonesView'
 import DailyLogView from './components/DailyLogView'
-import BudgetView from './components/BudgetView'
+import dynamic from 'next/dynamic'
+const BudgetView = dynamic(() => import('./components/BudgetView'), {
+  ssr: false,
+  loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} />,
+})
 
 type Tab = 'summary' | 'milestones' | 'log' | 'budget'
 

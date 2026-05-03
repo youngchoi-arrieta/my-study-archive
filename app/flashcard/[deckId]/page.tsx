@@ -3,7 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import RichEditor from '@/app/components/RichEditor'
+import dynamic from 'next/dynamic'
+const RichEditor = dynamic(() => import('@/app/components/RichEditor'), {
+  ssr: false,
+  loading: () => <div style={{ height: 80, background: '#1e293b', borderRadius: 8, opacity: 0.5 }} />,
+})
 import { OcclusionEditor, OcclusionView, type OcclusionData } from '../OcclusionEditor'
 
 type CardType = 'basic' | 'multi' | 'cloze' | 'occlusion'

@@ -3,7 +3,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { DenkoshiChart, type ChartItem } from './DenkoshiChart'
+import dynamic from 'next/dynamic'
+import type { ChartItem } from './DenkoshiChart'
+const DenkoshiChart = dynamic(
+  () => import('./DenkoshiChart').then(m => ({ default: m.DenkoshiChart })),
+  { ssr: false, loading: () => <div style={{ height: 180, background: '#111827', borderRadius: 12 }} /> }
+)
 import { SEITO_TOC, SECTION_MAP } from '@/lib/constants-denkoshi'
 
 // ── 기출 메타데이터 ──────────────────────────────────────────────

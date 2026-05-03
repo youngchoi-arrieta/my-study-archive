@@ -5,7 +5,11 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import RichEditor from '../../components/RichEditor'
+import dynamic from 'next/dynamic'
+const RichEditor = dynamic(() => import('../../components/RichEditor'), {
+  ssr: false,
+  loading: () => <div style={{ height: 100, background: '#1e293b', borderRadius: 8, opacity: 0.5 }} />,
+})
 import { NATURE_COLORS } from '../../../lib/constants'
 import { useDiagramConfig } from '../../../lib/useDiagramConfig'
 
