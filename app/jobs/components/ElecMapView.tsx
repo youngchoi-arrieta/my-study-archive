@@ -26,6 +26,17 @@ export type JobZone = {
 }
 
 // ─────────────────────────────────────────────
+// 전략 카드 타입 + 기본값
+// ─────────────────────────────────────────────
+type StrategyCard = { title: string; color: string; items: string[] }
+
+const DEFAULT_STRATEGY: StrategyCard[] = [
+  { title: '즉시 액션 가능', color: '#16a34a', items: ['5/28 電気工事士2種 CBT (후쿠오카)', '전기기사 실기 결과 6/12 확인', '다산에듀 결과 대기'] },
+  { title: '6개월 내 타겟', color: '#2563eb', items: ['변전설비 유지보수 업체 지원 (서류 준비)', 'JLPT N4 (7월 시험)', 'LinkedIn 외국계 FM cold outreach'] },
+  { title: '2년 후 목표', color: '#7c3aed', items: ['보호계전 전문업체 경력직 이동', '電験3種 취득 (일본 기인국 피벗)', 'CBRE/Equinix 전기 엔지니어 지원'] },
+]
+
+// ─────────────────────────────────────────────
 // 기본 데이터
 // ─────────────────────────────────────────────
 const DEFAULT_ZONES: JobZone[] = [
@@ -478,11 +489,56 @@ function ReadPanel({ zone, onEdit }: { zone: JobZone; onEdit: () => void }) {
   )
 }
 
+// ─── 전략 카드 인라인 편집 ───
+function StrategyEditInline({ card, onSave, onCancel }: {
+  card: StrategyCard
+  onSave: (updated: StrategyCard) => void
+  onCancel: () => void
+}) {
+  const [title, setTitle] = useState(card.title)
+  const [itemsText, setItemsText] = useState(card.items.join('\n'))
+
+  const inp: React.CSSProperties = {
+    width: '100%', background: '#0f172a', border: '1px solid #334155',
+    borderRadius: 6, padding: '5px 8px', color: '#e2e8f0', fontSize: 12,
+    boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div>
+        <span style={{ color: '#64748b', fontSize: 10, display: 'block', marginBottom: 2 }}>제목</span>
+        <input style={inp} value={title} onChange={e => setTitle(e.target.value)} />
+      </div>
+      <div>
+        <span style={{ color: '#64748b', fontSize: 10, display: 'block', marginBottom: 2 }}>항목 (줄바꿈으로 구분)</span>
+        <textarea
+          style={{ ...inp, resize: 'vertical' as const, minHeight: 80, fontFamily: 'inherit' }}
+          value={itemsText}
+          onChange={e => setItemsText(e.target.value)}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={() => onSave({ ...card, title, items: itemsText.split('\n').map(s => s.trim()).filter(Boolean) })}
+          style={{ flex: 1, background: card.color, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          저장
+        </button>
+        <button onClick={onCancel}
+          style={{ flex: 1, background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 6, padding: '6px 0', fontSize: 12, cursor: 'pointer' }}>
+          취소
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────
 // 메인
 // ─────────────────────────────────────────────
 export default function ElecMapView() {
   const [zones, setZones] = useState<JobZone[]>(DEFAULT_ZONES)
+  const [strategy, setStrategy] = useState<StrategyCard[]>(DEFAULT_STRATEGY)
+  const [editingStratIdx, setEditingStratIdx] = useState<number | null>(null)
   const [selected, setSelected] = useState<JobZone | null>(DEFAULT_ZONES.find(z => z.id === 'relay') || null)
   const [hovered, setHovered] = useState<string | null>(null)
   const [filterTag, setFilterTag] = useState<string | null>(null)
@@ -497,6 +553,11 @@ export default function ElecMapView() {
       const overrides: Record<string, JobZone> = {}
       data.forEach((row: { id: string; data: JobZone }) => { overrides[row.id] = row.data })
       setZones(prev => prev.map(z => overrides[z.id] ? { ...z, ...overrides[z.id] } : z))
+      // 전략 카드 로드
+      const stratRow = data.find((r: { id: string }) => r.id === '__strategy__')
+      if (stratRow && Array.isArray((stratRow.data as unknown as { cards: StrategyCard[] }).cards)) {
+        setStrategy((stratRow.data as unknown as { cards: StrategyCard[] }).cards)
+      }
     }
     load()
   }, [])
@@ -506,6 +567,14 @@ export default function ElecMapView() {
     setSelected(updated)
     setEditing(false)
     const { error } = await supabase.from('elec_zones').upsert({ id: updated.id, data: updated })
+    setSaveMsg(error ? '저장 실패 ✗' : '저장 완료 ✓')
+    setTimeout(() => setSaveMsg(''), 2500)
+  }
+
+  async function saveStrategy(updated: StrategyCard[]) {
+    setStrategy(updated)
+    setEditingStratIdx(null)
+    const { error } = await supabase.from('elec_zones').upsert({ id: '__strategy__', data: { cards: updated } })
     setSaveMsg(error ? '저장 실패 ✗' : '저장 완료 ✓')
     setTimeout(() => setSaveMsg(''), 2500)
   }
@@ -638,21 +707,45 @@ export default function ElecMapView() {
 
       {/* 전략 카드 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        {[
-          { title: '즉시 액션 가능', color: '#16a34a', items: ['5/28 電気工事士2種 CBT (후쿠오카)', '전기기사 실기 결과 6/12 확인', '다산에듀 결과 대기'] },
-          { title: '6개월 내 타겟', color: '#2563eb', items: ['변전설비 유지보수 업체 지원 (서류 준비)', 'JLPT N4 (7월 시험)', 'LinkedIn 외국계 FM cold outreach'] },
-          { title: '2년 후 목표', color: '#7c3aed', items: ['보호계전 전문업체 경력직 이동', '電験3種 취득 (일본 기인국 피벗)', 'CBRE/Equinix 전기 엔지니어 지원'] },
-        ].map(col => (
-          <div key={col.title} style={{ background: '#0f172a', borderRadius: 14, border: '1px solid #1e293b', padding: 16, borderTop: `3px solid ${col.color}` }}>
-            <p style={{ color: col.color, fontSize: 12, fontWeight: 700, margin: '0 0 10px' }}>{col.title}</p>
-            {col.items.map((item, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                <span style={{ color: col.color, fontSize: 10, marginTop: 2, flexShrink: 0 }}>▸</span>
-                <span style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{item}</span>
+        {strategy.map((col, idx) => {
+          const isEditingThis = editingStratIdx === idx
+          return (
+            <div key={col.title} style={{
+              background: '#0f172a', borderRadius: 14,
+              border: isEditingThis ? `1px solid ${col.color}88` : '1px solid #1e293b',
+              padding: 16, borderTop: `3px solid ${col.color}`
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <p style={{ color: col.color, fontSize: 12, fontWeight: 700, margin: 0 }}>{col.title}</p>
+                {isEditingThis ? null : (
+                  <button onClick={() => setEditingStratIdx(idx)} style={{
+                    background: 'none', border: 'none', color: '#475569',
+                    fontSize: 11, cursor: 'pointer', padding: '2px 6px',
+                    borderRadius: 4, lineHeight: 1,
+                  }}>✏</button>
+                )}
               </div>
-            ))}
-          </div>
-        ))}
+
+              {isEditingThis ? (
+                <StrategyEditInline
+                  card={col}
+                  onSave={updated => {
+                    const next = strategy.map((c, i) => i === idx ? updated : c)
+                    saveStrategy(next)
+                  }}
+                  onCancel={() => setEditingStratIdx(null)}
+                />
+              ) : (
+                col.items.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                    <span style={{ color: col.color, fontSize: 10, marginTop: 2, flexShrink: 0 }}>▸</span>
+                    <span style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>{item}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
