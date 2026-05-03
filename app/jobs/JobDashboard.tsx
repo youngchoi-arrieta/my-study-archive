@@ -7,11 +7,12 @@ import TimelineView from './components/TimelineView'
 import ListView from './components/ListView'
 import JobModal from './components/JobModal'
 import JobDetailModal from './components/JobDetailModal'
+import ElecMapView from './components/ElecMapView'
 
 export default function JobDashboard() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'list' | 'kanban' | 'timeline'>('list')
+  const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap'>('list')
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -96,6 +97,7 @@ export default function JobDashboard() {
             { id: 'list', label: '리스트' },
             { id: 'kanban', label: '칸반 보드' },
             { id: 'timeline', label: '마감일 타임라인' },
+            { id: 'elecmap', label: '⚡ 전기직 지도' },
           ] as const).map(t => (
             <button
               key={t.id}
@@ -162,6 +164,8 @@ export default function JobDashboard() {
             jobs={filtered}
             onCard={setDetailJob}
           />
+        ) : tab === 'elecmap' ? (
+          <ElecMapView />
         ) : (
           <TimelineView jobs={filtered} onCard={setDetailJob} />
         )}
