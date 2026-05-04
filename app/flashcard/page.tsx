@@ -10,6 +10,7 @@ type Deck = {
   description: string | null
   created_at: string
   exam_type: string | null
+  sort_order: number
   card_count?: number
 }
 
@@ -40,6 +41,7 @@ function FlashcardPage() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
+  const [reordering, setReordering] = useState(false)
   const USER_ID = 'flashcard_user'
 
   const loadDecks = useCallback(async () => {
@@ -48,7 +50,8 @@ function FlashcardPage() {
       .from('flashcard_decks')
       .select('*, flashcard_cards(count)')
       .eq('user_id', USER_ID)
-      .order('created_at', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false }) // tie-breaker
 
     if (examParam !== 'all') {
       q = q.eq('exam_type', examParam)
@@ -68,11 +71,28 @@ function FlashcardPage() {
   const addDeck = async () => {
     if (!newName.trim()) return
     setSaving(true)
+    // 같은 exam_type 그룹에서 max(sort_order) + 1 계산
+    const examType = examParam !== 'all' ? examParam : null
+    let maxQ = supabase
+      .from('flashcard_decks')
+      .select('sort_order')
+      .eq('user_id', USER_ID)
+      .order('sort_order', { ascending: false })
+      .limit(1)
+    if (examType !== null) {
+      maxQ = maxQ.eq('exam_type', examType)
+    } else {
+      maxQ = maxQ.is('exam_type', null)
+    }
+    const { data: maxRow } = await maxQ
+    const nextOrder = (maxRow?.[0]?.sort_order ?? 0) + 1
+
     await supabase.from('flashcard_decks').insert({
       user_id: USER_ID,
       name: newName.trim(),
       description: newDesc.trim() || null,
-      exam_type: examParam !== 'all' ? examParam : null,
+      exam_type: examType,
+      sort_order: nextOrder,
     })
     setNewName(''); setNewDesc(''); setShowAdd(false)
     await loadDecks()
@@ -84,6 +104,32 @@ function FlashcardPage() {
     await supabase.from('flashcard_decks').delete().eq('id', id)
     setDecks(prev => prev.filter(d => d.id !== id))
   }
+
+  // 두 덱의 sort_order를 swap
+  const swapOrder = async (idxA: number, idxB: number) => {
+    if (reordering) return
+    if (idxA < 0 || idxB < 0 || idxA >= decks.length || idxB >= decks.length) return
+    setReordering(true)
+
+    const deckA = decks[idxA]
+    const deckB = decks[idxB]
+
+    // 낙관적 UI 업데이트
+    const newDecks = [...decks]
+    newDecks[idxA] = { ...deckB, sort_order: deckA.sort_order }
+    newDecks[idxB] = { ...deckA, sort_order: deckB.sort_order }
+    setDecks(newDecks)
+
+    // DB 업데이트 (두 번 update)
+    await Promise.all([
+      supabase.from('flashcard_decks').update({ sort_order: deckB.sort_order }).eq('id', deckA.id),
+      supabase.from('flashcard_decks').update({ sort_order: deckA.sort_order }).eq('id', deckB.id),
+    ])
+    setReordering(false)
+  }
+
+  const moveUp   = (idx: number) => swapOrder(idx, idx - 1)
+  const moveDown = (idx: number) => swapOrder(idx, idx + 1)
 
   const meta = EXAM_META[examParam]
   const backHref = meta?.back || '/'
@@ -152,9 +198,31 @@ function FlashcardPage() {
           )
           : (
             <div className="space-y-3">
-              {decks.map(deck => (
-                <div key={deck.id} className="bg-gray-900 rounded-2xl p-5 flex items-center gap-4 hover:bg-gray-800 transition group">
-                  <div className="flex-1 cursor-pointer" onClick={() => router.push(`/flashcard/${deck.id}`)}>
+              {decks.map((deck, idx) => (
+                <div key={deck.id} className="bg-gray-900 rounded-2xl p-5 flex items-center gap-3 hover:bg-gray-800 transition group">
+                  {/* 순서 변경 버튼들 */}
+                  <div className="flex flex-col gap-0.5 shrink-0">
+                    <button
+                      onClick={() => moveUp(idx)}
+                      disabled={idx === 0 || reordering}
+                      className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-xs px-1 transition"
+                      aria-label="위로"
+                      title="위로"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveDown(idx)}
+                      disabled={idx === decks.length - 1 || reordering}
+                      className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-xs px-1 transition"
+                      aria-label="아래로"
+                      title="아래로"
+                    >
+                      ▼
+                    </button>
+                  </div>
+
+                  <div className="flex-1 cursor-pointer min-w-0" onClick={() => router.push(`/flashcard/${deck.id}`)}>
                     <h2 className="font-bold text-lg">{deck.name}</h2>
                     {deck.description && <p className="text-gray-400 text-sm mt-0.5">{deck.description}</p>}
                     <p className="text-gray-600 text-xs mt-1">{deck.card_count}장</p>
@@ -188,4 +256,3 @@ function FlashcardPage() {
     </main>
   )
 }
-
