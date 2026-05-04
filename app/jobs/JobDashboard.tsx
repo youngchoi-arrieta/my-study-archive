@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Job } from './types'
+import { Job, TRACK_LABELS } from './types'
 import KanbanView from './components/KanbanView'
 import TimelineView from './components/TimelineView'
 import ListView from './components/ListView'
@@ -15,6 +15,7 @@ export default function JobDashboard() {
   const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap'>('list')
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
+  const [filterTrack, setFilterTrack] = useState<Job['track'] | ''>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editJob, setEditJob] = useState<Job | null>(null)
   const [detailJob, setDetailJob] = useState<Job | null>(null)
@@ -58,6 +59,7 @@ export default function JobDashboard() {
     const q = search.toLowerCase()
     if (q && !j.company.toLowerCase().includes(q) && !(j.role || '').toLowerCase().includes(q)) return false
     if (filterCat && j.cat !== filterCat) return false
+    if (filterTrack && (j.track || 'job') !== filterTrack) return false
     return true
   })
 
@@ -73,6 +75,15 @@ export default function JobDashboard() {
     }).length,
   }
 
+  // 트랙별 카운트 (전체 jobs 기준, 필터 무관)
+  const trackCounts = {
+    all: jobs.length,
+    job: jobs.filter(j => (j.track || 'job') === 'job').length,
+    scholarship: jobs.filter(j => j.track === 'scholarship').length,
+    admission: jobs.filter(j => j.track === 'admission').length,
+    ra: jobs.filter(j => j.track === 'ra').length,
+  }
+
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6">
       <div className="max-w-7xl mx-auto">
@@ -81,17 +92,17 @@ export default function JobDashboard() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <a href="/" className="text-gray-400 hover:text-white text-sm transition">← 홈</a>
-            <h1 className="text-3xl font-bold">💼 구직 대시보드</h1>
+            <h1 className="text-3xl font-bold">💼 진로 대시보드</h1>
           </div>
           <button
             onClick={() => { setEditJob(null); setModalOpen(true) }}
             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm transition"
           >
-            + 공고 추가
+            + 추가
           </button>
         </div>
 
-        {/* 탭 */}
+        {/* 뷰 탭 */}
         <div className="flex gap-1 border-b border-gray-800 mb-5">
           {([
             { id: 'list', label: '리스트' },
@@ -113,11 +124,37 @@ export default function JobDashboard() {
           ))}
         </div>
 
+        {/* 트랙 필터 */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setFilterTrack('')}
+            className={`px-3 py-1 rounded-full text-sm transition ${
+              filterTrack === '' ? 'bg-white text-gray-900 font-medium' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            전체 <span className="ml-1 text-gray-500 text-xs">{trackCounts.all}</span>
+          </button>
+          {(Object.keys(TRACK_LABELS) as Job['track'][]).map(t => (
+            <button
+              key={t}
+              onClick={() => setFilterTrack(filterTrack === t ? '' : t)}
+              className={`px-3 py-1 rounded-full text-sm transition ${
+                filterTrack === t
+                  ? 'bg-gray-200 text-gray-900 font-medium'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {TRACK_LABELS[t]}
+              <span className="ml-1 text-gray-500 text-xs">{trackCounts[t]}</span>
+            </button>
+          ))}
+        </div>
+
         {/* 검색 / 필터 */}
         <div className="flex gap-2 flex-wrap mb-5">
           <input
             className="flex-1 min-w-48 bg-gray-800 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
-            placeholder="🔍 회사명, 직무 검색..."
+            placeholder="🔍 회사명·기관명, 직무·전공 검색..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />

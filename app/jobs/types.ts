@@ -3,6 +3,7 @@ export type Job = {
   company: string
   role: string
   cat: 'top' | 'foreign' | 'sme' | 'dc'
+  track: 'job' | 'scholarship' | 'admission' | 'ra'
   priority: 'high' | 'mid' | 'low'
   stage: 'watch' | 'apply' | 'submitted' | 'interview' | 'offer' | 'pass'
   deadline: string | null
@@ -34,6 +35,20 @@ export const CAT_COLORS: Record<Job['cat'], string> = {
   foreign: 'bg-teal-900 text-teal-300',
   sme:     'bg-yellow-900 text-yellow-300',
   dc:      'bg-purple-900 text-purple-300',
+}
+
+export const TRACK_LABELS: Record<Job['track'], string> = {
+  job:         '💼 직장',
+  scholarship: '🎓 장학금',
+  admission:   '🏫 대학원',
+  ra:          '🔬 RA',
+}
+
+export const TRACK_COLORS: Record<Job['track'], string> = {
+  job:         'bg-gray-800 text-gray-300',
+  scholarship: 'bg-pink-900 text-pink-300',
+  admission:   'bg-emerald-900 text-emerald-300',
+  ra:          'bg-orange-900 text-orange-300',
 }
 
 export function daysLeft(deadline: string | null): number | null {

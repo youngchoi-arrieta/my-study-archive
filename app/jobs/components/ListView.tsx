@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Job, STAGES, CAT_LABELS, CAT_COLORS, daysLeft } from '../types'
+import { Job, STAGES, CAT_LABELS, CAT_COLORS, TRACK_LABELS, TRACK_COLORS, daysLeft } from '../types'
 
 type Props = {
   jobs: Job[]
@@ -48,7 +48,7 @@ export default function ListView({ jobs, onCard, onStageChange }: Props) {
       {filtered.length === 0 ? (
         <div className="text-center py-20 text-gray-500">
           <p className="text-4xl mb-3">📭</p>
-          <p>해당 단계의 공고가 없어요</p>
+          <p>해당 단계의 항목이 없어요</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -56,6 +56,7 @@ export default function ListView({ jobs, onCard, onStageChange }: Props) {
             const dl = daysLeft(job.deadline)
             const dlText = dl === null ? '-' : dl < 0 ? '마감됨' : `D-${dl}`
             const dlColor = dl !== null && dl < 0 ? 'text-red-400' : dl !== null && dl <= 3 ? 'text-yellow-400' : 'text-gray-500'
+            const trk = job.track || 'job'
             return (
               <div
                 key={job.id}
@@ -68,8 +69,13 @@ export default function ListView({ jobs, onCard, onStageChange }: Props) {
                   onClick={() => onCard(job)}
                 >
                   <div className="flex items-center gap-2 flex-wrap">
+                    {trk !== 'job' && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${TRACK_COLORS[trk]}`}>
+                        {TRACK_LABELS[trk]}
+                      </span>
+                    )}
                     <span className="font-semibold text-white">{job.company}</span>
-                    <span className="text-gray-400 text-sm">{job.role || '직무 미입력'}</span>
+                    <span className="text-gray-400 text-sm">{job.role || '미입력'}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${CAT_COLORS[job.cat]}`}>
                       {CAT_LABELS[job.cat]}
                     </span>

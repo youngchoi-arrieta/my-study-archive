@@ -1,5 +1,5 @@
 'use client'
-import { Job, STAGES, CAT_LABELS, CAT_COLORS, daysLeft } from '../types'
+import { Job, STAGES, CAT_LABELS, CAT_COLORS, TRACK_LABELS, TRACK_COLORS, daysLeft } from '../types'
 
 type Props = {
   job: Job
@@ -13,6 +13,7 @@ export default function JobDetailModal({ job, onClose, onEdit, onDelete, onStage
   const dl = daysLeft(job.deadline)
   const dlText = dl === null ? '없음' : dl < 0 ? '마감됨' : `D-${dl}`
   const dlColor = dl !== null && dl < 0 ? 'text-red-400' : dl !== null && dl <= 3 ? 'text-yellow-400' : 'text-gray-400'
+  const trk = job.track || 'job'
 
   async function handleDelete() {
     if (!confirm('삭제할까요?')) return
@@ -26,8 +27,13 @@ export default function JobDetailModal({ job, onClose, onEdit, onDelete, onStage
         {/* 헤더 */}
         <div className="flex items-start justify-between mb-4">
           <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${TRACK_COLORS[trk]}`}>
+                {TRACK_LABELS[trk]}
+              </span>
+            </div>
             <h2 className="text-xl font-bold text-white">{job.company}</h2>
-            <p className="text-gray-400 text-sm mt-0.5">{job.role || '직무 미입력'}</p>
+            <p className="text-gray-400 text-sm mt-0.5">{job.role || '미입력'}</p>
           </div>
           <span className={`text-xs px-2 py-1 rounded-full ${CAT_COLORS[job.cat]}`}>
             {CAT_LABELS[job.cat]}
@@ -76,7 +82,7 @@ export default function JobDetailModal({ job, onClose, onEdit, onDelete, onStage
         {/* 공고 링크 */}
         {job.url && (
           <div className="mb-4">
-            <p className="text-xs text-gray-500 mb-1">공고 링크</p>
+            <p className="text-xs text-gray-500 mb-1">링크</p>
             <a href={job.url} target="_blank" rel="noopener noreferrer"
               className="text-blue-400 hover:text-blue-300 text-sm break-all transition">
               {job.url}
