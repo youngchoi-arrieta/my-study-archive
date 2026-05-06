@@ -307,7 +307,7 @@ function FrequencyMatrix({ allTags }: { allTags: SectionTagRow[] }) {
 
 // ── 메인 ────────────────────────────────────────────────────────
 export default function DenkoshiHub() {
-  const [activeTab, setActiveTab] = useState<'scores' | 'frequency'>('scores')
+  const [activeTab, setActiveTab] = useState<'scores' | 'frequency' | 'tools'>('scores')
   const [sessions, setSessions] = useState<DenkoshiSession[]>([])
   const [allTags, setAllTags] = useState<SectionTagRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -425,8 +425,9 @@ export default function DenkoshiHub() {
         {/* 탭 */}
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">
           {([
-            { key: 'scores', label: '📋 기출 풀이 현황' },
-            { key: 'frequency', label: '📊 소단원 출제 빈도' },
+            { key: 'scores', label: '📋 기출 현황' },
+            { key: 'frequency', label: '📊 출제 빈도' },
+            { key: 'tools', label: '🔧 도구·편집' },
           ] as const).map(({ key, label }) => (
             <button
               key={key}
@@ -629,133 +630,6 @@ export default function DenkoshiHub() {
                 </div>
 
                 <p className="text-gray-600 text-xs mt-3">클릭하면 PDF 뷰어 + 소단원 매핑으로 이동합니다.</p>
-
-                {/* 배선도 분석 + 플래시카드 */}
-                <div className="mt-6 pt-6 border-t border-gray-800 space-y-2">
-                  <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">분석 도구</p>
-                  <Link
-                    href="/dashboard/denkoshi/wiring"
-                    className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">📐 배선도 분석</p>
-                      <p className="text-xs text-gray-500 mt-0.5">배선도 이미지 + 자문자답 Q&A 세션</p>
-                    </div>
-                    <span className="text-gray-600 text-xs">→</span>
-                  </Link>
-                  <Link
-                    href="/flashcard?exam=denkoshi"
-                    className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">🃏 第二種 전용 덱</p>
-                      <p className="text-xs text-gray-500 mt-0.5">법령·공사방법·배선재료·도기호·용어·패턴</p>
-                    </div>
-                    <span className="text-gray-600 text-xs">→</span>
-                  </Link>
-                </div>
-
-                {/* 풀이 기록 상세 편집 */}
-                {sessions.length > 0 && (
-                  <div className="mt-6">
-                    <p className="text-xs text-gray-600 uppercase tracking-widest mb-2">풀이 기록 편집</p>
-                    <div className="space-y-1.5">
-                      {[...sessions]
-                        .sort((a, b) => {
-                          if (a.year !== b.year) return (b.year ?? 0) - (a.year ?? 0)
-                          return (b.session ?? 0) - (a.session ?? 0)
-                        })
-                        .map(s => {
-                          const isExpanded = expanded === s.id
-                          const isEditing  = editing === s.id
-                          const label = `${s.year}년 ${s.session === 1 ? '상기' : '하기'}`
-                          return (
-                            <div key={s.id} className="bg-gray-900 rounded-xl overflow-hidden">
-                              <div
-                                className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-800 transition"
-                                onClick={() => setExpanded(isExpanded ? null : s.id)}
-                              >
-                                <span className="font-semibold text-sm">{label}</span>
-                                <div className="flex items-center gap-3">
-                                  <span className={`text-sm font-bold ${scoreColor(s.my_score)}`}>
-                                    {s.my_score !== null ? `${s.my_score}점` : '—'}
-                                  </span>
-                                  <span className="text-gray-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
-                                </div>
-                              </div>
-                              {isExpanded && (
-                                <div className="border-t border-gray-800 p-4">
-                                  {isEditing ? (
-                                    <div className="space-y-3">
-                                      <div>
-                                        <label className="text-xs text-gray-400 mb-1 block">점수 / 100</label>
-                                        <input type="number" min="0" max="100"
-                                          className="bg-gray-800 rounded-lg px-3 py-2 text-white w-28 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                                          value={editScore}
-                                          onChange={e => setEditScore(e.target.value)}
-                                          placeholder="점수 입력"
-                                        />
-                                      </div>
-                                      <p className="text-xs text-gray-700">영역별 메모는 기출 상세 페이지에서 편집할 수 있습니다.</p>
-                                      <div className="flex gap-2">
-                                        <button onClick={() => handleSave(s)} disabled={saving}
-                                          className="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
-                                          {saving ? '저장 중...' : '저장'}
-                                        </button>
-                                        <button onClick={() => setEditing(null)}
-                                          className="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded-lg text-xs transition">
-                                          취소
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div>
-                                      {s.comments && (() => {
-                                        try {
-                                          const parsed = JSON.parse(s.comments)
-                                          const gm = parsed?.groupMemos as Record<string, string> | undefined
-                                          const entries = gm ? Object.entries(gm).filter(([, v]) => v) : []
-                                          if (entries.length === 0) return null
-                                          return (
-                                            <div className="mb-3 space-y-1.5 bg-gray-800 rounded-xl p-3">
-                                              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">영역별 메모</p>
-                                              {entries.map(([k, v]) => (
-                                                <p key={k} className="text-xs text-gray-300">
-                                                  <span className="text-gray-500 mr-1">{k}번</span>{String(v)}
-                                                </p>
-                                              ))}
-                                            </div>
-                                          )
-                                        } catch {
-                                          return <p className="text-sm text-gray-400 mb-3 leading-relaxed">{s.comments}</p>
-                                        }
-                                      })()}
-                                      <div className="flex gap-2">
-                                        <button onClick={() => startEdit(s)}
-                                          className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
-                                          편집
-                                        </button>
-                                        <button onClick={() => handleDelete(s.id)}
-                                          className="text-gray-600 hover:text-red-400 px-3 py-1.5 rounded-lg text-xs transition">
-                                          삭제
-                                        </button>
-                                        <Link
-                                          href={`/dashboard/denkoshi/${getExamId(s.year ?? 0, s.session === 1 ? '상' : '하')}`}
-                                          className="text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-lg text-xs transition"
-                                        >
-                                          → 기출 보기
-                                        </Link>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -764,6 +638,140 @@ export default function DenkoshiHub() {
         {/* ── 탭: 소단원 출제 빈도 ── */}
         {activeTab === 'frequency' && (
           <FrequencyMatrix allTags={allTags} />
+        )}
+
+        {/* ── 탭: 도구·편집 ── */}
+        {activeTab === 'tools' && (
+          <div className="space-y-6">
+            {/* 분석 도구 */}
+            <div>
+              <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">분석 도구</p>
+              <div className="space-y-2">
+                <Link
+                  href="/dashboard/denkoshi/wiring"
+                  className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">📐 배선도 분석</p>
+                    <p className="text-xs text-gray-500 mt-0.5">배선도 이미지 + 자문자답 Q&A 세션</p>
+                  </div>
+                  <span className="text-gray-600 text-xs">→</span>
+                </Link>
+                <Link
+                  href="/flashcard?exam=denkoshi"
+                  className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">🃏 第二種 전용 덱</p>
+                    <p className="text-xs text-gray-500 mt-0.5">법령·공사방법·배선재료·도기호·용어·패턴</p>
+                  </div>
+                  <span className="text-gray-600 text-xs">→</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* 풀이 기록 편집 */}
+            {sessions.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-600 uppercase tracking-widest mb-2">풀이 기록 편집</p>
+                <div className="space-y-1.5">
+                  {[...sessions]
+                    .sort((a, b) => {
+                      if (a.year !== b.year) return (b.year ?? 0) - (a.year ?? 0)
+                      return (b.session ?? 0) - (a.session ?? 0)
+                    })
+                    .map(s => {
+                      const isExpanded = expanded === s.id
+                      const isEditing  = editing === s.id
+                      const label = `${s.year}년 ${s.session === 1 ? '상기' : '하기'}`
+                      return (
+                        <div key={s.id} className="bg-gray-900 rounded-xl overflow-hidden">
+                          <div
+                            className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-800 transition"
+                            onClick={() => setExpanded(isExpanded ? null : s.id)}
+                          >
+                            <span className="font-semibold text-sm">{label}</span>
+                            <div className="flex items-center gap-3">
+                              <span className={`text-sm font-bold ${scoreColor(s.my_score)}`}>
+                                {s.my_score !== null ? `${s.my_score}점` : '—'}
+                              </span>
+                              <span className="text-gray-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                            </div>
+                          </div>
+                          {isExpanded && (
+                            <div className="border-t border-gray-800 p-4">
+                              {isEditing ? (
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className="text-xs text-gray-400 mb-1 block">점수 / 100</label>
+                                    <input type="number" min="0" max="100"
+                                      className="bg-gray-800 rounded-lg px-3 py-2 text-white w-28 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                      value={editScore}
+                                      onChange={e => setEditScore(e.target.value)}
+                                      placeholder="점수 입력"
+                                    />
+                                  </div>
+                                  <p className="text-xs text-gray-700">영역별 메모는 기출 상세 페이지에서 편집할 수 있습니다.</p>
+                                  <div className="flex gap-2">
+                                    <button onClick={() => handleSave(s)} disabled={saving}
+                                      className="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                                      {saving ? '저장 중...' : '저장'}
+                                    </button>
+                                    <button onClick={() => setEditing(null)}
+                                      className="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded-lg text-xs transition">
+                                      취소
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  {s.comments && (() => {
+                                    try {
+                                      const parsed = JSON.parse(s.comments)
+                                      const gm = parsed?.groupMemos as Record<string, string> | undefined
+                                      const entries = gm ? Object.entries(gm).filter(([, v]) => v) : []
+                                      if (entries.length === 0) return null
+                                      return (
+                                        <div className="mb-3 space-y-1.5 bg-gray-800 rounded-xl p-3">
+                                          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">영역별 메모</p>
+                                          {entries.map(([k, v]) => (
+                                            <p key={k} className="text-xs text-gray-300">
+                                              <span className="text-gray-500 mr-1">{k}번</span>{String(v)}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      )
+                                    } catch {
+                                      return <p className="text-sm text-gray-400 mb-3 leading-relaxed">{s.comments}</p>
+                                    }
+                                  })()}
+                                  <div className="flex gap-2">
+                                    <button onClick={() => startEdit(s)}
+                                      className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
+                                      편집
+                                    </button>
+                                    <button onClick={() => handleDelete(s.id)}
+                                      className="text-gray-600 hover:text-red-400 px-3 py-1.5 rounded-lg text-xs transition">
+                                      삭제
+                                    </button>
+                                    <Link
+                                      href={`/dashboard/denkoshi/${getExamId(s.year ?? 0, s.session === 1 ? '상' : '하')}`}
+                                      className="text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-lg text-xs transition"
+                                    >
+                                      → 기출 보기
+                                    </Link>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </main>
