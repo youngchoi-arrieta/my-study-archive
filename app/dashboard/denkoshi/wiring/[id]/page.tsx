@@ -322,7 +322,7 @@ export default function WiringDetail() {
         {/* 좌: 이미지 패널 */}
         <div className="flex flex-col border-r border-gray-800 overflow-hidden" style={{ width: `${splitPct}%` }}>
 
-          {/* 탭 바 */}
+          {/* 탭 바 + 줌 컨트롤 */}
           <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900 shrink-0 overflow-x-auto">
             {images.map((img, idx) => (
               <div key={img.id} className="shrink-0">
@@ -359,7 +359,22 @@ export default function WiringDetail() {
                 )}
               </div>
             ))}
-            <div className="shrink-0 flex gap-1 ml-auto">
+            <div className="shrink-0 flex gap-1 ml-auto items-center">
+              {/* 줌 컨트롤 */}
+              {images.length > 0 && (
+                <div className="flex items-center gap-1 mr-2 border-r border-gray-700 pr-2">
+                  <button onClick={() => setZoom(z => Math.max(30, z - 10))}
+                    className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700 transition font-bold text-sm">−</button>
+                  <input type="range" min={30} max={200} step={5} value={zoom}
+                    onChange={e => setZoom(Number(e.target.value))}
+                    className="w-20 accent-blue-500" />
+                  <button onClick={() => setZoom(z => Math.min(200, z + 10))}
+                    className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700 transition font-bold text-sm">+</button>
+                  <button onClick={() => setZoom(100)}
+                    className={`text-[10px] w-8 text-center rounded transition tabular-nums ${zoom !== 100 ? 'text-blue-400 hover:text-blue-300' : 'text-gray-600'}`}
+                  >{zoom}%</button>
+                </div>
+              )}
               <button
                 onClick={() => setShowUrlInput(p => !p)}
                 className="text-xs text-gray-500 hover:text-white px-2 py-1 bg-gray-800 rounded-lg transition"
@@ -400,40 +415,14 @@ export default function WiringDetail() {
 
           {/* 이미지 뷰어 */}
           {currentImage ? (
-            <div
-              className="flex-1 overflow-auto relative bg-gray-950"
-              onWheel={e => {
-                if (e.ctrlKey || e.metaKey) {
-                  e.preventDefault()
-                  setZoom(z => Math.round(Math.min(400, Math.max(25, z + (e.deltaY < 0 ? 10 : -10)))))
-                }
-              }}
-            >
-              {/* 줌 컨트롤 바 */}
-              <div className="sticky top-2 left-0 right-0 z-10 flex justify-center pointer-events-none">
-                <div className="bg-gray-900/90 backdrop-blur rounded-xl px-3 py-1.5 flex items-center gap-2 pointer-events-auto shadow-lg">
-                  <button onClick={() => setZoom(z => Math.max(25, z - 10))}
-                    className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700 transition text-sm font-bold">−</button>
-                  <input
-                    type="range" min={25} max={400} step={5} value={zoom}
-                    onChange={e => setZoom(Number(e.target.value))}
-                    className="w-24 accent-blue-500"
-                  />
-                  <button onClick={() => setZoom(z => Math.min(400, z + 10))}
-                    className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700 transition text-sm font-bold">+</button>
-                  <button onClick={() => setZoom(100)}
-                    className={`text-xs px-1.5 py-0.5 rounded transition tabular-nums ${zoom !== 100 ? 'text-blue-400 hover:text-blue-300' : 'text-gray-600'}`}
-                  >{zoom}%</button>
-                </div>
-              </div>
-              <div style={{ width: `${zoom}%`, minWidth: zoom < 100 ? '100%' : undefined }}>
-                <img
-                  src={currentImage.src}
-                  alt={currentImage.caption || `도면 ${selectedIdx + 1}`}
-                  className="w-full object-contain"
-                  draggable={false}
-                />
-              </div>
+            <div className="flex-1 overflow-auto bg-gray-950 flex justify-center items-start relative">
+              <img
+                src={currentImage.src}
+                alt={currentImage.caption || `도면 ${selectedIdx + 1}`}
+                style={{ width: `${zoom}%` }}
+                className="object-contain"
+                draggable={false}
+              />
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <button
                   onClick={() => { setEditingTabId(currentImage.id); setTabLabelEdit(currentImage.caption || '') }}
