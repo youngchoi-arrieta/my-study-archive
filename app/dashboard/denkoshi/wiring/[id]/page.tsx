@@ -14,7 +14,7 @@ type WiringSession = {
 type WiringImage = {
   id: string
   session_id: string
-  src: string           // base64 data URL or external URL
+  src: string
   caption: string | null
   order_num: number
 }
@@ -41,17 +41,19 @@ export default function WiringDetail() {
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [captionInput, setCaptionInput] = useState('')
-  const [editingCaption, setEditingCaption] = useState<string | null>(null)
-  const [captionEdit, setCaptionEdit] = useState('')
+
+  // 제목 인라인 편집
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleEdit, setTitleEdit] = useState('')
+
+  // 탭 이름 인라인 편집
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [tabLabelEdit, setTabLabelEdit] = useState('')
 
+  // Q&A
   const [addingQA, setAddingQA] = useState(false)
   const [newQ, setNewQ] = useState('')
   const [newA, setNewA] = useState('')
-
   const [expandedQA, setExpandedQA] = useState<string | null>(null)
   const [editingQA, setEditingQA] = useState<string | null>(null)
   const [editQ, setEditQ] = useState('')
@@ -62,7 +64,6 @@ export default function WiringDetail() {
   const containerRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
 
-  // ── Drag divider ────────────────────────────────────────────────
   const onDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     dragging.current = true
@@ -81,7 +82,6 @@ export default function WiringDetail() {
     document.addEventListener('mouseup', onUp)
   }
 
-  // ── Fetch ────────────────────────────────────────────────────────
   const fetchSession = useCallback(async () => {
     const { data } = await supabase
       .from('denkoshi_wiring_sessions')
@@ -114,7 +114,6 @@ export default function WiringDetail() {
       .then(() => setLoading(false))
   }, [fetchSession, fetchImages, fetchQA])
 
-  // ── Clipboard paste ──────────────────────────────────────────────
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
       const items = e.clipboardData?.items
@@ -142,11 +141,10 @@ export default function WiringDetail() {
                 setSelectedIdx(next.length - 1)
                 return next
               })
+              await supabase.from('denkoshi_wiring_sessions')
+                .update({ image_count: images.length + 1 })
+                .eq('id', sessionId)
             }
-            // update count
-            await supabase.from('denkoshi_wiring_sessions')
-              .update({ image_count: images.length + 1 })
-              .eq('id', sessionId)
             setSaving(false)
           }
           reader.readAsDataURL(file)
@@ -158,7 +156,21 @@ export default function WiringDetail() {
     return () => document.removeEventListener('paste', handlePaste)
   }, [sessionId, images])
 
-  // ── Image ops ────────────────────────────────────────────────────
+  const saveTitle = async () => {
+    const t = titleEdit.trim()
+    if (!t) { setEditingTitle(false); return }
+    await supabase.from('denkoshi_wiring_sessions').update({ title: t }).eq('id', sessionId)
+    setSession(prev => prev ? { ...prev, title: t } : prev)
+    setEditingTitle(false)
+  }
+
+  const saveTabLabel = async (id: string) => {
+    const label = tabLabelEdit.trim()
+    await supabase.from('denkoshi_wiring_images').update({ caption: label || null }).eq('id', id)
+    setImages(prev => prev.map(i => i.id === id ? { ...i, caption: label || null } : i))
+    setEditingTabId(null)
+  }
+
   const addImageUrl = async () => {
     if (!urlInput.trim()) return
     setSaving(true)
@@ -198,26 +210,6 @@ export default function WiringDetail() {
       .eq('id', sessionId)
   }
 
-  const saveTabLabel = async (id: string) => {
-    const label = tabLabelEdit.trim()
-    await supabase.from('denkoshi_wiring_images').update({ caption: label || null }).eq('id', id)
-    setImages(prev => prev.map(i => i.id === id ? { ...i, caption: label || null } : i))
-    setEditingTabId(null)
-  }
-
-  const saveTitle = async () => {
-    const t = titleEdit.trim()
-    if (!t) return
-    await supabase.from('denkoshi_wiring_sessions').update({ title: t }).eq('id', sessionId)
-    setSession(prev => prev ? { ...prev, title: t } : prev)
-    setEditingTitle(false)
-  }
-    await supabase.from('denkoshi_wiring_images').update({ caption: captionEdit.trim() || null }).eq('id', id)
-    setImages(prev => prev.map(i => i.id === id ? { ...i, caption: captionEdit.trim() || null } : i))
-    setEditingCaption(null)
-  }
-
-  // ── Q&A ops ──────────────────────────────────────────────────────
   const addQA = async () => {
     if (!newQ.trim()) return
     setSaving(true)
@@ -247,9 +239,8 @@ export default function WiringDetail() {
       question: editQ.trim(),
       answer: editA.trim() || null,
     }).eq('id', id)
-    setQaList(prev => prev.map(q => q.id === id
-      ? { ...q, question: editQ.trim(), answer: editA.trim() || null }
-      : q
+    setQaList(prev => prev.map(q =>
+      q.id === id ? { ...q, question: editQ.trim(), answer: editA.trim() || null } : q
     ))
     setEditingQA(null)
     setSaving(false)
@@ -267,7 +258,6 @@ export default function WiringDetail() {
     })
   }
 
-  // ── Render ───────────────────────────────────────────────────────
   if (loading) return (
     <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       <p className="text-gray-500 text-sm">불러오는 중...</p>
@@ -291,6 +281,7 @@ export default function WiringDetail() {
         <Link href="/dashboard/denkoshi/wiring" className="text-gray-500 hover:text-white text-sm shrink-0">
           ← 목록
         </Link>
+
         {editingTitle ? (
           <input
             autoFocus
@@ -298,7 +289,7 @@ export default function WiringDetail() {
             onChange={e => setTitleEdit(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false) }}
             onBlur={saveTitle}
-            className="text-sm font-bold bg-gray-800 border border-gray-600 rounded-lg px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-0 flex-1"
+            className="text-sm font-bold bg-gray-800 border border-gray-600 rounded-lg px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 flex-1 min-w-0"
           />
         ) : (
           <h1
@@ -310,6 +301,7 @@ export default function WiringDetail() {
             <span className="text-gray-700 text-[10px] opacity-0 group-hover:opacity-100 transition">✏</span>
           </h1>
         )}
+
         <div className="ml-auto flex items-center gap-4">
           {saving && <span className="text-xs text-gray-500">저장 중...</span>}
           <span className="text-xs text-gray-600">
@@ -321,22 +313,25 @@ export default function WiringDetail() {
         </div>
       </div>
 
-      {/* 본문 — 좌우 분할 */}
+      {/* 본문 */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden select-none">
 
         {/* 좌: 이미지 패널 */}
         <div className="flex flex-col border-r border-gray-800 overflow-hidden" style={{ width: `${splitPct}%` }}>
 
-          {/* 이미지 탭 바 */}
+          {/* 탭 바 */}
           <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900 shrink-0 overflow-x-auto">
             {images.map((img, idx) => (
-              <div key={img.id} className="shrink-0 relative group/tab">
+              <div key={img.id} className="shrink-0">
                 {editingTabId === img.id ? (
                   <input
                     autoFocus
                     value={tabLabelEdit}
                     onChange={e => setTabLabelEdit(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') saveTabLabel(img.id); if (e.key === 'Escape') setEditingTabId(null) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveTabLabel(img.id)
+                      if (e.key === 'Escape') setEditingTabId(null)
+                    }}
                     onBlur={() => saveTabLabel(img.id)}
                     placeholder={`도면 ${idx + 1}`}
                     className="px-2 py-1 rounded-lg text-xs bg-gray-700 border border-blue-500 text-white outline-none w-24"
@@ -345,15 +340,15 @@ export default function WiringDetail() {
                   <button
                     onClick={() => setSelectedIdx(idx)}
                     onDoubleClick={() => { setEditingTabId(img.id); setTabLabelEdit(img.caption || '') }}
+                    title="더블클릭으로 이름 편집"
                     className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition ${
                       idx === selectedIdx ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                     }`}
-                    title="더블클릭으로 이름 편집"
                   >
                     {img.caption || `도면 ${idx + 1}`}
                     {idx === selectedIdx && (
                       <span
-                        className="text-[9px] opacity-60 hover:opacity-100 cursor-pointer"
+                        className="text-[9px] opacity-50 hover:opacity-100 cursor-pointer ml-0.5"
                         onClick={e => { e.stopPropagation(); setEditingTabId(img.id); setTabLabelEdit(img.caption || '') }}
                       >✏</span>
                     )}
@@ -371,7 +366,7 @@ export default function WiringDetail() {
             </div>
           </div>
 
-          {/* URL 입력 패널 */}
+          {/* URL 입력 */}
           {showUrlInput && (
             <div className="px-3 py-2 border-b border-gray-800 bg-gray-900 space-y-1.5 shrink-0">
               <input
@@ -387,7 +382,7 @@ export default function WiringDetail() {
                   type="text"
                   value={captionInput}
                   onChange={e => setCaptionInput(e.target.value)}
-                  placeholder="캡션 (예: 1층 배선도)"
+                  placeholder="탭 이름 (예: 1층 배선도)"
                   className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500"
                 />
                 <button onClick={addImageUrl} disabled={saving || !urlInput.trim()}
@@ -409,7 +404,6 @@ export default function WiringDetail() {
                 className="w-full object-contain"
                 draggable={false}
               />
-              {/* 이미지 컨트롤 오버레이 */}
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <button
                   onClick={() => { setEditingTabId(currentImage.id); setTabLabelEdit(currentImage.caption || '') }}
@@ -420,22 +414,6 @@ export default function WiringDetail() {
                   className="bg-gray-900/80 hover:bg-red-600 text-gray-400 hover:text-white px-2 py-1 rounded text-xs transition"
                 >삭제</button>
               </div>
-              {/* 캡션 편집 오버레이 */}
-              {editingCaption === currentImage.id && (
-                <div className="absolute bottom-2 left-2 right-2 flex gap-2 bg-gray-900/90 rounded-xl px-3 py-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={captionEdit}
-                    onChange={e => setCaptionEdit(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') saveCaption(currentImage.id); if (e.key === 'Escape') setEditingCaption(null) }}
-                    placeholder="캡션 입력 (예: 2층 배선도)"
-                    className="flex-1 bg-gray-800 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <button onClick={() => saveCaption(currentImage.id)} className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-xs transition">저장</button>
-                  <button onClick={() => setEditingCaption(null)} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">취소</button>
-                </div>
-              )}
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
@@ -449,7 +427,7 @@ export default function WiringDetail() {
           )}
         </div>
 
-        {/* 드래그 분할선 */}
+        {/* 분할선 */}
         <div
           className="w-1.5 cursor-col-resize bg-gray-800 hover:bg-blue-600/60 active:bg-blue-500 transition-colors shrink-0 flex items-center justify-center group"
           onMouseDown={onDividerMouseDown}
@@ -460,7 +438,6 @@ export default function WiringDetail() {
         {/* 우: Q&A 패널 */}
         <div className="flex flex-col overflow-hidden" style={{ flex: 1 }}>
 
-          {/* Q&A 헤더 */}
           <div className="px-4 py-2.5 bg-gray-900 border-b border-gray-800 flex items-center justify-between shrink-0">
             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">배선도 분석 Q&amp;A</span>
             <button
@@ -473,7 +450,6 @@ export default function WiringDetail() {
             </button>
           </div>
 
-          {/* 새 Q&A 입력 */}
           {addingQA && (
             <div className="border-b border-gray-800 bg-gray-900 p-4 space-y-2.5 shrink-0">
               <div>
@@ -488,7 +464,7 @@ export default function WiringDetail() {
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">나의 답 (선택 — 나중에 작성 가능)</label>
+                <label className="text-xs text-gray-500 mb-1 block">나의 답 (선택)</label>
                 <textarea
                   value={newA}
                   onChange={e => setNewA(e.target.value)}
@@ -510,12 +486,11 @@ export default function WiringDetail() {
             </div>
           )}
 
-          {/* Q&A 목록 */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
             {qaList.length === 0 && !addingQA && (
               <div className="text-center py-20">
                 <p className="text-gray-600 text-sm">아직 분석 문제가 없습니다.</p>
-                <p className="text-gray-700 text-xs mt-1">우측 상단 '+ 소문제 추가'로 자문자답을 시작해보세요.</p>
+                <p className="text-gray-700 text-xs mt-1">우측 상단 &apos;+ 소문제 추가&apos;로 자문자답을 시작해보세요.</p>
               </div>
             )}
 
@@ -531,16 +506,9 @@ export default function WiringDetail() {
                     <span className="text-blue-400 font-bold text-sm shrink-0 pt-0.5">({idx + 1})</span>
                     <p className="flex-1 text-sm text-gray-200 leading-relaxed">{qa.question}</p>
                     <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-                      {qa.answer && (
-                        <span className="text-[10px] text-green-600 mr-1">✓답</span>
-                      )}
+                      {qa.answer && <span className="text-[10px] text-green-600 mr-1">✓답</span>}
                       <button
-                        onClick={() => {
-                          setEditingQA(qa.id)
-                          setExpandedQA(qa.id)
-                          setEditQ(qa.question)
-                          setEditA(qa.answer || '')
-                        }}
+                        onClick={() => { setEditingQA(qa.id); setExpandedQA(qa.id); setEditQ(qa.question); setEditA(qa.answer || '') }}
                         className="text-gray-600 hover:text-white text-xs px-1.5 py-0.5 rounded transition"
                       >✏</button>
                       <button
@@ -589,11 +557,7 @@ export default function WiringDetail() {
                             <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{qa.answer}</p>
                           ) : (
                             <button
-                              onClick={() => {
-                                setEditingQA(qa.id)
-                                setEditQ(qa.question)
-                                setEditA('')
-                              }}
+                              onClick={() => { setEditingQA(qa.id); setEditQ(qa.question); setEditA('') }}
                               className="text-xs text-gray-600 hover:text-blue-400 italic transition"
                             >
                               아직 답변 없음 — 클릭해서 작성하기
