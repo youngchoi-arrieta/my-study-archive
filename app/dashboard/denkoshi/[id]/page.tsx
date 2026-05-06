@@ -29,6 +29,8 @@ const GENERAL_GROUPS = [
   { key: '28-30', label: '28~30번', desc: '법령',                   hint: '스이또 5장' },
   { key: '31-50', label: '31~50번', desc: '配線図問題',             hint: '배선도 전반' },
 ] as const
+
+function toPreviewUrl(url: string): string | null {
   if (!url) return null
   const match = url.match(/\/file\/d\/([^/]+)/)
   if (match) return `https://drive.google.com/file/d/${match[1]}/preview`
