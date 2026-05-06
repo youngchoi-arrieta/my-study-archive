@@ -38,6 +38,7 @@ export default function WiringDetail() {
   const [loading, setLoading] = useState(true)
 
   const [selectedIdx, setSelectedIdx] = useState(0)
+  const selectImage = (idx: number) => { setSelectedIdx(idx); setZoom(100) }
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [captionInput, setCaptionInput] = useState('')
@@ -60,6 +61,7 @@ export default function WiringDetail() {
   const [editA, setEditA] = useState('')
 
   const [saving, setSaving] = useState(false)
+  const [zoom, setZoom] = useState(100) // 이미지 줌 %
   const [splitPct, setSplitPct] = useState(50)
   const containerRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -139,6 +141,7 @@ export default function WiringDetail() {
               setImages(prev => {
                 const next = [...prev, data]
                 setSelectedIdx(next.length - 1)
+                setZoom(100)
                 return next
               })
               await supabase.from('denkoshi_wiring_sessions')
@@ -338,7 +341,7 @@ export default function WiringDetail() {
                   />
                 ) : (
                   <button
-                    onClick={() => setSelectedIdx(idx)}
+                    onClick={() => selectImage(idx)}
                     onDoubleClick={() => { setEditingTabId(img.id); setTabLabelEdit(img.caption || '') }}
                     title="더블클릭으로 이름 편집"
                     className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition ${
@@ -397,13 +400,40 @@ export default function WiringDetail() {
 
           {/* 이미지 뷰어 */}
           {currentImage ? (
-            <div className="flex-1 overflow-auto relative bg-gray-950">
-              <img
-                src={currentImage.src}
-                alt={currentImage.caption || `도면 ${selectedIdx + 1}`}
-                className="w-full object-contain"
-                draggable={false}
-              />
+            <div
+              className="flex-1 overflow-auto relative bg-gray-950"
+              onWheel={e => {
+                if (e.ctrlKey || e.metaKey) {
+                  e.preventDefault()
+                  setZoom(z => Math.round(Math.min(400, Math.max(25, z + (e.deltaY < 0 ? 10 : -10)))))
+                }
+              }}
+            >
+              {/* 줌 컨트롤 바 */}
+              <div className="sticky top-2 left-0 right-0 z-10 flex justify-center pointer-events-none">
+                <div className="bg-gray-900/90 backdrop-blur rounded-xl px-3 py-1.5 flex items-center gap-2 pointer-events-auto shadow-lg">
+                  <button onClick={() => setZoom(z => Math.max(25, z - 10))}
+                    className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700 transition text-sm font-bold">−</button>
+                  <input
+                    type="range" min={25} max={400} step={5} value={zoom}
+                    onChange={e => setZoom(Number(e.target.value))}
+                    className="w-24 accent-blue-500"
+                  />
+                  <button onClick={() => setZoom(z => Math.min(400, z + 10))}
+                    className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700 transition text-sm font-bold">+</button>
+                  <button onClick={() => setZoom(100)}
+                    className={`text-xs px-1.5 py-0.5 rounded transition tabular-nums ${zoom !== 100 ? 'text-blue-400 hover:text-blue-300' : 'text-gray-600'}`}
+                  >{zoom}%</button>
+                </div>
+              </div>
+              <div style={{ width: `${zoom}%`, minWidth: zoom < 100 ? '100%' : undefined }}>
+                <img
+                  src={currentImage.src}
+                  alt={currentImage.caption || `도면 ${selectedIdx + 1}`}
+                  className="w-full object-contain"
+                  draggable={false}
+                />
+              </div>
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <button
                   onClick={() => { setEditingTabId(currentImage.id); setTabLabelEdit(currentImage.caption || '') }}
