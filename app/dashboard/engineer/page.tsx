@@ -82,6 +82,7 @@ export default function Dashboard() {
     const { data } = await supabase
       .from('exam_sessions')
       .select('*')
+      .is('exam_type', null)
       .order('pass_rate', { ascending: true, nullsFirst: false })
     setSessions(data || [])
     setLoading(false)

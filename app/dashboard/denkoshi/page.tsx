@@ -314,7 +314,6 @@ export default function DenkoshiHub() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [editScore, setEditScore] = useState('')
-  const [editComment, setEditComment] = useState('')
   const [saving, setSaving] = useState(false)
 
   const fetchSessions = useCallback(async () => {
@@ -349,14 +348,14 @@ export default function DenkoshiHub() {
     setEditing(s.id)
     setExpanded(s.id)
     setEditScore(s.my_score?.toString() || '')
-    setEditComment(s.comments || '')
+    setEditComment('')   // comments now stores JSON — edit memos from detail page
   }
 
   const handleSave = async (s: DenkoshiSession) => {
     setSaving(true)
     await supabase.from('exam_sessions').update({
       my_score: editScore ? parseFloat(editScore) : null,
-      comments: editComment || null,
+      // comments는 [id] 상세 페이지에서만 수정 (JSON groupMemos 보존)
     }).eq('id', s.id)
     await fetchSessions()
     setEditing(null)
@@ -609,9 +608,17 @@ export default function DenkoshiHub() {
                                 )}
                               </div>
                             </div>
-                            {s?.comments && (
-                              <p className="text-xs text-gray-600 truncate mt-0.5">{s.comments}</p>
-                            )}
+                            {s?.comments && (() => {
+                              try {
+                                const parsed = JSON.parse(s.comments!)
+                                const gm = parsed?.groupMemos as Record<string, string> | undefined
+                                const count = gm ? Object.values(gm).filter(Boolean).length : 0
+                                if (count > 0) return <p className="text-xs text-blue-600 mt-0.5">메모 {count}개</p>
+                                return null
+                              } catch {
+                                return <p className="text-xs text-gray-600 truncate mt-0.5">{s.comments}</p>
+                              }
+                            })()}
                             {!s && tagCount === 0 && (
                               <p className="text-xs text-gray-700 mt-0.5">미풀이</p>
                             )}
@@ -680,15 +687,7 @@ export default function DenkoshiHub() {
                                           placeholder="점수 입력"
                                         />
                                       </div>
-                                      <div>
-                                        <label className="text-xs text-gray-400 mb-1 block">메모</label>
-                                        <textarea
-                                          className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm h-20 resize-none outline-none focus:ring-1 focus:ring-blue-500"
-                                          placeholder="취약 영역, 오답 패턴 등..."
-                                          value={editComment}
-                                          onChange={e => setEditComment(e.target.value)}
-                                        />
-                                      </div>
+                                      <p className="text-xs text-gray-700">영역별 메모는 기출 상세 페이지에서 편집할 수 있습니다.</p>
                                       <div className="flex gap-2">
                                         <button onClick={() => handleSave(s)} disabled={saving}
                                           className="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
@@ -702,9 +701,26 @@ export default function DenkoshiHub() {
                                     </div>
                                   ) : (
                                     <div>
-                                      {s.comments && (
-                                        <p className="text-sm text-gray-400 mb-3 leading-relaxed">{s.comments}</p>
-                                      )}
+                                      {s.comments && (() => {
+                                        try {
+                                          const parsed = JSON.parse(s.comments)
+                                          const gm = parsed?.groupMemos as Record<string, string> | undefined
+                                          const entries = gm ? Object.entries(gm).filter(([, v]) => v) : []
+                                          if (entries.length === 0) return null
+                                          return (
+                                            <div className="mb-3 space-y-1.5 bg-gray-800 rounded-xl p-3">
+                                              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">영역별 메모</p>
+                                              {entries.map(([k, v]) => (
+                                                <p key={k} className="text-xs text-gray-300">
+                                                  <span className="text-gray-500 mr-1">{k}번</span>{String(v)}
+                                                </p>
+                                              ))}
+                                            </div>
+                                          )
+                                        } catch {
+                                          return <p className="text-sm text-gray-400 mb-3 leading-relaxed">{s.comments}</p>
+                                        }
+                                      })()}
                                       <div className="flex gap-2">
                                         <button onClick={() => startEdit(s)}
                                           className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
