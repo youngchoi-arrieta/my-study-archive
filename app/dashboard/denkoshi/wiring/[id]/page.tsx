@@ -43,6 +43,10 @@ export default function WiringDetail() {
   const [captionInput, setCaptionInput] = useState('')
   const [editingCaption, setEditingCaption] = useState<string | null>(null)
   const [captionEdit, setCaptionEdit] = useState('')
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleEdit, setTitleEdit] = useState('')
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [tabLabelEdit, setTabLabelEdit] = useState('')
 
   const [addingQA, setAddingQA] = useState(false)
   const [newQ, setNewQ] = useState('')
@@ -194,7 +198,20 @@ export default function WiringDetail() {
       .eq('id', sessionId)
   }
 
-  const saveCaption = async (id: string) => {
+  const saveTabLabel = async (id: string) => {
+    const label = tabLabelEdit.trim()
+    await supabase.from('denkoshi_wiring_images').update({ caption: label || null }).eq('id', id)
+    setImages(prev => prev.map(i => i.id === id ? { ...i, caption: label || null } : i))
+    setEditingTabId(null)
+  }
+
+  const saveTitle = async () => {
+    const t = titleEdit.trim()
+    if (!t) return
+    await supabase.from('denkoshi_wiring_sessions').update({ title: t }).eq('id', sessionId)
+    setSession(prev => prev ? { ...prev, title: t } : prev)
+    setEditingTitle(false)
+  }
     await supabase.from('denkoshi_wiring_images').update({ caption: captionEdit.trim() || null }).eq('id', id)
     setImages(prev => prev.map(i => i.id === id ? { ...i, caption: captionEdit.trim() || null } : i))
     setEditingCaption(null)
@@ -274,7 +291,25 @@ export default function WiringDetail() {
         <Link href="/dashboard/denkoshi/wiring" className="text-gray-500 hover:text-white text-sm shrink-0">
           ← 목록
         </Link>
-        <h1 className="text-sm font-bold truncate">{session.title}</h1>
+        {editingTitle ? (
+          <input
+            autoFocus
+            value={titleEdit}
+            onChange={e => setTitleEdit(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false) }}
+            onBlur={saveTitle}
+            className="text-sm font-bold bg-gray-800 border border-gray-600 rounded-lg px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-500 min-w-0 flex-1"
+          />
+        ) : (
+          <h1
+            className="text-sm font-bold truncate cursor-pointer hover:text-blue-400 transition group flex items-center gap-1.5"
+            onClick={() => { setTitleEdit(session.title); setEditingTitle(true) }}
+            title="클릭해서 제목 편집"
+          >
+            {session.title}
+            <span className="text-gray-700 text-[10px] opacity-0 group-hover:opacity-100 transition">✏</span>
+          </h1>
+        )}
         <div className="ml-auto flex items-center gap-4">
           {saving && <span className="text-xs text-gray-500">저장 중...</span>}
           <span className="text-xs text-gray-600">
@@ -295,15 +330,36 @@ export default function WiringDetail() {
           {/* 이미지 탭 바 */}
           <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900 shrink-0 overflow-x-auto">
             {images.map((img, idx) => (
-              <button
-                key={img.id}
-                onClick={() => setSelectedIdx(idx)}
-                className={`shrink-0 px-3 py-1 rounded-lg text-xs transition ${
-                  idx === selectedIdx ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}
-              >
-                {img.caption || `도면 ${idx + 1}`}
-              </button>
+              <div key={img.id} className="shrink-0 relative group/tab">
+                {editingTabId === img.id ? (
+                  <input
+                    autoFocus
+                    value={tabLabelEdit}
+                    onChange={e => setTabLabelEdit(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveTabLabel(img.id); if (e.key === 'Escape') setEditingTabId(null) }}
+                    onBlur={() => saveTabLabel(img.id)}
+                    placeholder={`도면 ${idx + 1}`}
+                    className="px-2 py-1 rounded-lg text-xs bg-gray-700 border border-blue-500 text-white outline-none w-24"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setSelectedIdx(idx)}
+                    onDoubleClick={() => { setEditingTabId(img.id); setTabLabelEdit(img.caption || '') }}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition ${
+                      idx === selectedIdx ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                    title="더블클릭으로 이름 편집"
+                  >
+                    {img.caption || `도면 ${idx + 1}`}
+                    {idx === selectedIdx && (
+                      <span
+                        className="text-[9px] opacity-60 hover:opacity-100 cursor-pointer"
+                        onClick={e => { e.stopPropagation(); setEditingTabId(img.id); setTabLabelEdit(img.caption || '') }}
+                      >✏</span>
+                    )}
+                  </button>
+                )}
+              </div>
             ))}
             <div className="shrink-0 flex gap-1 ml-auto">
               <button
@@ -356,12 +412,9 @@ export default function WiringDetail() {
               {/* 이미지 컨트롤 오버레이 */}
               <div className="absolute top-2 right-2 flex gap-1.5">
                 <button
-                  onClick={() => {
-                    setEditingCaption(currentImage.id)
-                    setCaptionEdit(currentImage.caption || '')
-                  }}
+                  onClick={() => { setEditingTabId(currentImage.id); setTabLabelEdit(currentImage.caption || '') }}
                   className="bg-gray-900/80 hover:bg-gray-700 text-gray-400 hover:text-white px-2 py-1 rounded text-xs transition"
-                >캡션</button>
+                >탭 이름 ✏</button>
                 <button
                   onClick={() => deleteImage(currentImage.id)}
                   className="bg-gray-900/80 hover:bg-red-600 text-gray-400 hover:text-white px-2 py-1 rounded text-xs transition"
