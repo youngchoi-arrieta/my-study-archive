@@ -567,7 +567,7 @@ export default function DenkoshiDetail() {
 
             {/* 점수 메모 패널 */}
             {editingScore && (
-              <div className="px-5 py-4 border-b border-gray-800 bg-gray-900 shrink-0 space-y-4">
+              <div className="px-5 py-4 border-b border-gray-800 bg-gray-900 shrink-0 space-y-4 max-h-[55vh] overflow-y-auto">
                 {/* 자동 총점 */}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-500">총점 (자동계산)</span>
@@ -590,21 +590,23 @@ export default function DenkoshiDetail() {
                 {/* 영역별 메모 */}
                 <div className="space-y-2">
                   <p className="text-xs text-gray-500 uppercase tracking-widest">영역별 메모</p>
-                  {GENERAL_GROUPS.map(g => (
-                    <div key={g.key} className="flex items-start gap-3">
-                      <div className="shrink-0 w-36">
-                        <p className="text-xs font-bold text-gray-400">{g.label}</p>
-                        <p className="text-[10px] text-gray-600 leading-tight">{g.desc}</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {GENERAL_GROUPS.map(g => (
+                      <div key={g.key} className="bg-gray-800 rounded-xl p-2.5 flex flex-col gap-1.5">
+                        <div>
+                          <p className="text-xs font-bold text-gray-300">{g.label}</p>
+                          <p className="text-[10px] text-gray-500 leading-tight">{g.desc}</p>
+                        </div>
+                        <textarea
+                          value={groupMemos[g.key] ?? ''}
+                          onChange={e => setGroupMemos(prev => ({ ...prev, [g.key]: e.target.value }))}
+                          placeholder={g.hint}
+                          rows={3}
+                          className="w-full bg-gray-900 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 resize-none placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
                       </div>
-                      <textarea
-                        value={groupMemos[g.key] ?? ''}
-                        onChange={e => setGroupMemos(prev => ({ ...prev, [g.key]: e.target.value }))}
-                        placeholder={g.hint}
-                        rows={1}
-                        className="flex-1 bg-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 resize-none placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

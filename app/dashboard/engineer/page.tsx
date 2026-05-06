@@ -82,9 +82,9 @@ export default function Dashboard() {
     const { data } = await supabase
       .from('exam_sessions')
       .select('*')
-      .is('exam_type', null)
       .order('pass_rate', { ascending: true, nullsFirst: false })
-    setSessions(data || [])
+    // 덴켄 세션 제외 (exam_type이 없거나 null인 세션만)
+    setSessions((data || []).filter(s => s.exam_type !== 'denkoshi'))
     setLoading(false)
   }, [])
 

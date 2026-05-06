@@ -630,9 +630,19 @@ export default function DenkoshiHub() {
 
                 <p className="text-gray-600 text-xs mt-3">클릭하면 PDF 뷰어 + 소단원 매핑으로 이동합니다.</p>
 
-                {/* 플래시카드 */}
-                <div className="mt-6 pt-6 border-t border-gray-800">
-                  <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">플래시카드</p>
+                {/* 배선도 분석 + 플래시카드 */}
+                <div className="mt-6 pt-6 border-t border-gray-800 space-y-2">
+                  <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">분석 도구</p>
+                  <Link
+                    href="/dashboard/denkoshi/wiring"
+                    className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">📐 배선도 분석</p>
+                      <p className="text-xs text-gray-500 mt-0.5">배선도 이미지 + 자문자답 Q&A 세션</p>
+                    </div>
+                    <span className="text-gray-600 text-xs">→</span>
+                  </Link>
                   <Link
                     href="/flashcard?exam=denkoshi"
                     className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition"
