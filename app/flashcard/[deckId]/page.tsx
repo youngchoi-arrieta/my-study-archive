@@ -57,9 +57,10 @@ export default function DeckEditPage() {
   // 카드 이동
   const [movingCard, setMovingCard] = useState<string | null>(null)
   const [page, setPage] = useState(0)
-  // 검색/필터
+  // 검색/필터/정렬
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<CardType | 'all'>('all')
+  const [sortKey, setSortKey] = useState<'newest' | 'oldest' | 'type' | 'alpha'>('newest')
 
   useEffect(() => { loadData() }, [deckId])
 
@@ -74,7 +75,7 @@ export default function DeckEditPage() {
   const loadData = async () => {
     const { data: d } = await supabase.from('flashcard_decks').select('*').eq('id', deckId).single()
     if (d) { setDeck(d); setDeckName(d.name); setDeckDesc(d.description ?? '') }
-    const { data: c } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId).order('created_at')
+    const { data: c } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId).order('created_at', { ascending: false })
     if (c) setCards(c)
     const { data: allD } = await supabase.from('flashcard_decks').select('id, name, description, exam_type').neq('id', deckId)
     if (allD) setAllDecks(allD)
@@ -269,29 +270,61 @@ export default function DeckEditPage() {
               const q = searchQuery.toLowerCase()
               return card.fields.some(f => f.value?.toLowerCase().includes(q) || f.name?.toLowerCase().includes(q))
             })
+
+            // 정렬
+            const TYPE_ORDER: Record<string, number> = { occlusion: 0, basic: 1, cloze: 2, multi: 3 }
+            const sorted = [...filtered].sort((a, b) => {
+              if (sortKey === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              if (sortKey === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              if (sortKey === 'type') return (TYPE_ORDER[a.card_type ?? ''] ?? 9) - (TYPE_ORDER[b.card_type ?? ''] ?? 9)
+              if (sortKey === 'alpha') {
+                const aText = a.fields?.[0]?.value ?? ''
+                const bText = b.fields?.[0]?.value ?? ''
+                return aText.localeCompare(bText, 'ja')
+              }
+              return 0
+            })
             const PAGE = 15
-            const pageCount = Math.ceil(filtered.length / PAGE)
-            const paginated = filtered.slice(page * PAGE, (page + 1) * PAGE)
+            const pageCount = Math.ceil(sorted.length / PAGE)
+            const paginated = sorted.slice(page * PAGE, (page + 1) * PAGE)
             return (
             <div>
-              {/* 검색 + 타입 필터 */}
-              <div className="flex gap-2 mb-4 flex-wrap">
-                <input
-                  className="flex-1 min-w-0 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="🔍 카드 내용 검색..."
-                  value={searchQuery}
-                  onChange={e => { setSearchQuery(e.target.value); setPage(0) }}
-                />
-                <div className="flex gap-1 flex-wrap">
-                  {(['all', 'basic', 'multi', 'cloze', 'occlusion'] as const).map(t => (
-                    <button key={t} onClick={() => { setFilterType(t); setPage(0) }}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${filterType === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                      {t === 'all' ? '전체' : TYPE_LABELS[t]}
-                    </button>
-                  ))}
+              {/* 검색 + 타입 필터 + 정렬 */}
+              <div className="flex flex-col gap-2 mb-4">
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 min-w-0 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="🔍 카드 내용 검색..."
+                    value={searchQuery}
+                    onChange={e => { setSearchQuery(e.target.value); setPage(0) }}
+                  />
+                </div>
+                <div className="flex gap-2 flex-wrap items-center justify-between">
+                  <div className="flex gap-1 flex-wrap">
+                    {(['all', 'basic', 'multi', 'cloze', 'occlusion'] as const).map(t => (
+                      <button key={t} onClick={() => { setFilterType(t); setPage(0) }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${filterType === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                        {t === 'all' ? '전체' : TYPE_LABELS[t]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1 items-center">
+                    <span className="text-[10px] text-gray-600 mr-1">정렬</span>
+                    {([
+                      { k: 'newest', label: '최신순' },
+                      { k: 'oldest', label: '오래된순' },
+                      { k: 'type',   label: '타입별' },
+                      { k: 'alpha',  label: '가나다' },
+                    ] as const).map(({ k, label }) => (
+                      <button key={k} onClick={() => { setSortKey(k); setPage(0) }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${sortKey === k ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-              {filtered.length === 0
+              {sorted.length === 0
                 ? <div className="text-gray-500 text-center py-12 text-sm">검색 결과가 없어요</div>
                 : <>
               <div className="space-y-3">
