@@ -348,7 +348,6 @@ export default function DenkoshiHub() {
     setEditing(s.id)
     setExpanded(s.id)
     setEditScore(s.my_score?.toString() || '')
-    setEditComment('')   // comments now stores JSON — edit memos from detail page
   }
 
   const handleSave = async (s: DenkoshiSession) => {
