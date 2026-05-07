@@ -184,7 +184,7 @@ export default function SkillTreePage() {
       .select('config, activations')
       .eq('tree_type', treeType)
       .single()
-      .then(({ data }) => {
+      .then(({ data }: { data: { config: TreeConfig; activations: Activations } | null }) => {
         if (data?.config && (data.config as TreeConfig).nodes?.length > 0) {
           setConfig(data.config as TreeConfig)
         }
@@ -260,13 +260,21 @@ export default function SkillTreePage() {
 
   // ── Node operations ────────────────────────────────────────────────────
   const handleNodeClick = (nodeId: string) => {
+    // Step 1: first node selection (from toolbar button)
+    if (linkFrom === '__pending__') {
+      setLinkFrom(nodeId)
+      return
+    }
+    // Step 2: second node selection → create edge
     if (linkFrom !== null) {
       if (linkFrom !== nodeId) {
-        const fn = config.nodes.find(n => n.id === linkFrom)!
-        const tn = config.nodes.find(n => n.id === nodeId)!
-        const isCross = fn.pathId !== tn.pathId
-        const newEdge: EdgeDef = { id: genId(), from: linkFrom, to: nodeId, cross: isCross, label: '' }
-        updateConfig({ ...config, edges: [...config.edges, newEdge] })
+        const fn = config.nodes.find(n => n.id === linkFrom)
+        const tn = config.nodes.find(n => n.id === nodeId)
+        if (fn && tn) {
+          const isCross = fn.pathId !== tn.pathId
+          const newEdge: EdgeDef = { id: genId(), from: linkFrom, to: nodeId, cross: isCross, label: '' }
+          updateConfig({ ...config, edges: [...config.edges, newEdge] })
+        }
       }
       setLinkFrom(null)
       return
@@ -439,7 +447,7 @@ export default function SkillTreePage() {
       )}
 
       {/* Main canvas area */}
-      <div className="flex-1 overflow-auto relative" onClick={() => { if (linkFrom === '__pending__') setLinkFrom(null) }}>
+      <div className="flex-1 overflow-auto relative" onClick={() => { if (linkFrom) setLinkFrom(null) }}>
         <div style={{ position: 'relative', width: canvasW, minHeight: CANVAS_H, margin: '0 auto' }}>
 
           {/* SVG lines */}
@@ -598,7 +606,19 @@ export default function SkillTreePage() {
           })}
 
           {/* Link mode indicator */}
-          {linkFrom && linkFrom !== '__pending__' && (() => {
+          {linkFrom && (() => {
+            if (linkFrom === '__pending__') {
+              return (
+                <div style={{
+                  position: 'fixed', top: 60, left: '50%', transform: 'translateX(-50%)',
+                  background: '#1e1b2e', border: '1px solid #a78bfa',
+                  borderRadius: 10, padding: '6px 16px',
+                  color: '#a78bfa', fontSize: 11, zIndex: 50, fontFamily: 'sans-serif',
+                }}>
+                  연결 시작: 첫 번째 노드를 클릭하세요
+                </div>
+              )
+            }
             const fn = getNode(linkFrom)
             if (!fn) return null
             const fp = getPath(fn.pathId)!
@@ -607,11 +627,10 @@ export default function SkillTreePage() {
                 position: 'fixed', top: 60, left: '50%', transform: 'translateX(-50%)',
                 background: '#1e1b2e', border: '1px solid #a78bfa',
                 borderRadius: 10, padding: '6px 14px',
-                color: '#a78bfa', fontSize: 11, zIndex: 50,
-                fontFamily: 'sans-serif',
+                color: '#a78bfa', fontSize: 11, zIndex: 50, fontFamily: 'sans-serif',
               }}>
                 <span style={{ color: fp.color }}>{fn.label.replace('\n', ' ')}</span>
-                {' '} → 연결할 노드를 클릭
+                {' → '} 연결할 두 번째 노드를 클릭
               </div>
             )
           })()}
