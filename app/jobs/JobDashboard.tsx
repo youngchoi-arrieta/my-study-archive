@@ -12,7 +12,7 @@ import ElecMapView from './components/ElecMapView'
 export default function JobDashboard() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap'>('list')
+  const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap' | 'skilltree'>('list')
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [filterTrack, setFilterTrack] = useState<Job['track'] | ''>('')
@@ -109,6 +109,7 @@ export default function JobDashboard() {
             { id: 'kanban', label: '칸반 보드' },
             { id: 'timeline', label: '마감일 타임라인' },
             { id: 'elecmap', label: '⚡ 전기직 지도' },
+            { id: 'skilltree', label: '🗺 스킬트리' },
           ] as const).map(t => (
             <button
               key={t.id}
@@ -203,6 +204,27 @@ export default function JobDashboard() {
           />
         ) : tab === 'elecmap' ? (
           <ElecMapView />
+        ) : tab === 'skilltree' ? (
+          <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto mt-8">
+            {[
+              { type: 'career', icon: '🗺', title: '경력 마일스톤', desc: '한국 · 일본 · 캐나다 · 호주 진출 경로별 자격증 및 비자 마일스톤', color: '#f87171' },
+              { type: 'technical', icon: '⚙', title: '기술 스택', desc: '전력전자 · 모터제어 · 전력계통 · 신재생에너지 · 계측제어 역량 트리', color: '#60a5fa' },
+            ].map(t => (
+              <a key={t.type} href={`/dashboard/career/${t.type}`}
+                className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition group"
+                style={{ textDecoration: 'none' }}
+              >
+                <div className="flex items-start gap-4">
+                  <span className="text-3xl">{t.icon}</span>
+                  <div>
+                    <p className="font-bold text-sm mb-1" style={{ color: t.color }}>{t.title}</p>
+                    <p className="text-xs text-gray-500 leading-relaxed">{t.desc}</p>
+                  </div>
+                </div>
+                <p className="text-right text-gray-700 group-hover:text-gray-400 text-xs mt-3 transition">열기 →</p>
+              </a>
+            ))}
+          </div>
         ) : (
           <TimelineView jobs={filtered} onCard={setDetailJob} />
         )}
