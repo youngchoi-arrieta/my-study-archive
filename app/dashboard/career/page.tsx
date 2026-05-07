@@ -27,7 +27,7 @@ export default function CareerDashboard() {
     >
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <Link href="/dashboard" className="text-gray-500 hover:text-white text-sm">← 대시보드</Link>
+          <Link href="/jobs" className="text-gray-500 hover:text-white text-sm">← 진로 대시보드</Link>
         </div>
 
         <h1
