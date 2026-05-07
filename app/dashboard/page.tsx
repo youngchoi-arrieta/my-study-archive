@@ -91,6 +91,15 @@ export default function DashboardHome() {
             🗾 第二種電気工事士 →
           </Link>
         </div>
+        <div className="border-t border-gray-800 pt-6">
+          <p className="text-xs text-gray-600 mb-3">진로 계획</p>
+          <Link
+            href="/dashboard/career"
+            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition"
+          >
+            ⚡ Career Skill Tree →
+          </Link>
+        </div>
       </div>
     </main>
   )
