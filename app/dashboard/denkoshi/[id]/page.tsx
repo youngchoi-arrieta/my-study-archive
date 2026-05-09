@@ -626,7 +626,7 @@ export default function DenkoshiDetail() {
                         </div>
                         <p className="text-[10px] text-gray-600 leading-tight mb-1">명칭 · 용도 · 빈칸 기구 추론</p>
                         <textarea
-                          value={groupMemos['31-50-symbol'] ?? ''}
+                          value={groupMemos['31-50-symbol'] ?? groupMemos['31-50'] ?? ''}
                           onChange={e => setGroupMemos(prev => ({ ...prev, '31-50-symbol': e.target.value }))}
                           placeholder={"예) ○에 점 → 접속점\n콘센트 기호 혼동 (일반 vs 방수)\n기기 명칭 → 용도 연결 실수"}
                           rows={5}
