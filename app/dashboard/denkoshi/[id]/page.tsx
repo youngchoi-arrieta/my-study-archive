@@ -588,10 +588,12 @@ export default function DenkoshiDetail() {
                 </div>
 
                 {/* 영역별 메모 */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="text-xs text-gray-500 uppercase tracking-widest">영역별 메모</p>
+
+                  {/* 1~30번 일반문제 — 4열 그리드 */}
                   <div className="grid grid-cols-4 gap-2">
-                    {GENERAL_GROUPS.map(g => (
+                    {GENERAL_GROUPS.filter(g => g.key !== '31-50').map(g => (
                       <div key={g.key} className="bg-gray-800 rounded-xl p-2.5 flex flex-col gap-1.5">
                         <div>
                           <p className="text-xs font-bold text-gray-300">{g.label}</p>
@@ -606,6 +608,65 @@ export default function DenkoshiDetail() {
                         />
                       </div>
                     ))}
+                  </div>
+
+                  {/* 31~50번 配線図問題 — 3개 서브 카테고리 */}
+                  <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/60">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <p className="text-xs font-bold text-amber-400">31~50번</p>
+                      <p className="text-[10px] text-gray-500">配線図問題 — 세부 오답 분류</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2.5">
+
+                      {/* ① 기호 식별 */}
+                      <div className="bg-gray-900 rounded-xl p-2.5 flex flex-col gap-1.5 border border-gray-700/40">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 uppercase tracking-wide">①</span>
+                          <p className="text-xs font-semibold text-gray-200">배선도 기호 식별</p>
+                        </div>
+                        <p className="text-[10px] text-gray-600 leading-tight mb-1">명칭 · 용도 · 빈칸 기구 추론</p>
+                        <textarea
+                          value={groupMemos['31-50-symbol'] ?? ''}
+                          onChange={e => setGroupMemos(prev => ({ ...prev, '31-50-symbol': e.target.value }))}
+                          placeholder={"예) ○에 점 → 접속점\n콘센트 기호 혼동 (일반 vs 방수)\n기기 명칭 → 용도 연결 실수"}
+                          rows={5}
+                          className="w-full bg-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 resize-none placeholder-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 leading-relaxed"
+                        />
+                      </div>
+
+                      {/* ② 시공 규정 */}
+                      <div className="bg-gray-900 rounded-xl p-2.5 flex flex-col gap-1.5 border border-gray-700/40">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 uppercase tracking-wide">②</span>
+                          <p className="text-xs font-semibold text-gray-200">시공 규정</p>
+                        </div>
+                        <p className="text-[10px] text-gray-600 leading-tight mb-1">공사방법 · 공구 · 접지/절연저항 판단</p>
+                        <textarea
+                          value={groupMemos['31-50-regulation'] ?? ''}
+                          onChange={e => setGroupMemos(prev => ({ ...prev, '31-50-regulation': e.target.value }))}
+                          placeholder={"예) D종 접지 100Ω 이하\n합성수지관 지지간격 1.5m\n누전차단기 정격감도전류 30mA"}
+                          rows={5}
+                          className="w-full bg-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 resize-none placeholder-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed"
+                        />
+                      </div>
+
+                      {/* ③ 복선도 */}
+                      <div className="bg-gray-900 rounded-xl p-2.5 flex flex-col gap-1.5 border border-gray-700/40">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-300 uppercase tracking-wide">③</span>
+                          <p className="text-xs font-semibold text-gray-200">복선도 문항</p>
+                        </div>
+                        <p className="text-[10px] text-gray-600 leading-tight mb-1">최소심선수 · 링슬리브/커넥터 · 압착마크</p>
+                        <textarea
+                          value={groupMemos['31-50-wiring'] ?? ''}
+                          onChange={e => setGroupMemos(prev => ({ ...prev, '31-50-wiring': e.target.value }))}
+                          placeholder={"예) 3로 스위치 회로 → 심선 4가닥\n소(○) 1.6mm×2 or 2.0mm×1\n리턴 중성선 처리 실수"}
+                          rows={5}
+                          className="w-full bg-gray-800 text-xs text-gray-200 rounded-lg px-2.5 py-1.5 resize-none placeholder-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500 leading-relaxed"
+                        />
+                      </div>
+
+                    </div>
                   </div>
                 </div>
               </div>
