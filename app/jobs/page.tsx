@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import JobDashboard from './JobDashboard'
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 }
 
 export default function JobsPage() {
-  return <JobDashboard />
+  return (
+    <Suspense fallback={null}>
+      <JobDashboard />
+    </Suspense>
+  )
 }
