@@ -9,17 +9,16 @@ import ListView from './components/ListView'
 import JobModal from './components/JobModal'
 import JobDetailModal from './components/JobDetailModal'
 import ElecMapView from './components/ElecMapView'
-import PortfolioView from './components/PortfolioView'
 
 export default function JobDashboard() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap' | 'skilltree' | 'portfolio' | 'interview'>('list')
+  const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap' | 'skilltree' | 'interview'>('list')
   const searchParams = useSearchParams()
 
   useEffect(() => {
     const t = searchParams.get('tab')
-    if (t && ['list','kanban','timeline','elecmap','skilltree','portfolio','interview'].includes(t)) {
+    if (t && ['list','kanban','timeline','elecmap','skilltree','interview'].includes(t)) {
       setTab(t as typeof tab)
     }
   }, [searchParams])
@@ -120,7 +119,6 @@ export default function JobDashboard() {
             { id: 'timeline', label: '마감일 타임라인' },
             { id: 'elecmap', label: '⚡ 전기직 지도' },
             { id: 'skilltree', label: '🗺 스킬트리' },
-            { id: 'portfolio', label: '🌀 찬란한 무용함' },
             { id: 'interview', label: '🎤 면접 대비' },
           ] as const).map(t => (
             <button
@@ -216,8 +214,6 @@ export default function JobDashboard() {
           />
         ) : tab === 'elecmap' ? (
           <ElecMapView />
-        ) : tab === 'portfolio' ? (
-          <PortfolioView />
         ) : tab === 'interview' ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
             <p className="text-gray-500 text-sm">면접 대비 데이터베이스</p>
