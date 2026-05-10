@@ -730,9 +730,16 @@ export default function DenkoshiDetail() {
             </div>
           )}
 
-          {activeUrl ? (
-            <iframe src={activeUrl} className="flex-1 w-full block" allow="autoplay" />
-          ) : (
+          {/* 두 iframe 모두 마운트 유지 — hidden으로 숨겨서 페이지 위치 보존 */}
+          {questionUrl && (
+            <iframe src={questionUrl} allow="autoplay"
+              className={`flex-1 w-full block ${pdfTab === 'question' ? '' : 'hidden'}`} />
+          )}
+          {answerUrl && (
+            <iframe src={answerUrl} allow="autoplay"
+              className={`flex-1 w-full block ${pdfTab === 'answer' ? '' : 'hidden'}`} />
+          )}
+          {!activeUrl && (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
               <p className="text-gray-500 text-sm">
                 {pdfTab === 'question' ? '문제 PDF 미등록' : '정답 PDF 미등록'}
