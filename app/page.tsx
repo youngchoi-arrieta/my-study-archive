@@ -72,7 +72,7 @@ export default function Home() {
         <div className="grid grid-cols-2 gap-3 mb-10">
           <ToolCard href="/jobs"       emoji="💼" title="진로 대시보드"       desc="칸반 · 마감일 · AI 파싱" />
           <ToolCard href="/library"    emoji="📖" title="레퍼런스 라이브러리" desc="주제별 PDF · 구글 드라이브" />
-          <ToolCard href="/interview"  emoji="🎤" title="면접 대비"           desc="질문 패턴 · 의도 분석 · 답변 프레임" />
+          <ToolCard href="/jobs?tab=portfolio" emoji="🌀" title="찬란한 무용함"    desc="호기심이 이끄는 대로 만들어 보는 것들" />
           <ToolCard href="/familia"    emoji="❤️" title="Familia Choi · Arrieta" desc="로드맵 · 2026 · EN / ES" />
         </div>
 

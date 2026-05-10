@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { Job, TRACK_LABELS } from './types'
 import KanbanView from './components/KanbanView'
@@ -14,6 +15,14 @@ export default function JobDashboard() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'list' | 'kanban' | 'timeline' | 'elecmap' | 'skilltree' | 'portfolio' | 'interview'>('list')
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t && ['list','kanban','timeline','elecmap','skilltree','portfolio','interview'].includes(t)) {
+      setTab(t as typeof tab)
+    }
+  }, [searchParams])
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [filterTrack, setFilterTrack] = useState<Job['track'] | ''>('')
