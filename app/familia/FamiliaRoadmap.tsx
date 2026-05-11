@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
 import styles from './familia.module.css'
 
@@ -533,12 +534,17 @@ export default function FamiliaRoadmap() {
               {lang === 'en' ? 'Our shared roadmap' : 'Nuestro camino compartido'} · 2026
             </p>
           </div>
-          <button
-            className={styles.langBtn}
-            onClick={() => setLang(l => l === 'en' ? 'es' : 'en')}
-          >
-            {lang === 'en' ? '🇪🇸 Español' : '🇬🇧 English'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Link href="/familia/memorias" className={styles.langBtn} style={{ textDecoration: 'none' }}>
+              🌹 Memorias
+            </Link>
+            <button
+              className={styles.langBtn}
+              onClick={() => setLang(l => l === 'en' ? 'es' : 'en')}
+            >
+              {lang === 'en' ? '🇪🇸 Español' : '🇬🇧 English'}
+            </button>
+          </div>
         </header>
 
         {/* ── Goals + Financial ──────────────────────────── */}
