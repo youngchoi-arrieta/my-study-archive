@@ -251,7 +251,7 @@ function ChapterPage({ chapter, chapterIdx, totalChapters, items, lang, editMode
               <div key={item.id} className={styles.polaroid} style={{'--rot':`${ROTATIONS[i%ROTATIONS.length]}deg`} as React.CSSProperties}>
                 <div className={styles.polaroidInner}>
                   <img src={item.photo_url!} alt={item.caption_ko??''} className={styles.polaroidImg} loading="lazy"/>
-                  <p className={styles.polaroidCaption}>{lang==='ko'?(item.caption_ko??''):(item.caption_es||item.caption_ko??'')}</p>
+                  <p className={styles.polaroidCaption}>{lang==='ko'?(item.caption_ko??''):((item.caption_es || item.caption_ko) ?? '')}</p>
                 </div>
                 {editMode && <button className={styles.polaroidDelete} onClick={()=>onDeleteItem(item.id)}>✕</button>}
               </div>
