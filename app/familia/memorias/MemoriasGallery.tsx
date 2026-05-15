@@ -7,9 +7,25 @@ import styles from './memorias.module.css'
 type Lang = 'ko' | 'es'
 
 interface Chapter { id:string; title_ko:string; title_es:string; date_range:string; sort_order:number }
-interface MemItem { id:string; chapter_id:string; type:'photo'|'memo'|'letter'; photo_url:string|null; caption_ko:string|null; caption_es:string|null; content:string|null; author:'young'|'lucy'|null; sort_order:number }
+interface MemItem { id:string; chapter_id:string; type:'photo'|'memo'|'letter'|'gdrive'; photo_url:string|null; caption_ko:string|null; caption_es:string|null; content:string|null; author:'young'|'lucy'|null; sort_order:number }
 
 const ROTATIONS = [-2.5, 1.8, -1.2, 3.0, -3.5, 2.2, -0.8, 1.5, -2.0, 2.8]
+
+// ─── Google Drive helpers ─────────────────────────────────────────────────────
+function extractDriveId(url: string): { id: string; kind: 'file'|'folder' } | null {
+  const file   = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
+  if (file)   return { id: file[1],   kind: 'file' }
+  const folder = url.match(/\/folders\/([a-zA-Z0-9_-]+)/)
+  if (folder) return { id: folder[1], kind: 'folder' }
+  const idParam = url.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+  if (idParam) return { id: idParam[1], kind: 'file' }
+  // bare ID (32+ chars, alphanumeric/dash/underscore)
+  const bare = url.trim().match(/^([a-zA-Z0-9_-]{25,})$/)
+  if (bare)   return { id: bare[1],   kind: 'file' }
+  return null
+}
+function driveImgUrl(id: string)    { return `https://drive.google.com/uc?export=view&id=${id}` }
+function driveFolderUrl(id: string) { return `https://drive.google.com/embeddedfolderview?id=${id}#grid` }
 const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII']
 
 async function uploadPhoto(file: File, chapterId: string): Promise<string|null> {
@@ -46,7 +62,10 @@ function ChapterModal({ initial, onSave, onClose }: { initial?:Chapter; onSave:(
 
 // ─── AddItemModal ─────────────────────────────────────────────────────────────
 function AddItemModal({ chapterId, onSave, onClose }: { chapterId:string; onSave:(item:Omit<MemItem,'id'|'sort_order'>)=>void; onClose:()=>void }) {
-  const [type, setType] = useState<'photo'|'memo'|'letter'|null>(null)
+  const [type, setType] = useState<'photo'|'memo'|'letter'|'gdrive'|null>(null)
+  const [photoTab, setPhotoTab] = useState<'upload'|'drive'>('upload')
+  const [driveUrl, setDriveUrl] = useState('')
+  const [drivePreview, setDrivePreview] = useState<string|null>(null)
   const [captionKo, setCaptionKo] = useState('')
   const [captionEs, setCaptionEs] = useState('')
   const [content, setContent] = useState('')
@@ -54,16 +73,37 @@ function AddItemModal({ chapterId, onSave, onClose }: { chapterId:string; onSave
   const [file, setFile] = useState<File|null>(null)
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string|null>(null)
+  // gdrive folder label
+  const [folderLabel, setFolderLabel] = useState('')
+  const [folderUrl, setFolderUrl] = useState('')
 
   function handleFile(e:ChangeEvent<HTMLInputElement>) { const f=e.target.files?.[0]; if(!f) return; setFile(f); setPreview(URL.createObjectURL(f)) }
+
+  function handleDriveUrl(val: string) {
+    setDriveUrl(val)
+    const parsed = extractDriveId(val)
+    if (parsed?.kind === 'file') setDrivePreview(driveImgUrl(parsed.id))
+    else setDrivePreview(null)
+  }
 
   async function handleSave() {
     if (!type) return
     if (type==='photo') {
-      if(!file) return; setUploading(true)
-      const url = await uploadPhoto(file, chapterId); setUploading(false)
-      if(!url) { alert('업로드 실패. Supabase Storage 버킷(memorias)을 확인해주세요.'); return }
-      onSave({ chapter_id:chapterId, type, photo_url:url, caption_ko:captionKo.trim()||null, caption_es:captionEs.trim()||null, content:null, author:null })
+      if (photoTab === 'drive') {
+        const parsed = extractDriveId(driveUrl)
+        if (!parsed || parsed.kind !== 'file') { alert('유효한 Google Drive 파일 링크를 붙여넣어주세요.'); return }
+        onSave({ chapter_id:chapterId, type:'photo', photo_url:driveImgUrl(parsed.id), caption_ko:captionKo.trim()||null, caption_es:captionEs.trim()||null, content:null, author:null })
+      } else {
+        if(!file) return; setUploading(true)
+        const url = await uploadPhoto(file, chapterId); setUploading(false)
+        if(!url) { alert('업로드 실패. Supabase Storage 버킷(memorias)을 확인해주세요.'); return }
+        onSave({ chapter_id:chapterId, type:'photo', photo_url:url, caption_ko:captionKo.trim()||null, caption_es:captionEs.trim()||null, content:null, author:null })
+      }
+    } else if (type==='gdrive') {
+      const parsed = extractDriveId(folderUrl)
+      if (!parsed) { alert('유효한 Google Drive 폴더 링크를 붙여넣어주세요.'); return }
+      const embedUrl = parsed.kind === 'folder' ? driveFolderUrl(parsed.id) : driveImgUrl(parsed.id)
+      onSave({ chapter_id:chapterId, type:'gdrive', photo_url:embedUrl, caption_ko:folderLabel.trim()||null, caption_es:null, content:null, author:null })
     } else {
       onSave({ chapter_id:chapterId, type, photo_url:null, caption_ko:null, caption_es:null, content:content.trim(), author })
     }
@@ -81,7 +121,7 @@ function AddItemModal({ chapterId, onSave, onClose }: { chapterId:string; onSave
       <div className={styles.modal} onClick={e=>e.stopPropagation()}>
         <h3 className={styles.modalTitle}>어떤 카드를 추가할까요?</h3>
         <div className={styles.typeGrid}>
-          {([['photo','📷','사진','Foto'],['memo','📝','메모','Nota'],['letter','💌','편지','Carta']] as const).map(([t,e,ko,es])=>(
+          {([['photo','📷','사진','Foto'],['memo','📝','메모','Nota'],['letter','💌','편지','Carta'],['gdrive','📁','GDrive','폴더']] as const).map(([t,e,ko,es])=>(
             <button key={t} className={styles.typeBtn} onClick={()=>setType(t)}>
               <span className={styles.typeEmoji}>{e}</span><span>{ko}</span><span className={styles.typeSubLabel}>{es}</span>
             </button>
@@ -96,17 +136,59 @@ function AddItemModal({ chapterId, onSave, onClose }: { chapterId:string; onSave
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={e=>e.stopPropagation()}>
         <h3 className={styles.modalTitle}>📷 사진 추가</h3>
-        <div className={styles.fileArea} onClick={()=>document.getElementById('mem-photo-upload')?.click()}>
-          {preview ? <img src={preview} className={styles.previewImg} alt="preview"/> : <span className={styles.fileHint}>클릭하여 사진 선택 (JPG · PNG · WEBP)</span>}
-          <input id="mem-photo-upload" type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}} onChange={handleFile}/>
+        {/* Tab: upload vs drive */}
+        <div className={styles.tabRow}>
+          <button className={`${styles.tabBtn} ${photoTab==='upload'?styles.tabActive:''}`} onClick={()=>setPhotoTab('upload')}>파일 업로드</button>
+          <button className={`${styles.tabBtn} ${photoTab==='drive'?styles.tabActive:''}`} onClick={()=>setPhotoTab('drive')}>Google Drive 링크</button>
         </div>
+        {photoTab==='upload' ? (
+          <div className={styles.fileArea} onClick={()=>document.getElementById('mem-photo-upload')?.click()}>
+            {preview ? <img src={preview} className={styles.previewImg} alt="preview"/> : <span className={styles.fileHint}>클릭하여 사진 선택 (JPG · PNG · WEBP)</span>}
+            <input id="mem-photo-upload" type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}} onChange={handleFile}/>
+          </div>
+        ) : (
+          <>
+            <label className={styles.label}>Google Drive 파일 공유 링크</label>
+            <input className={styles.input} value={driveUrl} onChange={e=>handleDriveUrl(e.target.value)}
+              placeholder="https://drive.google.com/file/d/…/view"/>
+            <p className={styles.driveHint}>파일 → 공유 → 링크 복사 (링크 있는 모든 사용자)</p>
+            {drivePreview && (
+              <div className={styles.drivePreviewBox}>
+                <img src={drivePreview} className={styles.previewImg} alt="drive preview"
+                  onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
+              </div>
+            )}
+          </>
+        )}
         <label className={styles.label}>캡션 (한국어, 선택)</label>
         <input className={styles.input} value={captionKo} onChange={e=>setCaptionKo(e.target.value)} placeholder="이 사진에 대한 한 줄"/>
         <label className={styles.label}>Caption (Español, opcional)</label>
         <input className={styles.input} value={captionEs} onChange={e=>setCaptionEs(e.target.value)} placeholder="Una línea sobre esta foto"/>
         <div className={styles.modalActions}>
           <button className={styles.btnGhost} onClick={()=>setType(null)}>← 뒤로</button>
-          <button className={styles.btnPrimary} onClick={handleSave} disabled={!file||uploading}>{uploading?'업로드 중…':'저장'}</button>
+          <button className={styles.btnPrimary} onClick={handleSave}
+            disabled={(photoTab==='upload'&&(!file||uploading))||(photoTab==='drive'&&!driveUrl.trim())}>
+            {uploading?'업로드 중…':'저장'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (type==='gdrive') return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div className={styles.modal} onClick={e=>e.stopPropagation()}>
+        <h3 className={styles.modalTitle}>📁 Google Drive 폴더</h3>
+        <p className={styles.driveHint}>구글 드라이브 폴더를 그대로 임베드합니다.<br/>폴더 → 공유 → 링크 있는 모든 사용자 → 링크 복사</p>
+        <label className={styles.label}>폴더 공유 링크</label>
+        <input className={styles.input} value={folderUrl} onChange={e=>setFolderUrl(e.target.value)}
+          placeholder="https://drive.google.com/drive/folders/…" autoFocus/>
+        <label className={styles.label}>폴더 제목 (선택)</label>
+        <input className={styles.input} value={folderLabel} onChange={e=>setFolderLabel(e.target.value)}
+          placeholder="예: 산타마르타 여행 사진"/>
+        <div className={styles.modalActions}>
+          <button className={styles.btnGhost} onClick={()=>setType(null)}>← 뒤로</button>
+          <button className={styles.btnPrimary} onClick={handleSave} disabled={!folderUrl.trim()}>저장</button>
         </div>
       </div>
     </div>
@@ -275,6 +357,23 @@ function ChapterPage({ chapter, chapterIdx, totalChapters, items, lang, editMode
 
         {/* Letters and memos */}
         {nonPhot.map(item=>{
+          if (item.type==='gdrive') return (
+            <div key={item.id} className={styles.driveCard}>
+              <div className={styles.driveCardHeader}>
+                <span className={styles.driveCardLabel}>📁 {item.caption_ko || 'Google Drive'}</span>
+                {editMode && <div className={styles.cardBtns}>
+                  <button className={styles.cardIconBtn} onClick={()=>onDeleteItem(item.id)}>🗑️</button>
+                </div>}
+              </div>
+              <iframe
+                src={item.photo_url!}
+                className={styles.driveIframe}
+                title={item.caption_ko ?? 'Google Drive'}
+                allow="autoplay"
+              />
+              <p className={styles.driveCardHint}>Google Drive에서 보기 — 폴더가 공개 공유 상태여야 표시됩니다</p>
+            </div>
+          )
           if (item.type==='letter') return (
             <div key={item.id} className={styles.envelope}>
               <div className={styles.envelopeTop}>
