@@ -6,6 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { SEITO_TOC, SECTION_MAP, CHAPTER_COLOR_MAP } from '@/lib/constants-denkoshi'
 
 const PAST_EXAMS: Record<string, { label: string; year: number; term: '상' | '하' }> = {
+  '20180603': { label: '2018 상기', year: 2018, term: '상' },
+  '20181007': { label: '2018 하기', year: 2018, term: '하' },
+  '20190602': { label: '2019 상기', year: 2019, term: '상' },
+  '20191027': { label: '2019 하기', year: 2019, term: '하' },
+  '20200524': { label: '2020 상기', year: 2020, term: '상' },
+  '20201025': { label: '2020 하기', year: 2020, term: '하' },
   '20210530': { label: '2021 상기', year: 2021, term: '상' },
   '20211024': { label: '2021 하기', year: 2021, term: '하' },
   '20220529': { label: '2022 상기', year: 2022, term: '상' },
@@ -202,37 +208,37 @@ function QuestionRow({
           </button>
         </div>
 
-        {/* 정오답 + 삭제 — 태그 있을 때만, 항상 표시 */}
-        {tag && (
-          <div className="flex gap-1 shrink-0">
-            <button
-              onClick={() => onResultSet(qNum, 'correct')}
-              className={`px-2 py-0.5 rounded text-xs font-bold transition ${
-                tag.result === 'correct'
-                  ? 'bg-green-600 text-white'
-                  : 'text-gray-600 hover:text-green-400'
-              }`}
-            >
-              ✓
-            </button>
-            <button
-              onClick={() => onResultSet(qNum, 'wrong')}
-              className={`px-2 py-0.5 rounded text-xs font-bold transition ${
-                tag.result === 'wrong'
-                  ? 'bg-red-600 text-white'
-                  : 'text-gray-600 hover:text-red-400'
-              }`}
-            >
-              ✗
-            </button>
+        {/* 정오답 — 태그 없어도 항상 표시, × 삭제는 태그 있을 때만 */}
+        <div className="flex gap-1 shrink-0">
+          <button
+            onClick={() => onResultSet(qNum, 'correct')}
+            className={`px-2 py-0.5 rounded text-xs font-bold transition ${
+              tag?.result === 'correct'
+                ? 'bg-green-600 text-white'
+                : 'text-gray-600 hover:text-green-400'
+            }`}
+          >
+            ✓
+          </button>
+          <button
+            onClick={() => onResultSet(qNum, 'wrong')}
+            className={`px-2 py-0.5 rounded text-xs font-bold transition ${
+              tag?.result === 'wrong'
+                ? 'bg-red-600 text-white'
+                : 'text-gray-600 hover:text-red-400'
+            }`}
+          >
+            ✗
+          </button>
+          {tag && (
             <button
               onClick={() => onRemove(qNum)}
               className="px-1.5 py-0.5 rounded text-xs text-gray-700 hover:text-red-400 transition"
             >
               ×
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* 팔레트 */}
@@ -252,7 +258,22 @@ export default function DenkoshiDetail() {
   const params = useParams()
   const router = useRouter()
   const examId = params.id as string
-  const exam = PAST_EXAMS[examId]
+  const knownExam = PAST_EXAMS[examId]
+
+  // 커스텀 기출(cx_...) 지원 — Supabase에서 메타데이터 조회
+  const [customExamMeta, setCustomExamMeta] = useState<{ label: string; year: number; term: '상' | '하' } | null>(null)
+  useEffect(() => {
+    if (!knownExam && examId.startsWith('cx_')) {
+      supabase.from('denkoshi_custom_exams')
+        .select('label, year, term')
+        .eq('id', examId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) setCustomExamMeta({ label: data.label, year: data.year, term: data.term as '상' | '하' })
+        })
+    }
+  }, [examId, knownExam])
+  const exam = knownExam ?? customExamMeta
 
   const [pdfTab, setPdfTab] = useState<'question' | 'answer'>('question')
   const [editingUrl, setEditingUrl] = useState<'question' | 'answer' | null>(null)
@@ -425,15 +446,29 @@ export default function DenkoshiDetail() {
 
   const handleResultSet = async (qNum: number, value: 'correct' | 'wrong') => {
     const tag = tags.find(t => t.q_num === qNum)
-    if (!tag) return
-    const next = tag.result === value ? null : value
-    // 즉시 반영
-    setTags(ts => ts.map(t => t.q_num === qNum ? { ...t, result: next } : t))
-    // 백그라운드 sync
-    supabase.from('denkoshi_section_tags')
-      .update({ result: next })
-      .eq('id', tag.id)
-      .then(() => {})
+    const next = tag?.result === value ? null : value
+
+    if (tag) {
+      // 태그가 있으면 result만 업데이트
+      setTags(ts => ts.map(t => t.q_num === qNum ? { ...t, result: next } : t))
+      supabase.from('denkoshi_section_tags')
+        .update({ result: next })
+        .eq('id', tag.id)
+        .then(() => {})
+    } else if (next !== null) {
+      // 태그가 없어도 result-only 행 생성 (section_code = '' 허용)
+      const tempId = `temp-r-${qNum}`
+      setTags(ts => [...ts, {
+        id: tempId, exam_id: examId, q_num: qNum,
+        section_code: '', section_codes: [], result: next,
+      }])
+      supabase.from('denkoshi_section_tags')
+        .upsert(
+          { exam_id: examId, q_num: qNum, section_code: '', section_codes: [], result: next },
+          { onConflict: 'exam_id,q_num' }
+        )
+        .then(() => fetchTags())
+    }
   }
 
   const handleRemoveTag = async (qNum: number) => {

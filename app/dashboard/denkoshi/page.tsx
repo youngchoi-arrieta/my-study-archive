@@ -23,8 +23,14 @@ const PAST_EXAMS = [
   { id: '20221030', label: '2022 하기', year: 2022, term: '하' as const },
   { id: '20210530', label: '2021 상기', year: 2021, term: '상' as const },
   { id: '20211024', label: '2021 하기', year: 2021, term: '하' as const },
+  { id: '20200524', label: '2020 상기', year: 2020, term: '상' as const },
+  { id: '20201025', label: '2020 하기', year: 2020, term: '하' as const },
+  { id: '20190602', label: '2019 상기', year: 2019, term: '상' as const },
+  { id: '20191027', label: '2019 하기', year: 2019, term: '하' as const },
+  { id: '20180603', label: '2018 상기', year: 2018, term: '상' as const },
+  { id: '20181007', label: '2018 하기', year: 2018, term: '하' as const },
 ]
-const YEARS = [2025, 2024, 2023, 2022, 2021]
+const YEARS = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018]
 
 // ── 타입 ────────────────────────────────────────────────────────
 type DenkoshiSession = {
@@ -42,6 +48,13 @@ type SectionTagRow = {
   section_code: string
   section_codes?: string[]
   result: 'correct' | 'wrong' | null
+}
+
+type CustomExam = {
+  id: string
+  label: string
+  year: number
+  term: '상' | '하'
 }
 
 const scoreColor = (s: number | null) => {
@@ -310,11 +323,17 @@ export default function DenkoshiHub() {
   const [activeTab, setActiveTab] = useState<'scores' | 'frequency' | 'tools'>('scores')
   const [sessions, setSessions] = useState<DenkoshiSession[]>([])
   const [allTags, setAllTags] = useState<SectionTagRow[]>([])
+  const [customExams, setCustomExams] = useState<CustomExam[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [editScore, setEditScore] = useState('')
   const [saving, setSaving] = useState(false)
+  // 기출 추가 폼
+  const [addYear, setAddYear] = useState('')
+  const [addTerm, setAddTerm] = useState<'상' | '하'>('상')
+  const [addBusy, setAddBusy] = useState(false)
+  const [addError, setAddError] = useState('')
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
@@ -333,16 +352,75 @@ export default function DenkoshiHub() {
     setAllTags((data || []) as SectionTagRow[])
   }, [])
 
+  const fetchCustomExams = useCallback(async () => {
+    const { data } = await supabase
+      .from('denkoshi_custom_exams')
+      .select('id, label, year, term')
+      .order('year', { ascending: false })
+    setCustomExams((data || []) as CustomExam[])
+  }, [])
+
   useEffect(() => {
     fetchSessions()
     fetchAllTags()
-  }, [fetchSessions, fetchAllTags])
+    fetchCustomExams()
+  }, [fetchSessions, fetchAllTags, fetchCustomExams])
+
+  // 커스텀 기출 추가 핸들러
+  const handleAddCustomExam = async () => {
+    setAddError('')
+    const y = parseInt(addYear)
+    if (!addYear || isNaN(y) || y < 2010 || y > 2030) {
+      setAddError('연도를 올바르게 입력하세요 (2010~2030)')
+      return
+    }
+    const isInPast = PAST_EXAMS.some(e => e.year === y && e.term === addTerm)
+    if (isInPast) {
+      setAddError(`${y} ${addTerm}기는 이미 기본 목록에 있어요`)
+      return
+    }
+    const isInCustom = customExams.some(e => e.year === y && e.term === addTerm)
+    if (isInCustom) {
+      setAddError(`${y} ${addTerm}기는 이미 추가됐어요`)
+      return
+    }
+    setAddBusy(true)
+    const id    = `cx_${y}_${addTerm === '상' ? 1 : 2}`
+    const label = `${y} ${addTerm}기 (추가)`
+    const { error } = await supabase
+      .from('denkoshi_custom_exams')
+      .insert({ id, label, year: y, term: addTerm })
+    if (error) {
+      setAddError('저장 실패: ' + error.message)
+    } else {
+      setAddYear('')
+      await fetchCustomExams()
+    }
+    setAddBusy(false)
+  }
+
+  const handleDeleteCustomExam = async (id: string) => {
+    if (!confirm('이 기출을 목록에서 삭제할까요? (풀이 기록은 유지됩니다)')) return
+    await supabase.from('denkoshi_custom_exams').delete().eq('id', id)
+    await fetchCustomExams()
+  }
+
+  // PAST_EXAMS + customExams 병합
+  const allExams = useMemo(() => [
+    ...PAST_EXAMS,
+    ...customExams.map(c => ({ id: c.id, label: c.label, year: c.year, term: c.term })),
+  ], [customExams])
+
+  const allYears = useMemo(() =>
+    [...new Set(allExams.map(e => e.year))].sort((a, b) => b - a),
+    [allExams]
+  )
 
   const getSession = (year: number, term: '상' | '하') =>
     sessions.find(s => s.year === year && s.session === (term === '상' ? 1 : 2)) ?? null
 
   const getExamId = (year: number, term: '상' | '하') =>
-    PAST_EXAMS.find(e => e.year === year && e.term === term)?.id ?? ''
+    allExams.find(e => e.year === year && e.term === term)?.id ?? ''
 
   const startEdit = (s: DenkoshiSession) => {
     setEditing(s.id)
@@ -449,7 +527,7 @@ export default function DenkoshiHub() {
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="bg-gray-900 rounded-xl p-4 text-center">
                 <p className="text-xs text-gray-500 mb-1">풀이 완료</p>
-                <p className="text-2xl font-bold">{scored.length}<span className="text-sm text-gray-500 ml-1">/ 10</span></p>
+                <p className="text-2xl font-bold">{scored.length}<span className="text-sm text-gray-500 ml-1">/ {allExams.length}</span></p>
               </div>
               <div className="bg-gray-900 rounded-xl p-4 text-center">
                 <p className="text-xs text-gray-500 mb-1">합격권 도달</p>
@@ -577,7 +655,7 @@ export default function DenkoshiHub() {
                   <div className="text-xs text-gray-600 text-center pb-1">상기</div>
                   <div className="text-xs text-gray-600 text-center pb-1">하기</div>
 
-                  {YEARS.map(year => {
+                  {allYears.map(year => {
                     const termS = getSession(year, '상')
                     const termH = getSession(year, '하')
                     return [
@@ -643,6 +721,64 @@ export default function DenkoshiHub() {
         {/* ── 탭: 도구·편집 ── */}
         {activeTab === 'tools' && (
           <div className="space-y-6">
+
+            {/* 기출 추가 폼 */}
+            <div>
+              <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">기출 추가</p>
+              <div className="bg-gray-900 rounded-xl p-4 space-y-3">
+                <p className="text-xs text-gray-500">
+                  기본 목록(2018~2025)에 없는 연도를 추가해요. 추가하면 기출현황 탭에 바로 나타납니다.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={addYear}
+                    onChange={e => setAddYear(e.target.value)}
+                    placeholder="연도 (예: 2017)"
+                    className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-600"
+                  />
+                  <div className="flex bg-gray-800 rounded-lg overflow-hidden">
+                    {(['상', '하'] as const).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setAddTerm(t)}
+                        className={`px-4 py-2 text-sm font-bold transition ${
+                          addTerm === t ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'
+                        }`}
+                      >
+                        {t}기
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={handleAddCustomExam}
+                    disabled={addBusy || !addYear}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition"
+                  >
+                    {addBusy ? '…' : '추가'}
+                  </button>
+                </div>
+                {addError && <p className="text-xs text-red-400">{addError}</p>}
+
+                {customExams.length > 0 && (
+                  <div className="border-t border-gray-800 pt-3 space-y-1.5">
+                    <p className="text-xs text-gray-600 mb-2">추가된 기출</p>
+                    {customExams.map(ce => (
+                      <div key={ce.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                        <span className="text-sm text-gray-300">{ce.label}</span>
+                        <button
+                          onClick={() => handleDeleteCustomExam(ce.id)}
+                          className="text-xs text-gray-600 hover:text-red-400 transition"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* 분석 도구 */}
             <div>
               <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">분석 도구</p>
