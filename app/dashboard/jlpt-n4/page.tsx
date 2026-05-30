@@ -72,6 +72,39 @@ const PART_COLOR: Record<Part, string> = {
 // 매일 반복 파트 (스트릭 대상)
 const DAILY_PARTS: Part[] = ['청해', '문자·어휘']
 
+// ── 쓰면서 익히는 일본어 동사활용 쓰기노트 (시원스쿨) ──────────────
+export type VerbSection = { id: string; part: 'PART1' | 'PART2'; title: string; page: number }
+
+export const VERB_TOC: VerbSection[] = [
+  { id: 'v-p1-01', part: 'PART1', title: '01 일본어 동사의 특징',         page: 8   },
+  { id: 'v-p1-02', part: 'PART1', title: '02 주요 동사 활용 미리보기 ①', page: 12  },
+  { id: 'v-p1-03', part: 'PART1', title: '03 주요 동사 활용 미리보기 ②', page: 16  },
+  { id: 'v-p2-04', part: 'PART2', title: '04 ます형 ①',                   page: 22  },
+  { id: 'v-p2-05', part: 'PART2', title: '05 ます형 ②',                   page: 30  },
+  { id: 'v-p2-06', part: 'PART2', title: '06 ない형',                     page: 38  },
+  { id: 'v-p2-07', part: 'PART2', title: '07 て형 (1그룹)',               page: 46  },
+  { id: 'v-p2-08', part: 'PART2', title: '08 て형 (2·3그룹)',             page: 54  },
+  { id: 'v-p2-09', part: 'PART2', title: '09 た형 (1그룹)',               page: 62  },
+  { id: 'v-p2-10', part: 'PART2', title: '10 た형 (2·3그룹)',             page: 70  },
+  { id: 'v-p2-11', part: 'PART2', title: '11 동사의 명사화 ①',           page: 78  },
+  { id: 'v-p2-12', part: 'PART2', title: '12 동사의 명사화 ②',           page: 86  },
+  { id: 'v-p2-13', part: 'PART2', title: '13 의지형 · 권유형',           page: 94  },
+  { id: 'v-p2-14', part: 'PART2', title: '14 가능형 ①',                  page: 102 },
+  { id: 'v-p2-15', part: 'PART2', title: '15 가능형 ②',                  page: 110 },
+  { id: 'v-p2-16', part: 'PART2', title: '16 금지형',                    page: 118 },
+  { id: 'v-p2-17', part: 'PART2', title: '17 명령형',                    page: 126 },
+  { id: 'v-p2-18', part: 'PART2', title: '18 사역형',                    page: 134 },
+  { id: 'v-p2-19', part: 'PART2', title: '19 수동형',                    page: 142 },
+  { id: 'v-p2-20', part: 'PART2', title: '20 사역수동형',                page: 150 },
+]
+
+const VERB_COLOR: Record<'PART1' | 'PART2', string> = {
+  PART1: '#16a34a',  // green-600
+  PART2: '#15803d',  // green-700
+}
+
+
+
 // ── 진도 상태 ────────────────────────────────────────────────────
 type ReadStatus = 0 | 1 | 2   // 0=미완, 1=1회독, 2=2회독
 const NEXT_STATUS: Record<ReadStatus, ReadStatus> = { 0: 1, 1: 2, 2: 0 }
@@ -124,18 +157,23 @@ export default function JlptN4Hub() {
   const [editMemo, setEditMemo]       = useState('')
   const [saving, setSaving]           = useState(false)
   const [filterPart, setFilterPart]   = useState<Part | null>(null)
+  const [verbMap, setVerbMap]         = useState<Map<string, boolean>>(new Map())
 
   // ── 데이터 로드 ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: prog }, { data: daily }] = await Promise.all([
+    const [{ data: prog }, { data: daily }, { data: verb }] = await Promise.all([
       supabase.from('jlpt_n4_progress').select('section_id, status, memo, updated_at'),
       supabase.from('jlpt_n4_daily').select('date, part, done'),
+      supabase.from('jlpt_verb_progress').select('section_id, done'),
     ])
     const map = new Map<string, ProgressRow>()
     ;(prog || []).forEach((r: ProgressRow) => map.set(r.section_id, r))
     setProgressMap(map)
     setDailyRows((daily || []) as DailyRow[])
+    const vmap = new Map<string, boolean>()
+    ;(verb || []).forEach((r: { section_id: string; done: boolean }) => vmap.set(r.section_id, r.done))
+    setVerbMap(vmap)
     setLoading(false)
   }, [])
 
@@ -188,6 +226,16 @@ export default function JlptN4Hub() {
     await supabase.from('jlpt_n4_daily').upsert(
       { date, part, done: newDone },
       { onConflict: 'date,part' }
+    )
+  }
+
+  // ── 동사활용 토글 ───────────────────────────────────────────────
+  const toggleVerb = async (id: string) => {
+    const newDone = !(verbMap.get(id) ?? false)
+    setVerbMap(prev => { const m = new Map(prev); m.set(id, newDone); return m })
+    await supabase.from('jlpt_verb_progress').upsert(
+      { section_id: id, done: newDone },
+      { onConflict: 'section_id' }
     )
   }
 
@@ -510,6 +558,67 @@ export default function JlptN4Hub() {
                   )
                 })}
               </div>
+            </div>
+
+            {/* 동사활용 쓰기노트 진도 */}
+            <div className="bg-gray-900 rounded-xl p-4 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">동사활용 쓰기노트</p>
+                <span className="text-xs text-gray-600">
+                  {[...verbMap.values()].filter(Boolean).length} / {VERB_TOC.length}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-600 mb-3">쓰면서 익히는 일본어 동사활용 쓰기노트 · 시원스쿨</p>
+
+              {/* PART 구분별 세그먼트 바 */}
+              {(['PART1', 'PART2'] as const).map(part => {
+                const secs = VERB_TOC.filter(s => s.part === part)
+                const done = secs.filter(s => verbMap.get(s.id)).length
+                return (
+                  <div key={part} className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold" style={{ color: VERB_COLOR[part] }}>{part}</span>
+                      <span className="text-[10px] text-gray-600">{done}/{secs.length}</span>
+                    </div>
+                    <div className="flex gap-0.5">
+                      {secs.map(sec => {
+                        const done = verbMap.get(sec.id) ?? false
+                        return (
+                          <button
+                            key={sec.id}
+                            onClick={() => toggleVerb(sec.id)}
+                            title={sec.title}
+                            className="h-5 flex-1 rounded-sm transition-all duration-150 hover:opacity-80"
+                            style={{ backgroundColor: done ? VERB_COLOR[part] : '#1f2937' }}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* 카드 목록 */}
+              <div className="grid grid-cols-2 gap-1.5 mt-3">
+                {VERB_TOC.map(sec => {
+                  const done = verbMap.get(sec.id) ?? false
+                  return (
+                    <button
+                      key={sec.id}
+                      onClick={() => toggleVerb(sec.id)}
+                      className={`text-left px-3 py-2 rounded-lg text-xs transition ${
+                        done ? 'bg-green-900/40 text-green-300' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}
+                    >
+                      <span className={`font-bold mr-1 ${done ? 'text-green-400' : 'text-gray-600'}`}>
+                        {done ? '✓' : '○'}
+                      </span>
+                      {sec.title}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-gray-700 mt-2">칸 또는 카드를 클릭해서 완료 체크</p>
             </div>
           </div>
         )}
