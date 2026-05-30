@@ -496,7 +496,7 @@ export default function DenkoshiHub() {
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">🗾</span>
           <h1 className="text-2xl font-bold">第二種電気工事士 학과시험</h1>
-          <span className="text-xs bg-yellow-600/30 text-yellow-400 px-2 py-0.5 rounded-full">준비 중</span>
+          <span className="text-xs bg-green-600/30 text-green-400 px-2 py-0.5 rounded-full">취득</span>
         </div>
         <p className="text-gray-500 text-sm mb-5">일본 경제산업성 · 2025.5.28 CBT 시험</p>
 
