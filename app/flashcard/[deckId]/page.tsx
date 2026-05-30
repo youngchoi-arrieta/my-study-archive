@@ -61,10 +61,21 @@ export default function DeckEditPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<CardType | 'all'>('all')
   const [sortKey, setSortKey] = useState<'newest' | 'oldest' | 'type' | 'alpha'>('newest')
-  // JLPT용 퀴즈 방향: 'word'=단어→뜻+요미가나, 'reading'=요미가나→단어+뜻, 'default'=카드별 given 사용
-  const [quizDir, setQuizDir] = useState<'default' | 'word' | 'reading'>('default')
+  // JLPT용 퀴즈 방향 — localStorage로 덱별 유지
+  const QUIZ_DIR_KEY = `quizDir_${deckId}`
+  const [quizDir, setQuizDirState] = useState<'default' | 'word' | 'reading'>('default')
+  const setQuizDir = (dir: 'default' | 'word' | 'reading') => {
+    setQuizDirState(dir)
+    try { localStorage.setItem(QUIZ_DIR_KEY, dir) } catch {}
+  }
 
-  useEffect(() => { loadData() }, [deckId])
+  useEffect(() => {
+    loadData()
+    try {
+      const saved = localStorage.getItem(`quizDir_${deckId}`)
+      if (saved === 'word' || saved === 'reading' || saved === 'default') setQuizDirState(saved)
+    } catch {}
+  }, [deckId])
 
   const changeNewType = (t: CardType) => {
     setNewType(t)
@@ -422,14 +433,27 @@ export default function DeckEditPage() {
                             </div>
                           : card.card_type === 'multi' && card.fields.length <= 3 ? (
                             // 테이블 뷰 (3필드 이하 multi-field)
-                            <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border border-gray-800">
-                              {card.fields.map((f, i) => (
-                                <div key={i} className={`flex-1 p-2.5 ${i < card.fields.length - 1 ? 'border-r border-gray-800' : ''} bg-gray-800/50`}>
-                                  <p className="text-[10px] text-blue-400 font-semibold mb-1">{f.name}</p>
-                                  <p className="text-sm text-gray-200 whitespace-pre-wrap font-medium">{f.value || '—'}</p>
+                            (() => {
+                              // 현재 방향에서 given 인덱스 계산
+                              const givenIdx = quizDir === 'word' ? 0
+                                : quizDir === 'reading' ? 1
+                                : null // default: canBeGiven 기준
+                              return (
+                                <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border border-gray-800">
+                                  {card.fields.map((f, i) => {
+                                    const isGiven = givenIdx !== null ? i === givenIdx : f.canBeGiven !== false
+                                    return (
+                                      <div key={i} className={`flex-1 p-2.5 ${i < card.fields.length - 1 ? 'border-r border-gray-800' : ''} ${isGiven ? 'bg-blue-950/60 border-b-2 border-b-blue-500' : 'bg-gray-800/50'}`}>
+                                        <p className={`text-[10px] font-semibold mb-1 ${isGiven ? 'text-blue-400' : 'text-gray-500'}`}>
+                                          {f.name}{isGiven ? ' ✦' : ''}
+                                        </p>
+                                        <p className="text-sm text-gray-200 whitespace-pre-wrap font-medium">{f.value || '—'}</p>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
-                              ))}
-                            </div>
+                              )
+                            })()
                           ) : (
                             <div className="grid grid-cols-2 gap-2">
                               {card.fields.map((f, i) => (

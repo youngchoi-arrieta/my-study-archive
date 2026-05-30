@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { OcclusionView, type OcclusionData } from '../../OcclusionEditor'
@@ -71,7 +71,8 @@ function QuizPage() {
   const router = useRouter()
   const { deckId } = useParams() as { deckId: string }
   const searchParams = useSearchParams()
-  const quizDir = searchParams.get('dir') ?? 'default' // 'default' | 'word' | 'reading'
+  const quizDir = searchParams.get('dir') ?? 'default'
+
   const [deckName, setDeckName] = useState('')
   const [queue, setQueue] = useState<QuizItem[]>([])
   const [revealed, setRevealed] = useState(false)
@@ -80,9 +81,12 @@ function QuizPage() {
   const [total, setTotal] = useState(0)
   const [masteredCount, setMasteredCount] = useState(0)
 
-  useEffect(() => { loadDeck() }, [deckId, quizDir])
+  const loadDeck = useCallback(async () => {
+    setLoading(true)
+    setDone(false)
+    setRevealed(false)
+    setMasteredCount(0)
 
-  const loadDeck = async () => {
     const { data: deck } = await supabase.from('flashcard_decks').select('name').eq('id', deckId).single()
     if (deck) setDeckName(deck.name)
     const { data: cards } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId)
@@ -94,7 +98,6 @@ function QuizPage() {
       if (type === 'basic') {
         items.push({ kind: 'basic', card, direction: 'front' })
       } else if (type === 'multi') {
-        // quizDir 오버라이드: word=0번(일본어단어) given, reading=1번(요미가나) given
         let givenIndices: number[]
         if (quizDir === 'word') {
           givenIndices = [0]
@@ -119,9 +122,10 @@ function QuizPage() {
     const shuffled = items.sort(() => Math.random() - 0.5)
     setQueue(shuffled)
     setTotal(shuffled.length)
-    setMasteredCount(0)
     setLoading(false)
-  }
+  }, [deckId, quizDir])
+
+  useEffect(() => { loadDeck() }, [loadDeck])
 
   const mastered = () => {
     setMasteredCount(p => p + 1)
@@ -142,7 +146,10 @@ function QuizPage() {
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8 text-center">
       <div className="text-6xl mb-6">🎉</div>
       <h1 className="text-3xl font-bold mb-2">완료!</h1>
-      <p className="text-gray-400 mb-8">{masteredCount} / {total} 숙지</p>
+      <p className="text-gray-400 mb-2">{masteredCount} / {total} 숙지</p>
+      <p className="text-xs text-gray-600 mb-8">
+        방향: {quizDir === 'word' ? '단어 → 뜻' : quizDir === 'reading' ? '요미가나 → 뜻' : '카드별 설정'}
+      </p>
       <div className="flex gap-3">
         <button onClick={loadDeck} className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-semibold transition">다시 풀기</button>
         <button onClick={() => router.push(`/flashcard/${deckId}`)} className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-xl font-semibold transition">덱으로</button>
@@ -247,6 +254,9 @@ function QuizPage() {
         <div className="text-center">
           <p className="text-sm font-semibold text-gray-300">{deckName}</p>
           <p className="text-xs text-gray-600">남은 {queue.length}장 · 숙지 {masteredCount}/{total}</p>
+          <p className="text-[10px] text-blue-500 mt-0.5">
+            {quizDir === 'word' ? '단어 → 뜻' : quizDir === 'reading' ? '요미가나 → 뜻' : '카드별 설정'}
+          </p>
         </div>
         <div className="w-16" />
       </div>
