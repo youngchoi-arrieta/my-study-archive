@@ -15,12 +15,19 @@ type DenkenExam = {
   label: string
 }
 
+// 2023~: 연 2회 (上期=8월, 下期=3월) / 2009~2022: 연 1회
+// 공개 기출 범위: 2026 上期 ~ 2009年
 const PAST_EXAMS: DenkenExam[] = [
-  ...([2024, 2023].flatMap(y => [
-    { id: `dk_${y}_1`, year: y, term: '上期' as const, label: `${y}年 上期` },
-    { id: `dk_${y}_2`, year: y, term: '下期' as const, label: `${y}年 下期` },
-  ])),
-  ...[2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010,2009,2008,2007].map(y => ({
+  ...([2026, 2025, 2024, 2023].flatMap(y => {
+    const exams: DenkenExam[] = [
+      { id: `dk_${y}_1`, year: y, term: '上期', label: `${y}年 上期 (8월)` },
+    ]
+    if (y !== 2026) {
+      exams.push({ id: `dk_${y}_2`, year: y, term: '下期', label: `${y}年 下期 (3월)` })
+    }
+    return exams
+  })),
+  ...[2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010,2009].map(y => ({
     id: `dk_${y}_0`, year: y, term: '' as const, label: `${y}年`,
   })),
 ]

@@ -232,7 +232,7 @@ export default function JlptN4Hub() {
           <span className="text-xs bg-yellow-600/30 text-yellow-400 px-2 py-0.5 rounded-full">준비 중</span>
         </div>
         <p className="text-gray-500 text-sm mb-5">
-          일본어능력시험 · 2026.7.5 (불광중학교) · 해커스 N4 한권으로 합격 · 30일 2회독
+          일본어능력시험 · 2026.7.5 (서울선린인터넷고등학교) · 해커스 N4 한권으로 합격 · 30일 2회독
         </p>
 
         {/* 탭 */}
