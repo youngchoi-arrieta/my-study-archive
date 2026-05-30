@@ -15,9 +15,10 @@ type Deck = {
 }
 
 const EXAM_META: Record<string, { label: string; back: string }> = {
-  engineer:  { label: '⚡ 전기기사 실기', back: '/dashboard' },
-  gineung:   { label: '🔧 전기기능사 실기', back: '/dashboard' },
-  denkoshi:  { label: '🗾 第二種電気工事士', back: '/dashboard/denkoshi' },
+  engineer:   { label: '⚡ 전기기사 실기', back: '/dashboard' },
+  gineung:    { label: '🔧 전기기능사 실기', back: '/dashboard' },
+  denkoshi:   { label: '🗾 第二種電気工事士', back: '/dashboard/denkoshi' },
+  'jlpt-n4':  { label: '🗣 JLPT N4', back: '/dashboard/jlpt-n4' },
 }
 
 export default function FlashcardPageWrapper() {

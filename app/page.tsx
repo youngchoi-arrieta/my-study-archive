@@ -81,21 +81,34 @@ export default function Home() {
 
         {/* 일본 — 우선 */}
         <p className="text-xs text-gray-700 mb-2 ml-1">🇯🇵 일본</p>
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <ExamCard
             href="/dashboard/denkoshi"
             emoji="🗾"
             org="일본 경제산업성"
             title="第二種電気工事士 학과"
             desc="기출 PDF · 출제경향 분석 · 플래시카드"
-            badge="준비 중"
+            badge="취득"
           />
-          <InactiveExamCard
+          <ExamCard
+            href="/dashboard/denken"
             emoji="🏭"
             org="일본 경제산업성"
             title="電験三種"
-            desc="理論 · 電力 · 機械 · 法規"
+            desc="20개년 기출 · 과목별 오답메모"
+            badge="준비 중"
           />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <ExamCard
+            href="/dashboard/jlpt-n4"
+            emoji="🗣"
+            org="일본어능력시험 JLPT"
+            title="JLPT N4"
+            desc="해커스 진도 대시보드 · 단어·문형 플래시카드"
+            badge="준비 중"
+          />
+          <div />
         </div>
 
         {/* 한국 — 취득 완료 */}
