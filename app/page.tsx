@@ -10,12 +10,16 @@ function ExamCard({
   desc: string
   badge?: string
 }) {
+  const acquired = badge === '취득'
+  const badgeCls = acquired
+    ? 'bg-green-600/30 text-green-400'
+    : 'bg-blue-600/30 text-blue-400'
   return (
-    <Link href={href} className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition h-full">
+    <Link href={href} className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition h-full flex flex-col">
       <div className="flex items-start justify-between mb-2">
         <span className="text-2xl">{emoji}</span>
         {badge && (
-          <span className="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded-full">{badge}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${badgeCls}`}>{badge}</span>
         )}
       </div>
       <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{org}</p>
@@ -79,16 +83,17 @@ export default function Home() {
         {/* 시험 */}
         <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📋 시험</p>
 
-        {/* 일본 — 우선 */}
+        {/* 일본 2×2 그리드 */}
         <p className="text-xs text-gray-700 mb-2 ml-1">🇯🇵 일본</p>
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {/* 상단 행 — 진행 중 */}
           <ExamCard
-            href="/dashboard/denkoshi"
-            emoji="🗾"
-            org="일본 경제산업성"
-            title="第二種電気工事士 학과"
-            desc="기출 PDF · 출제경향 분석 · 플래시카드"
-            badge="취득"
+            href="/dashboard/jlpt-n4"
+            emoji="🗣"
+            org="일본어능력시험 JLPT"
+            title="JLPT N4"
+            desc="해커스 진도 대시보드 · 단어·문형 플래시카드"
+            badge="준비 중"
           />
           <ExamCard
             href="/dashboard/denken"
@@ -98,17 +103,23 @@ export default function Home() {
             desc="20개년 기출 · 과목별 오답메모"
             badge="준비 중"
           />
-        </div>
-        <div className="grid grid-cols-2 gap-3 mb-6">
+          {/* 하단 행 — 취득 완료 */}
           <ExamCard
-            href="/dashboard/jlpt-n4"
-            emoji="🗣"
-            org="일본어능력시험 JLPT"
-            title="JLPT N4"
-            desc="해커스 진도 대시보드 · 단어·문형 플래시카드"
+            href="/dashboard/denkoshi/jitsugi"
+            emoji="🔌"
+            org="일본 경제산업성"
+            title="第二種電気工事士 실기"
+            desc="후보문제 · 작업 체크리스트"
             badge="준비 중"
           />
-          <div />
+          <ExamCard
+            href="/dashboard/denkoshi"
+            emoji="🗾"
+            org="일본 경제산업성"
+            title="第二種電気工事士 학과"
+            desc="기출 PDF · 출제경향 분석 · 플래시카드"
+            badge="취득"
+          />
         </div>
 
         {/* 한국 — 취득 완료 */}

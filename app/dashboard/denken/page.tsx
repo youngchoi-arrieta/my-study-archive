@@ -20,10 +20,10 @@ type DenkenExam = {
 const PAST_EXAMS: DenkenExam[] = [
   ...([2026, 2025, 2024, 2023].flatMap(y => {
     const exams: DenkenExam[] = [
-      { id: `dk_${y}_1`, year: y, term: '上期', label: `${y}年 上期 (8월)` },
+      { id: `dk_${y}_1`, year: y, term: '上期', label: `${y}年 上期` },
     ]
     if (y !== 2026) {
-      exams.push({ id: `dk_${y}_2`, year: y, term: '下期', label: `${y}年 下期 (3월)` })
+      exams.push({ id: `dk_${y}_2`, year: y, term: '下期', label: `${y}年 下期` })
     }
     return exams
   })),
