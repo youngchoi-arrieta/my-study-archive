@@ -61,6 +61,8 @@ export default function DeckEditPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<CardType | 'all'>('all')
   const [sortKey, setSortKey] = useState<'newest' | 'oldest' | 'type' | 'alpha'>('newest')
+  // JLPT용 퀴즈 방향: 'word'=단어→뜻+요미가나, 'reading'=요미가나→단어+뜻, 'default'=카드별 given 사용
+  const [quizDir, setQuizDir] = useState<'default' | 'word' | 'reading'>('default')
 
   useEffect(() => { loadData() }, [deckId])
 
@@ -204,7 +206,7 @@ export default function DeckEditPage() {
           </div>
           <div className="flex gap-2 flex-shrink-0">
             {cards.length > 0 && (
-              <button onClick={() => router.push(`/flashcard/${deckId}/quiz`)}
+              <button onClick={() => router.push(`/flashcard/${deckId}/quiz?dir=${quizDir}`)}
                 className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition">▶ 퀴즈</button>
             )}
             <button onClick={() => setShowAddCard(p => !p)}
@@ -289,6 +291,25 @@ export default function DeckEditPage() {
             const paginated = sorted.slice(page * PAGE, (page + 1) * PAGE)
             return (
             <div>
+              {/* 퀴즈 방향 토글 (multi-field 카드가 있을 때만) */}
+              {cards.some(c => c.card_type === 'multi') && (
+                <div className="flex items-center gap-2 mb-3 bg-gray-900 rounded-xl p-2">
+                  <span className="text-xs text-gray-500 shrink-0 px-1">퀴즈 방향</span>
+                  {([
+                    { k: 'default',  label: '카드별 설정' },
+                    { k: 'word',     label: '단어 → 뜻' },
+                    { k: 'reading',  label: '요미가나 → 뜻' },
+                  ] as const).map(({ k, label }) => (
+                    <button key={k} onClick={() => setQuizDir(k)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        quizDir === k ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* 검색 + 타입 필터 + 정렬 */}
               <div className="flex flex-col gap-2 mb-4">
                 <div className="flex gap-2">
@@ -399,7 +420,17 @@ export default function DeckEditPage() {
                                 ? <OcclusionView data={card.occlusion} />
                                 : <p className="text-gray-500 text-xs text-center py-4">이미지 없음</p>}
                             </div>
-                          : (
+                          : card.card_type === 'multi' && card.fields.length <= 3 ? (
+                            // 테이블 뷰 (3필드 이하 multi-field)
+                            <div className="flex items-stretch gap-0 rounded-xl overflow-hidden border border-gray-800">
+                              {card.fields.map((f, i) => (
+                                <div key={i} className={`flex-1 p-2.5 ${i < card.fields.length - 1 ? 'border-r border-gray-800' : ''} bg-gray-800/50`}>
+                                  <p className="text-[10px] text-blue-400 font-semibold mb-1">{f.name}</p>
+                                  <p className="text-sm text-gray-200 whitespace-pre-wrap font-medium">{f.value || '—'}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
                             <div className="grid grid-cols-2 gap-2">
                               {card.fields.map((f, i) => (
                                 <div key={i} className="bg-gray-800 rounded-xl p-3">

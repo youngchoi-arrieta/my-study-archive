@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { OcclusionView, type OcclusionData } from '../../OcclusionEditor'
 
@@ -59,9 +59,19 @@ function ClozeDisplay({ text, revealed }: { text: string; revealed: boolean }) {
   )
 }
 
-export default function QuizPage() {
+export default function QuizPageWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-950 flex items-center justify-center text-white text-4xl">🃏</div>}>
+      <QuizPage />
+    </Suspense>
+  )
+}
+
+function QuizPage() {
   const router = useRouter()
   const { deckId } = useParams() as { deckId: string }
+  const searchParams = useSearchParams()
+  const quizDir = searchParams.get('dir') ?? 'default' // 'default' | 'word' | 'reading'
   const [deckName, setDeckName] = useState('')
   const [queue, setQueue] = useState<QuizItem[]>([])
   const [revealed, setRevealed] = useState(false)
@@ -70,7 +80,7 @@ export default function QuizPage() {
   const [total, setTotal] = useState(0)
   const [masteredCount, setMasteredCount] = useState(0)
 
-  useEffect(() => { loadDeck() }, [deckId])
+  useEffect(() => { loadDeck() }, [deckId, quizDir])
 
   const loadDeck = async () => {
     const { data: deck } = await supabase.from('flashcard_decks').select('name').eq('id', deckId).single()
@@ -84,9 +94,17 @@ export default function QuizPage() {
       if (type === 'basic') {
         items.push({ kind: 'basic', card, direction: 'front' })
       } else if (type === 'multi') {
-        const givenIndices = card.fields
-          .map((_: Field, i: number) => i)
-          .filter((i: number) => card.fields[i].canBeGiven !== false)
+        // quizDir 오버라이드: word=0번(일본어단어) given, reading=1번(요미가나) given
+        let givenIndices: number[]
+        if (quizDir === 'word') {
+          givenIndices = [0]
+        } else if (quizDir === 'reading') {
+          givenIndices = [1]
+        } else {
+          givenIndices = card.fields
+            .map((_: Field, i: number) => i)
+            .filter((i: number) => card.fields[i].canBeGiven !== false)
+        }
         givenIndices.forEach((i: number) => items.push({ kind: 'multi', card, givenIdx: i }))
       } else if (type === 'cloze') {
         const { blanks } = parseCloze(card.fields[0]?.value ?? '')
