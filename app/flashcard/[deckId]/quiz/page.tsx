@@ -181,6 +181,11 @@ function QuizPage() {
     } else if (current.kind === 'basic') {
       const text = current.card.fields[0]?.value
       if (text) speak(text)
+    } else if (current.kind === 'cloze') {
+      // {{단어}} → 단어로 치환해서 전체 예문 읽기
+      const raw = current.card.fields[0]?.value ?? ''
+      const text = raw.replace(/\{\{([^}]+)\}\}/g, '$1')
+      if (text) speak(text)
     }
   }, [queue, autoSpeak, speak])
 
@@ -246,25 +251,31 @@ function QuizPage() {
     }
     if (current.kind === 'cloze') {
       const hint = current.card.fields[1]?.value
+      const rawText = current.card.fields[0]?.value ?? ''
+      // TTS용: {{단어}} → 단어 (빈칸 채운 전체 문장 읽기)
+      const speakText = rawText.replace(/\{\{([^}]+)\}\}/g, '$1')
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-yellow-900">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-yellow-500 font-semibold uppercase tracking-widest">빈칸 채우기</p>
-            {hint && (
-              <button
-                onClick={() => setHintVisible(v => !v)}
-                className={`text-xs px-2.5 py-1 rounded-lg transition font-semibold ${
-                  hintVisible ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-yellow-500 hover:bg-gray-700'
-                }`}
-              >
-                힌트 {hintVisible ? '숨기기' : '보기'}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <button onClick={() => speak(speakText)} className="text-yellow-500 hover:text-yellow-300 text-lg transition" title="예문 듣기">🔊</button>
+              {hint && (
+                <button
+                  onClick={() => setHintVisible(v => !v)}
+                  className={`text-xs px-2.5 py-1 rounded-lg transition font-semibold ${
+                    hintVisible ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-yellow-500 hover:bg-gray-700'
+                  }`}
+                >
+                  힌트 {hintVisible ? '숨기기' : '보기'}
+                </button>
+              )}
+            </div>
           </div>
           {hintVisible && hint && (
             <p className="text-sm text-yellow-300 bg-yellow-900/20 rounded-xl px-3 py-2 mb-3 leading-relaxed">{hint}</p>
           )}
-          <ClozeDisplay text={current.card.fields[0]?.value ?? ''} revealed={revealed} />
+          <ClozeDisplay text={rawText} revealed={revealed} />
         </div>
       )
     }
