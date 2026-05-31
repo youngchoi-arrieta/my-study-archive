@@ -424,7 +424,17 @@ export default function DeckEditPage() {
                             </div>
                     ) : (
                       card.card_type === 'cloze'
-                        ? <div className="bg-gray-800 rounded-xl p-3"><ClozePreview text={card.fields[0]?.value ?? ''} /></div>
+                        ? <div className="rounded-xl overflow-hidden border border-gray-800">
+                            <div className="bg-gray-800 px-3 py-2.5">
+                              <ClozePreview text={card.fields[0]?.value ?? ''} />
+                            </div>
+                            {card.fields[1]?.value && (
+                              <div className="px-3 py-2 bg-gray-900 border-t border-gray-800">
+                                <p className="text-[10px] text-yellow-600 mb-0.5">힌트</p>
+                                <p className="text-xs text-gray-400">{card.fields[1].value}</p>
+                              </div>
+                            )}
+                          </div>
                         : card.card_type === 'occlusion'
                           ? <div className="bg-gray-800 rounded-xl p-2">
                               {card.occlusion?.imageUrl
