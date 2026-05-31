@@ -77,15 +77,26 @@ function QuizPage() {
   const [autoSpeak, setAutoSpeak] = useState(() => {
     try { return localStorage.getItem('quiz_autoSpeak') !== 'off' } catch { return true }
   })
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [selectedVoice, setSelectedVoice] = useState<string>(() => {
+    try { return localStorage.getItem('quiz_voice_ja') ?? '' } catch { return '' }
+  })
+  const [speakRate, setSpeakRate] = useState<number>(() => {
+    try { return parseFloat(localStorage.getItem('quiz_speak_rate') ?? '0.75') } catch { return 0.75 }
+  })
 
   const speak = useCallback((text: string) => {
     if (!text || typeof window === 'undefined' || !window.speechSynthesis) return
     window.speechSynthesis.cancel()
     const utter = new SpeechSynthesisUtterance(text)
     utter.lang = 'ja-JP'
-    utter.rate = 0.9
+    utter.rate = speakRate
+    const allVoices = window.speechSynthesis.getVoices()
+    const saved = localStorage.getItem('quiz_voice_ja') ?? ''
+    const voice = saved ? allVoices.find(v => v.name === saved) : null
+    if (voice) utter.voice = voice
     window.speechSynthesis.speak(utter)
-  }, [])
+  }, [speakRate])
 
   const toggleAutoSpeak = () => {
     setAutoSpeak(prev => {
@@ -146,6 +157,18 @@ function QuizPage() {
   }, [deckId, quizDir])
 
   useEffect(() => { loadDeck() }, [loadDeck])
+
+  // 일본어 음성 목록 로드
+  useEffect(() => {
+    const load = () => {
+      const all = window.speechSynthesis.getVoices()
+      const jaVoices = all.filter(v => v.lang.startsWith('ja'))
+      setVoices(jaVoices)
+    }
+    load()
+    window.speechSynthesis.onvoiceschanged = load
+    return () => { window.speechSynthesis.onvoiceschanged = null }
+  }, [])
 
   // 카드 바뀔 때 일본어 필드 자동 재생
   useEffect(() => {
@@ -298,6 +321,37 @@ function QuizPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-600">速</span>
+            <input
+              type="range" min="0.5" max="1.2" step="0.05"
+              value={speakRate}
+              onChange={e => {
+                const v = parseFloat(e.target.value)
+                setSpeakRate(v)
+                try { localStorage.setItem('quiz_speak_rate', String(v)) } catch {}
+              }}
+              className="w-16 accent-blue-500"
+            />
+            <span className="text-[10px] text-gray-500 w-6">{speakRate.toFixed(2)}</span>
+          </div>
+          {voices.length > 0 && (
+            <select
+              value={selectedVoice}
+              onChange={e => {
+                setSelectedVoice(e.target.value)
+                try { localStorage.setItem('quiz_voice_ja', e.target.value) } catch {}
+              }}
+              className="bg-gray-800 text-gray-300 text-[11px] rounded-lg px-2 py-1 outline-none max-w-[120px] truncate"
+            >
+              <option value="">기본 음성</option>
+              {voices.map(v => (
+                <option key={v.name} value={v.name}>
+                  {v.name.replace(/Microsoft |Google /, '')}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={toggleAutoSpeak}
             title={autoSpeak ? '자동 재생 끄기' : '자동 재생 켜기'}
