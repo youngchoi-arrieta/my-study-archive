@@ -109,6 +109,7 @@ function QuizPage() {
   const [revealed, setRevealed] = useState(false)
   const [done, setDone] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [hintVisible, setHintVisible] = useState(false)
   const [total, setTotal] = useState(0)
   const [masteredCount, setMasteredCount] = useState(0)
 
@@ -186,6 +187,7 @@ function QuizPage() {
   const mastered = () => {
     setMasteredCount(p => p + 1)
     setRevealed(false)
+    setHintVisible(false)
     const next = queue.slice(1)
     if (next.length === 0) setDone(true)
     else setQueue(next)
@@ -193,6 +195,7 @@ function QuizPage() {
 
   const notYet = () => {
     setRevealed(false)
+    setHintVisible(false)
     setQueue(prev => [...prev.slice(1), prev[0]])
   }
 
@@ -242,9 +245,25 @@ function QuizPage() {
       )
     }
     if (current.kind === 'cloze') {
+      const hint = current.card.fields[1]?.value
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-yellow-900">
-          <p className="text-xs text-yellow-500 font-semibold uppercase tracking-widest mb-3">빈칸 채우기</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-yellow-500 font-semibold uppercase tracking-widest">빈칸 채우기</p>
+            {hint && (
+              <button
+                onClick={() => setHintVisible(v => !v)}
+                className={`text-xs px-2.5 py-1 rounded-lg transition font-semibold ${
+                  hintVisible ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-yellow-500 hover:bg-gray-700'
+                }`}
+              >
+                힌트 {hintVisible ? '숨기기' : '보기'}
+              </button>
+            )}
+          </div>
+          {hintVisible && hint && (
+            <p className="text-sm text-yellow-300 bg-yellow-900/20 rounded-xl px-3 py-2 mb-3 leading-relaxed">{hint}</p>
+          )}
           <ClozeDisplay text={current.card.fields[0]?.value ?? ''} revealed={revealed} />
         </div>
       )
