@@ -110,8 +110,23 @@ function QuizPage() {
   const [done, setDone] = useState(false)
   const [loading, setLoading] = useState(true)
   const [hintVisible, setHintVisible] = useState(false)
+  const [resumeIds, setResumeIds] = useState<string[] | null>(null)  // null=확인전, []=없음
   const [total, setTotal] = useState(0)
   const [masteredCount, setMasteredCount] = useState(0)
+
+  const RESUME_KEY = `quiz_resume_${deckId}_${quizDir}`
+
+  const saveResume = useCallback((q: QuizItem[], mastered: number) => {
+    try {
+      if (q.length === 0) { localStorage.removeItem(RESUME_KEY); return }
+      const ids = q.map(item => item.card.id)
+      localStorage.setItem(RESUME_KEY, JSON.stringify({ ids, mastered }))
+    } catch {}
+  }, [RESUME_KEY])
+
+  const clearResume = useCallback(() => {
+    try { localStorage.removeItem(RESUME_KEY) } catch {}
+  }, [RESUME_KEY])
 
   const loadDeck = useCallback(async () => {
     setLoading(true)
@@ -152,10 +167,34 @@ function QuizPage() {
       }
     }
     const shuffled = items.sort(() => Math.random() - 0.5)
+
+    // resume 확인
+    try {
+      const saved = localStorage.getItem(RESUME_KEY)
+      if (saved) {
+        const { ids, mastered } = JSON.parse(saved)
+        if (ids && ids.length > 0) {
+          // 저장된 id 순서대로 queue 재구성
+          const idSet = new Map(shuffled.map(item => [item.card.id + item.kind + ('givenIdx' in item ? item.givenIdx : ''), item]))
+          const resumed = ids
+            .map((id: string) => shuffled.find(item => item.card.id === id))
+            .filter(Boolean) as QuizItem[]
+          if (resumed.length > 0) {
+            setResumeIds(ids)
+            setQueue(shuffled)  // 전체도 보관
+            setTotal(shuffled.length)
+            setMasteredCount(mastered ?? 0)
+            setLoading(false)
+            return
+          }
+        }
+      }
+    } catch {}
+    setResumeIds([])
     setQueue(shuffled)
     setTotal(shuffled.length)
     setLoading(false)
-  }, [deckId, quizDir])
+  }, [deckId, quizDir, RESUME_KEY])
 
   useEffect(() => { loadDeck() }, [loadDeck])
 
@@ -190,21 +229,67 @@ function QuizPage() {
   }, [queue, autoSpeak, speak])
 
   const mastered = () => {
-    setMasteredCount(p => p + 1)
+    const next = queue.slice(1)
+    setMasteredCount(p => {
+      saveResume(next, p + 1)
+      return p + 1
+    })
     setRevealed(false)
     setHintVisible(false)
-    const next = queue.slice(1)
-    if (next.length === 0) setDone(true)
+    if (next.length === 0) { clearResume(); setDone(true) }
     else setQueue(next)
   }
 
   const notYet = () => {
     setRevealed(false)
     setHintVisible(false)
-    setQueue(prev => [...prev.slice(1), prev[0]])
+    setQueue(prev => {
+      const next = [...prev.slice(1), prev[0]]
+      saveResume(next, masteredCount)
+      return next
+    })
   }
 
   if (loading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white text-4xl">🃏</div>
+
+  // 이어하기 선택 화면
+  if (resumeIds && resumeIds.length > 0) {
+    const remaining = resumeIds.length
+    const masteredSoFar = masteredCount
+    return (
+      <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8 text-center">
+        <div className="text-5xl mb-6">💾</div>
+        <h1 className="text-2xl font-bold mb-2">이전 세션이 있어요</h1>
+        <p className="text-gray-400 mb-1">미숙지 <span className="text-white font-bold">{remaining}장</span> 남음</p>
+        <p className="text-gray-600 text-sm mb-8">숙지 {masteredSoFar} / {total}장</p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              // 저장된 id 순으로 queue 재구성
+              const resumed = resumeIds
+                .map((id: string) => queue.find(item => item.card.id === id))
+                .filter(Boolean) as QuizItem[]
+              setQueue(resumed)
+              setResumeIds([])
+            }}
+            className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-semibold transition"
+          >
+            이어하기
+          </button>
+          <button
+            onClick={() => {
+              clearResume()
+              setMasteredCount(0)
+              setResumeIds([])
+            }}
+            className="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-xl font-semibold transition"
+          >
+            처음부터
+          </button>
+        </div>
+      </main>
+    )
+  }
 
   if (done) return (
     <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-8 text-center">
