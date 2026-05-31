@@ -74,6 +74,26 @@ function QuizPage() {
   const quizDir = searchParams.get('dir') ?? 'default'
 
   const [deckName, setDeckName] = useState('')
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    try { return localStorage.getItem('quiz_autoSpeak') !== 'off' } catch { return true }
+  })
+
+  const speak = useCallback((text: string) => {
+    if (!text || typeof window === 'undefined' || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.lang = 'ja-JP'
+    utter.rate = 0.9
+    window.speechSynthesis.speak(utter)
+  }, [])
+
+  const toggleAutoSpeak = () => {
+    setAutoSpeak(prev => {
+      const next = !prev
+      try { localStorage.setItem('quiz_autoSpeak', next ? 'on' : 'off') } catch {}
+      return next
+    })
+  }
   const [queue, setQueue] = useState<QuizItem[]>([])
   const [revealed, setRevealed] = useState(false)
   const [done, setDone] = useState(false)
@@ -127,6 +147,19 @@ function QuizPage() {
 
   useEffect(() => { loadDeck() }, [loadDeck])
 
+  // 카드 바뀔 때 일본어 필드 자동 재생
+  useEffect(() => {
+    if (!autoSpeak || queue.length === 0) return
+    const current = queue[0]
+    if (current.kind === 'multi') {
+      const text = current.card.fields[current.givenIdx]?.value
+      if (text) speak(text)
+    } else if (current.kind === 'basic') {
+      const text = current.card.fields[0]?.value
+      if (text) speak(text)
+    }
+  }, [queue, autoSpeak, speak])
+
   const mastered = () => {
     setMasteredCount(p => p + 1)
     setRevealed(false)
@@ -165,7 +198,10 @@ function QuizPage() {
       const f = current.card.fields[0]
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
-          <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">문제</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest">문제</p>
+            <button onClick={() => speak(f.value)} className="text-blue-400 hover:text-blue-300 text-lg transition" title="다시 듣기">🔊</button>
+          </div>
           {renderField(f as Field)}
         </div>
       )
@@ -174,7 +210,10 @@ function QuizPage() {
       const f = current.card.fields[current.givenIdx]
       return (
         <div className="bg-gray-900 rounded-2xl p-6 mb-4 border border-blue-900">
-          <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-3">Given · {f.name}</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-blue-400 font-semibold uppercase tracking-widest">Given · {f.name}</p>
+            <button onClick={() => speak(f.value)} className="text-blue-400 hover:text-blue-300 text-lg transition" title="다시 듣기">🔊</button>
+          </div>
           {renderField(f as Field)}
         </div>
       )
@@ -258,7 +297,13 @@ function QuizPage() {
             {quizDir === 'word' ? '단어 → 뜻' : quizDir === 'reading' ? '요미가나 → 뜻' : '카드별 설정'}
           </p>
         </div>
-        <div className="w-16" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleAutoSpeak}
+            title={autoSpeak ? '자동 재생 끄기' : '자동 재생 켜기'}
+            className={`text-lg transition ${autoSpeak ? 'opacity-100' : 'opacity-30'}`}
+          >🔊</button>
+        </div>
       </div>
 
       <div className="max-w-xl mx-auto w-full mb-6">
