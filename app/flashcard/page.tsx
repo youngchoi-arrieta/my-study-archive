@@ -43,6 +43,28 @@ function FlashcardPage() {
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
   const [reordering, setReordering] = useState(false)
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['어휘', '문법', '문형']))
+
+  // 덱 이름으로 카테고리 분류
+  const classifyDeck = (name: string): '어휘' | '문법' | '문형' => {
+    if (name.includes('필수 단어') || name.includes('Day ')) return '어휘'
+    if (name.includes('필수 문법')) return '문법'
+    return '문형'
+  }
+
+  const GROUPS: { key: '어휘' | '문법' | '문형'; emoji: string; label: string }[] = [
+    { key: '어휘',  emoji: '📚', label: '어휘' },
+    { key: '문법',  emoji: '📝', label: '문법' },
+    { key: '문형',  emoji: '💬', label: '문형' },
+  ]
+
+  const toggleGroup = (key: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
   const USER_ID = 'flashcard_user'
 
   const loadDecks = useCallback(async () => {
@@ -199,57 +221,67 @@ function FlashcardPage() {
           )
           : (
             <div className="space-y-3">
-              {decks.map((deck, idx) => (
-                <div key={deck.id} className="bg-gray-900 rounded-2xl p-5 flex items-center gap-3 hover:bg-gray-800 transition group">
-                  {/* 순서 변경 버튼들 */}
-                  <div className="flex flex-col gap-0.5 shrink-0">
+              {GROUPS.map(({ key, emoji, label }) => {
+                const groupDecks = decks.filter(d => classifyDeck(d.name) === key)
+                if (groupDecks.length === 0) return null
+                const isOpen = openGroups.has(key)
+                return (
+                  <div key={key} className="bg-gray-900 rounded-2xl overflow-hidden">
+                    {/* 그룹 헤더 */}
                     <button
-                      onClick={() => moveUp(idx)}
-                      disabled={idx === 0 || reordering}
-                      className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-xs px-1 transition"
-                      aria-label="위로"
-                      title="위로"
+                      onClick={() => toggleGroup(key)}
+                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-800 transition"
                     >
-                      ▲
+                      <div className="flex items-center gap-2">
+                        <span>{emoji}</span>
+                        <span className="font-bold">{label}</span>
+                        <span className="text-xs text-gray-500">{groupDecks.length}개</span>
+                      </div>
+                      <span className="text-gray-500 text-xs">{isOpen ? '▲' : '▼'}</span>
                     </button>
-                    <button
-                      onClick={() => moveDown(idx)}
-                      disabled={idx === decks.length - 1 || reordering}
-                      className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed text-xs px-1 transition"
-                      aria-label="아래로"
-                      title="아래로"
-                    >
-                      ▼
-                    </button>
-                  </div>
 
-                  <div className="flex-1 cursor-pointer min-w-0" onClick={() => router.push(`/flashcard/${deck.id}`)}>
-                    <h2 className="font-bold text-lg">{deck.name}</h2>
-                    {deck.description && <p className="text-gray-400 text-sm mt-0.5">{deck.description}</p>}
-                    <p className="text-gray-600 text-xs mt-1">{deck.card_count}장</p>
+                    {/* 덱 목록 */}
+                    {isOpen && (
+                      <div className="border-t border-gray-800 divide-y divide-gray-800">
+                        {groupDecks.map((deck, idx) => {
+                          const globalIdx = decks.indexOf(deck)
+                          return (
+                            <div key={deck.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-800 transition group">
+                              {/* 순서 변경 */}
+                              <div className="flex flex-col gap-0.5 shrink-0">
+                                <button onClick={() => moveUp(globalIdx)} disabled={globalIdx === 0 || reordering}
+                                  className="text-gray-600 hover:text-white disabled:opacity-20 text-xs px-1 transition">▲</button>
+                                <button onClick={() => moveDown(globalIdx)} disabled={globalIdx === decks.length - 1 || reordering}
+                                  className="text-gray-600 hover:text-white disabled:opacity-20 text-xs px-1 transition">▼</button>
+                              </div>
+
+                              <div className="flex-1 cursor-pointer min-w-0" onClick={() => router.push(`/flashcard/${deck.id}`)}>
+                                <p className="font-semibold text-sm leading-snug truncate">{deck.name}</p>
+                                <p className="text-gray-600 text-xs mt-0.5">{deck.card_count}장</p>
+                              </div>
+
+                              <div className="flex gap-1.5 items-center shrink-0">
+                                <button onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
+                                  className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                                  ▶ 퀴즈
+                                </button>
+                                <button onClick={() => router.push(`/flashcard/${deck.id}`)}
+                                  className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
+                                  편집
+                                </button>
+                                <button onClick={() => deleteDeck(deck.id)}
+                                  className="text-gray-700 hover:text-red-400 px-2 py-1.5 rounded-lg text-xs transition opacity-0 group-hover:opacity-100">
+                                  🗑
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-2 items-center">
-                    <button
-                      onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
-                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-semibold transition"
-                    >
-                      ▶ 퀴즈
-                    </button>
-                    <button
-                      onClick={() => router.push(`/flashcard/${deck.id}`)}
-                      className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition"
-                    >
-                      편집
-                    </button>
-                    <button
-                      onClick={() => deleteDeck(deck.id)}
-                      className="text-gray-600 hover:text-red-400 px-2 py-2 rounded-lg text-sm transition opacity-0 group-hover:opacity-100"
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )
         }
