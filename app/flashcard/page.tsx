@@ -42,25 +42,28 @@ function FlashcardPage() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
-  const [newCategory, setNewCategory] = useState<'어휘' | '문법' | '문형'>('어휘')
+  const [newCategory, setNewCategory] = useState<string>('어휘')
+  const [customCategory, setCustomCategory] = useState('')
   const [reordering, setReordering] = useState(false)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['어휘', '문법', '문형']))
 
-  // description 태그 우선, 없으면 이름 패턴으로 분류
-  const classifyDeck = (name: string, description?: string | null): '어휘' | '문법' | '문형' => {
-    if (description?.startsWith('[어휘]')) return '어휘'
-    if (description?.startsWith('[문법]')) return '문법'
-    if (description?.startsWith('[문형]')) return '문형'
+  // description [태그] 우선 추출, 없으면 이름 패턴 폴백
+  const classifyDeck = (name: string, description?: string | null): string => {
+    const match = description?.match(/^\[([^\]]+)\]/)
+    if (match) return match[1]
     if (name.includes('필수 단어') || name.includes('Day ')) return '어휘'
     if (name.includes('필수 문법')) return '문법'
-    return '문형'
+    return '기타'
   }
 
-  const GROUPS: { key: '어휘' | '문법' | '문형'; emoji: string; label: string }[] = [
-    { key: '어휘',  emoji: '📚', label: '어휘' },
-    { key: '문법',  emoji: '📝', label: '문법' },
-    { key: '문형',  emoji: '💬', label: '문형' },
+  // 덱에서 실제 사용 중인 카테고리 목록 동적 생성
+  const PRESET_CATS = ['어휘', '문법', '문형']
+  const allCats = [...new Set(decks.map(d => classifyDeck(d.name, d.description)))]
+  const sortedCats = [
+    ...PRESET_CATS.filter(c => allCats.includes(c)),
+    ...allCats.filter(c => !PRESET_CATS.includes(c)).sort(),
   ]
+  const CAT_EMOJI: Record<string, string> = { '어휘': '📚', '문법': '📝', '문형': '💬' }
 
   const toggleGroup = (key: string) => {
     setOpenGroups(prev => {
@@ -191,16 +194,30 @@ function FlashcardPage() {
           <div className="bg-gray-900 rounded-2xl p-5 mb-6 border border-gray-700">
             <h3 className="font-semibold mb-4">새 덱 만들기</h3>
             {/* 카테고리 선택 */}
-            <div className="flex gap-1.5 mb-3">
-              {(['어휘', '문법', '문형'] as const).map(cat => (
-                <button key={cat} onClick={() => setNewCategory(cat)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+            <div className="flex gap-1.5 mb-2 flex-wrap">
+              {['어휘', '문법', '문형'].map(cat => (
+                <button key={cat} onClick={() => { setNewCategory(cat); setCustomCategory('') }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                     newCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                   }`}>
-                  {cat === '어휘' ? '📚' : cat === '문법' ? '📝' : '💬'} {cat}
+                  {CAT_EMOJI[cat] ?? '🏷'} {cat}
                 </button>
               ))}
+              <button onClick={() => setNewCategory('__custom__')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  newCategory === '__custom__' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                }`}>
+                + 직접 입력
+              </button>
             </div>
+            {newCategory === '__custom__' && (
+              <input
+                className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="태그 이름 (예: 복습노트, 약점단어)"
+                value={customCategory}
+                onChange={e => setCustomCategory(e.target.value)}
+              />
+            )}
             <input
               className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-3 outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="덱 이름 (예: 법령 조문 핵심)"
@@ -236,7 +253,9 @@ function FlashcardPage() {
           )
           : (
             <div className="space-y-3">
-              {GROUPS.map(({ key, emoji, label }) => {
+              {sortedCats.map(key => {
+                const emoji = CAT_EMOJI[key] ?? '🏷'
+                const label = key
                 const groupDecks = decks.filter(d => classifyDeck(d.name, d.description) === key)
                 if (groupDecks.length === 0) return null
                 const isOpen = openGroups.has(key)
