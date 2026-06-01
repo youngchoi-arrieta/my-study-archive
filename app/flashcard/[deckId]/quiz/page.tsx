@@ -77,6 +77,7 @@ function QuizPage() {
   const [autoSpeak, setAutoSpeak] = useState(() => {
     try { return localStorage.getItem('quiz_autoSpeak') !== 'off' } catch { return true }
   })
+  // 덱별 TTS 설정 — loadDeck에서 [notts] 태그 확인 후 오버라이드
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoice, setSelectedVoice] = useState<string>(() => {
     try { return localStorage.getItem('quiz_voice_ja') ?? '' } catch { return '' }
@@ -134,8 +135,14 @@ function QuizPage() {
     setRevealed(false)
     setMasteredCount(0)
 
-    const { data: deck } = await supabase.from('flashcard_decks').select('name').eq('id', deckId).single()
-    if (deck) setDeckName(deck.name)
+    const { data: deck } = await supabase.from('flashcard_decks').select('name, description').eq('id', deckId).single()
+    if (deck) {
+      setDeckName(deck.name)
+      // [notts] 태그가 있으면 자동 재생 끄기
+      if (deck.description?.includes('[notts]')) {
+        setAutoSpeak(false)
+      }
+    }
     const { data: cards } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId)
     if (!cards || cards.length === 0) { setDone(true); setLoading(false); return }
 

@@ -44,6 +44,7 @@ function FlashcardPage() {
   const [saving, setSaving] = useState(false)
   const [newCategory, setNewCategory] = useState<string>('어휘')
   const [customCategory, setCustomCategory] = useState('')
+  const [ttsEnabled, setTtsEnabled] = useState(true)
   const [reordering, setReordering] = useState(false)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['어휘', '문법', '문형']))
 
@@ -120,9 +121,10 @@ function FlashcardPage() {
     const finalCat = newCategory === '__custom__'
       ? (customCategory.trim() || '기타')
       : newCategory
+    const ttsSuffix = ttsEnabled ? '' : '[notts]'
     const taggedDesc = newDesc.trim()
-      ? `[${finalCat}] ${newDesc.trim()}`
-      : `[${finalCat}]`
+      ? `[${finalCat}]${ttsSuffix} ${newDesc.trim()}`
+      : `[${finalCat}]${ttsSuffix}`
 
     await supabase.from('flashcard_decks').insert({
       user_id: USER_ID,
@@ -131,7 +133,7 @@ function FlashcardPage() {
       exam_type: examType,
       sort_order: nextOrder,
     })
-    setNewName(''); setNewDesc(''); setShowAdd(false)
+    setNewName(''); setNewDesc(''); setShowAdd(false); setTtsEnabled(true)
     await loadDecks()
     setSaving(false)
   }
@@ -239,7 +241,18 @@ function FlashcardPage() {
               onChange={e => setNewDesc(e.target.value)}
             />
             <div className="flex gap-2">
-              <button onClick={addDeck} disabled={saving}
+              {/* TTS 설정 */}
+            <button
+              type="button"
+              onClick={() => setTtsEnabled(v => !v)}
+              className={`w-full mb-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-2 ${
+                ttsEnabled ? 'bg-gray-800 text-gray-300' : 'bg-gray-800 text-gray-600'
+              }`}
+            >
+              <span className={ttsEnabled ? 'opacity-100' : 'opacity-30'}>🔊</span>
+              {ttsEnabled ? '음성 재생 켜짐' : '음성 재생 꺼짐'}
+            </button>
+            <button onClick={addDeck} disabled={saving}
                 className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50">
                 {saving ? '저장 중...' : '만들기'}
               </button>
