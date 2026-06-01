@@ -117,10 +117,17 @@ function FlashcardPage() {
     const { data: maxRow } = await maxQ
     const nextOrder = (maxRow?.[0]?.sort_order ?? 0) + 1
 
+    const finalCat = newCategory === '__custom__'
+      ? (customCategory.trim() || '기타')
+      : newCategory
+    const taggedDesc = newDesc.trim()
+      ? `[${finalCat}] ${newDesc.trim()}`
+      : `[${finalCat}]`
+
     await supabase.from('flashcard_decks').insert({
       user_id: USER_ID,
       name: newName.trim(),
-      description: newDesc.trim() || null,
+      description: taggedDesc,
       exam_type: examType,
       sort_order: nextOrder,
     })
