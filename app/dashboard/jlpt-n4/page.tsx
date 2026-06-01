@@ -135,7 +135,11 @@ type DailyRow = {
 }
 
 function toDateStr(d: Date) {
-  return d.toISOString().slice(0, 10)
+  // UTC가 아닌 로컬 날짜 기준으로 YYYY-MM-DD 반환
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 // 오늘 기준 최근 30일 날짜 배열 (오래된 순)
