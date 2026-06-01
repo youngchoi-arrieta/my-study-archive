@@ -42,11 +42,15 @@ function FlashcardPage() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
+  const [newCategory, setNewCategory] = useState<'어휘' | '문법' | '문형'>('어휘')
   const [reordering, setReordering] = useState(false)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['어휘', '문법', '문형']))
 
-  // 덱 이름으로 카테고리 분류
-  const classifyDeck = (name: string): '어휘' | '문법' | '문형' => {
+  // description 태그 우선, 없으면 이름 패턴으로 분류
+  const classifyDeck = (name: string, description?: string | null): '어휘' | '문법' | '문형' => {
+    if (description?.startsWith('[어휘]')) return '어휘'
+    if (description?.startsWith('[문법]')) return '문법'
+    if (description?.startsWith('[문형]')) return '문형'
     if (name.includes('필수 단어') || name.includes('Day ')) return '어휘'
     if (name.includes('필수 문법')) return '문법'
     return '문형'
@@ -186,6 +190,17 @@ function FlashcardPage() {
         {showAdd && (
           <div className="bg-gray-900 rounded-2xl p-5 mb-6 border border-gray-700">
             <h3 className="font-semibold mb-4">새 덱 만들기</h3>
+            {/* 카테고리 선택 */}
+            <div className="flex gap-1.5 mb-3">
+              {(['어휘', '문법', '문형'] as const).map(cat => (
+                <button key={cat} onClick={() => setNewCategory(cat)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+                    newCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}>
+                  {cat === '어휘' ? '📚' : cat === '문법' ? '📝' : '💬'} {cat}
+                </button>
+              ))}
+            </div>
             <input
               className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white mb-3 outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="덱 이름 (예: 법령 조문 핵심)"
@@ -222,7 +237,7 @@ function FlashcardPage() {
           : (
             <div className="space-y-3">
               {GROUPS.map(({ key, emoji, label }) => {
-                const groupDecks = decks.filter(d => classifyDeck(d.name) === key)
+                const groupDecks = decks.filter(d => classifyDeck(d.name, d.description) === key)
                 if (groupDecks.length === 0) return null
                 const isOpen = openGroups.has(key)
                 return (
