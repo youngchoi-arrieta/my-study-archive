@@ -71,7 +71,16 @@ function QuizPage() {
   const router = useRouter()
   const { deckId } = useParams() as { deckId: string }
   const searchParams = useSearchParams()
-  const quizDir = searchParams.get('dir') ?? 'default'
+  const quizDir = (() => {
+    const fromUrl = searchParams.get('dir')
+    if (fromUrl === 'word' || fromUrl === 'reading') return fromUrl
+    // URL param 없으면 덱별 localStorage 폴백
+    try {
+      const saved = localStorage.getItem(`quizDir_${deckId}`)
+      if (saved === 'word' || saved === 'reading') return saved
+    } catch {}
+    return 'default'
+  })()
 
   const [deckName, setDeckName] = useState('')
   const [autoSpeak, setAutoSpeak] = useState(() => {
