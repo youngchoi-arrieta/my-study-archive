@@ -103,6 +103,46 @@ const VERB_COLOR: Record<'PART1' | 'PART2', string> = {
   PART2: '#15803d',  // green-700
 }
 
+// ── N4 문법 — 스프린트 JLPT N4 문법 (시원스쿨) ──────────────────────
+export type GrammarSection = { id: string; title: string; page: number }
+
+export const GRAMMAR_TOC: GrammarSection[] = [
+  { id: 'gn-01', title: 'UNIT 01 명사',                  page: 9   },
+  { id: 'gn-02', title: 'UNIT 02 조사',                  page: 15  },
+  { id: 'gn-03', title: 'UNIT 03 존재 및 지시 표현',     page: 21  },
+  { id: 'gn-04', title: 'UNIT 04 い형용사',              page: 27  },
+  { id: 'gn-05', title: 'UNIT 05 な형용사',              page: 33  },
+  { id: 'gn-06', title: 'UNIT 06 부사',                  page: 39  },
+  { id: 'gn-07', title: 'UNIT 07 동사',                  page: 45  },
+  { id: 'gn-08', title: 'UNIT 08 동사의 정중형(ます형)', page: 51  },
+  { id: 'gn-09', title: 'UNIT 09 동사의 정중형(ます형) 문형', page: 57 },
+  { id: 'gn-10', title: 'UNIT 10 동사의 연결형(て형)',   page: 63  },
+  { id: 'gn-11', title: 'UNIT 11 동사의 연결형(て형) 문형', page: 69 },
+  { id: 'gn-12', title: 'UNIT 12 자동사와 타동사',       page: 75  },
+  { id: 'gn-13', title: 'UNIT 13 진행',                  page: 81  },
+  { id: 'gn-14', title: 'UNIT 14 상태',                  page: 87  },
+  { id: 'gn-15', title: 'UNIT 15 동사의 과거형(た형)',   page: 93  },
+  { id: 'gn-16', title: 'UNIT 16 동사의 과거형(た형) 문형', page: 99 },
+  { id: 'gn-17', title: 'UNIT 17 동사의 부정형(ない형)', page: 105 },
+  { id: 'gn-18', title: 'UNIT 18 동사의 부정형(ない형) 문형', page: 111 },
+  { id: 'gn-19', title: 'UNIT 19 전언 표현',             page: 117 },
+  { id: 'gn-20', title: 'UNIT 20 추측 표현',             page: 123 },
+  { id: 'gn-21', title: 'UNIT 21 명령 표현',             page: 129 },
+  { id: 'gn-22', title: 'UNIT 22 수수 동사(주다)',        page: 135 },
+  { id: 'gn-23', title: 'UNIT 23 수수 동사(받다)',        page: 141 },
+  { id: 'gn-24', title: 'UNIT 24 가능 표현',             page: 147 },
+  { id: 'gn-25', title: 'UNIT 25 동사의 의지형',         page: 153 },
+  { id: 'gn-26', title: 'UNIT 26 동사의 수동형',         page: 159 },
+  { id: 'gn-27', title: 'UNIT 27 동사의 사역형',         page: 165 },
+  { id: 'gn-28', title: 'UNIT 28 동사의 사역 수동형',    page: 171 },
+  { id: 'gn-29', title: 'UNIT 29 가정 조건 표현 Ⅰ',     page: 177 },
+  { id: 'gn-30', title: 'UNIT 30 가정 조건 표현 Ⅱ',     page: 183 },
+  { id: 'gn-31', title: 'UNIT 31 존경 표현',             page: 189 },
+  { id: 'gn-32', title: 'UNIT 32 겸양 표현',             page: 195 },
+  { id: 'gn-33', title: 'UNIT 33 접속사',                page: 201 },
+]
+}
+
 
 
 // ── 진도 상태 ────────────────────────────────────────────────────
@@ -162,14 +202,16 @@ export default function JlptN4Hub() {
   const [saving, setSaving]           = useState(false)
   const [filterPart, setFilterPart]   = useState<Part | null>(null)
   const [verbMap, setVerbMap]         = useState<Map<string, boolean>>(new Map())
+  const [grammarMap, setGrammarMap]   = useState<Map<string, boolean>>(new Map())
 
   // ── 데이터 로드 ────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: prog }, { data: daily }, { data: verb }] = await Promise.all([
+    const [{ data: prog }, { data: daily }, { data: verb }, { data: grammar }] = await Promise.all([
       supabase.from('jlpt_n4_progress').select('section_id, status, memo, updated_at'),
       supabase.from('jlpt_n4_daily').select('date, part, done'),
       supabase.from('jlpt_verb_progress').select('section_id, done'),
+      supabase.from('jlpt_grammar_progress').select('section_id, done'),
     ])
     const map = new Map<string, ProgressRow>()
     ;(prog || []).forEach((r: ProgressRow) => map.set(r.section_id, r))
@@ -178,6 +220,9 @@ export default function JlptN4Hub() {
     const vmap = new Map<string, boolean>()
     ;(verb || []).forEach((r: { section_id: string; done: boolean }) => vmap.set(r.section_id, r.done))
     setVerbMap(vmap)
+    const gmap = new Map<string, boolean>()
+    ;(grammar || []).forEach((r: { section_id: string; done: boolean }) => gmap.set(r.section_id, r.done))
+    setGrammarMap(gmap)
     setLoading(false)
   }, [])
 
@@ -238,6 +283,16 @@ export default function JlptN4Hub() {
     const newDone = !(verbMap.get(id) ?? false)
     setVerbMap(prev => { const m = new Map(prev); m.set(id, newDone); return m })
     await supabase.from('jlpt_verb_progress').upsert(
+      { section_id: id, done: newDone },
+      { onConflict: 'section_id' }
+    )
+  }
+
+  // ── N4 문법책 토글 ──────────────────────────────────────────────
+  const toggleGrammar = async (id: string) => {
+    const newDone = !(grammarMap.get(id) ?? false)
+    setGrammarMap(prev => { const m = new Map(prev); m.set(id, newDone); return m })
+    await supabase.from('jlpt_grammar_progress').upsert(
       { section_id: id, done: newDone },
       { onConflict: 'section_id' }
     )
@@ -615,6 +670,55 @@ export default function JlptN4Hub() {
                       }`}
                     >
                       <span className={`font-bold mr-1 ${done ? 'text-green-400' : 'text-gray-600'}`}>
+                        {done ? '✓' : '○'}
+                      </span>
+                      {sec.title}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-gray-700 mt-2">칸 또는 카드를 클릭해서 완료 체크</p>
+            </div>
+
+            {/* N4 문법책 진도 */}
+            <div className="bg-gray-900 rounded-xl p-4 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">N4 문법 스프린트</p>
+                <span className="text-xs text-gray-600">
+                  {[...grammarMap.values()].filter(Boolean).length} / {GRAMMAR_TOC.length}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-600 mb-3">스프린트 JLPT N4 문법 · 시원스쿨</p>
+
+              {/* 세그먼트 바 */}
+              <div className="flex gap-0.5 mb-3">
+                {GRAMMAR_TOC.map(sec => {
+                  const done = grammarMap.get(sec.id) ?? false
+                  return (
+                    <button
+                      key={sec.id}
+                      onClick={() => toggleGrammar(sec.id)}
+                      title={sec.title}
+                      className="h-5 flex-1 rounded-sm transition-all duration-150 hover:opacity-80"
+                      style={{ backgroundColor: done ? '#7c3aed' : '#1f2937' }}
+                    />
+                  )
+                })}
+              </div>
+
+              {/* 카드 목록 */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {GRAMMAR_TOC.map(sec => {
+                  const done = grammarMap.get(sec.id) ?? false
+                  return (
+                    <button
+                      key={sec.id}
+                      onClick={() => toggleGrammar(sec.id)}
+                      className={`text-left px-3 py-2 rounded-lg text-xs transition ${
+                        done ? 'bg-purple-900/40 text-purple-300' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}
+                    >
+                      <span className={`font-bold mr-1 ${done ? 'text-purple-400' : 'text-gray-600'}`}>
                         {done ? '✓' : '○'}
                       </span>
                       {sec.title}
