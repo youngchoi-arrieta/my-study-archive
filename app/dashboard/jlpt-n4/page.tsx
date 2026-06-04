@@ -141,9 +141,6 @@ export const GRAMMAR_TOC: GrammarSection[] = [
   { id: 'gn-32', title: 'UNIT 32 겸양 표현',             page: 195 },
   { id: 'gn-33', title: 'UNIT 33 접속사',                page: 201 },
 ]
-}
-
-
 
 // ── 진도 상태 ────────────────────────────────────────────────────
 type ReadStatus = 0 | 1 | 2   // 0=미완, 1=1회독, 2=2회독
