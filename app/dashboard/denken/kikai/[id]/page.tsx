@@ -392,7 +392,7 @@ export default function KikaiExamPage() {
       <main className="min-h-screen bg-[#050d1a] text-white flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500 mb-3">기출 정보를 찾을 수 없어요.</p>
-          <Link href="/dashboard/denken/kikai" className="text-blue-400 hover:underline text-sm">
+          <Link href="/dashboard/denken" className="text-blue-400 hover:underline text-sm">
             ← 목록으로
           </Link>
         </div>
@@ -408,8 +408,8 @@ export default function KikaiExamPage() {
 
         {/* 헤더 행 */}
         <div className="flex items-center gap-3 mb-2">
-          <Link href="/dashboard/denken/kikai" className="text-gray-500 hover:text-white text-xs transition">
-            ← 기계
+          <Link href="/dashboard/denken" className="text-gray-500 hover:text-white text-xs transition">
+            ← 電験三種
           </Link>
           <span className="text-sm font-bold text-white">{exam.label}</span>
           <span className="text-xs text-violet-400 font-bold px-2 py-0.5 rounded-full bg-violet-900/40">機械</span>
