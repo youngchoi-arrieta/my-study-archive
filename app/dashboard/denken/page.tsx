@@ -176,6 +176,7 @@ export default function DenkenHub() {
   const [filterSubject, setFilterSubject] = useState<Subject | null>(null)
   const [pdfModal, setPdfModal]     = useState<{ examId: string; subject: Subject } | null>(null)
   const [kikaiMap, setKikaiMap]     = useState<Map<string, KikaiSummary>>(new Map())
+  const [generalMap, setGeneralMap] = useState<Map<string, boolean>>(new Map())  // key: examId__subject, value: hasPdf
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
@@ -213,7 +214,18 @@ export default function DenkenHub() {
     setKikaiMap(map)
   }, [])
 
-  useEffect(() => { fetchSessions(); fetchKikai() }, [fetchSessions, fetchKikai])
+  const fetchGeneral = useCallback(async () => {
+    const { data } = await supabase
+      .from('denken_general_sessions')
+      .select('exam_id, subject, drive_url')
+    const map = new Map<string, boolean>()
+    for (const s of (data || [])) {
+      map.set(`${s.exam_id}__${s.subject}`, !!s.drive_url)
+    }
+    setGeneralMap(map)
+  }, [])
+
+  useEffect(() => { fetchSessions(); fetchKikai(); fetchGeneral() }, [fetchSessions, fetchKikai, fetchGeneral])
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, DenkenSession>()
@@ -390,7 +402,9 @@ export default function DenkenHub() {
                             const s      = getSession(exam.id, sub)
                             const key    = `${exam.id}__${sub}`
                             const isEdit = editKey === key
-                            const hasPdf = !!s?.drive_url
+                            const hasPdf = sub === '機械'
+                              ? !!kikaiMap.get(exam.id)?.hasDriveUrl
+                              : (generalMap.get(`${exam.id}__${sub}`) ?? !!s?.drive_url)
 
                             return (
                               <div key={sub} className="bg-gray-950">
