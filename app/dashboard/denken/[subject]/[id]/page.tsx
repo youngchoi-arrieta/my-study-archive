@@ -215,7 +215,7 @@ export default function GeneralSubjectPage() {
       .from('denken_sessions')
       .upsert(
         { exam_id: examId, subject, updated_at: new Date().toISOString() },
-        { onConflict: 'exam_id,subject' }
+        { onConflict: 'denken_sessions_exam_subject_unique' }
       )
       .select('id')
       .single()
@@ -267,7 +267,7 @@ export default function GeneralSubjectPage() {
     setSelectedQ(next)
     await supabase.from('denken_sessions').upsert(
       { exam_id: examId, subject, selected_q: next, updated_at: new Date().toISOString() },
-      { onConflict: 'exam_id,subject' }
+      { onConflict: 'denken_sessions_exam_subject_unique' }
     )
   }, [selectedQ, ensureSession])
 
@@ -278,7 +278,7 @@ export default function GeneralSubjectPage() {
     setSaving(true)
     await supabase.from('denken_sessions').upsert(
       { exam_id: examId, subject, drive_url: url || null, updated_at: new Date().toISOString() },
-      { onConflict: 'exam_id,subject' }
+      { onConflict: 'denken_sessions_exam_subject_unique' }
     )
     setSaving(false)
   }, [urlInput, examId, subject])
@@ -289,7 +289,7 @@ export default function GeneralSubjectPage() {
     setSaving(true)
     await supabase.from('denken_sessions').upsert(
       { exam_id: examId, subject, answer_drive_url: url || null, updated_at: new Date().toISOString() },
-      { onConflict: 'exam_id,subject' }
+      { onConflict: 'denken_sessions_exam_subject_unique' }
     )
     setSaving(false)
   }, [answerUrl, examId, subject])
