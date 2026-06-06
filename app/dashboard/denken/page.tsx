@@ -429,15 +429,15 @@ export default function DenkenHub() {
                                     )
                                   })() : (
                                     <button
-                                      onClick={() => setPdfModal({ examId: exam.id, subject: sub })}
+                                      onClick={() => router.push(`/dashboard/denken/${encodeURIComponent(sub)}/${exam.id}`)}
                                       className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
                                         hasPdf
                                           ? 'bg-blue-600/30 text-blue-400 hover:bg-blue-600/50'
                                           : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
                                       }`}
-                                      title="PDF 기출 보기"
+                                      title="풀이 UI로 이동"
                                     >
-                                      PDF
+                                      풀기 →
                                     </button>
                                   )}
                                 </div>
