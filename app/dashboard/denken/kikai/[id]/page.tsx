@@ -230,11 +230,13 @@ export default function KikaiExamPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [urlInput, setUrlInput] = useState('')
-  const [panelWidth, setPanelWidth] = useState(288)  // 기본 w-72 = 288px
+  const [panelWidth, setPanelWidth] = useState(() =>
+    typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
+  )
   const memoRef = useRef<HTMLTextAreaElement>(null)
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
-  const dragStartW = useRef(288)
+  const dragStartW = useRef(480)
 
   // ── 데이터 로드 ────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -363,7 +365,7 @@ export default function KikaiExamPage() {
       if (!isDragging.current) return
       // 패널이 오른쪽에 있으므로 왼쪽으로 드래그 = 패널 넓어짐
       const delta = dragStartX.current - e.clientX
-      const next = Math.min(600, Math.max(200, dragStartW.current + delta))
+      const next = Math.min(Math.round(window.innerWidth * 0.7), Math.max(200, dragStartW.current + delta))
       setPanelWidth(next)
     }
     const onUp = () => { isDragging.current = false }
@@ -581,7 +583,7 @@ export default function KikaiExamPage() {
         {/* 메모 패널 */}
         <div
           className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5"
-          style={{ width: panelWidth, minWidth: 200, maxWidth: 600 }}
+          style={{ width: panelWidth, minWidth: 200 }}
         >
           {/* 패널 헤더 */}
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
