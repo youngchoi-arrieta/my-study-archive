@@ -387,26 +387,30 @@ function FlashcardPage() {
                                 <p className="text-gray-600 text-xs mt-0.5">{deck.card_count}장</p>
                               </div>
                               {!selectMode && (
-                                <div className="flex gap-1.5 items-center shrink-0">
-                                  <button onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
-                                    className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition">▶ 퀴즈</button>
-                                  <button onClick={() => router.push(`/flashcard/${deck.id}`)}
-                                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">편집</button>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <div className="flex gap-1.5">
+                                    <button onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
+                                      className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition">▶ 퀴즈</button>
+                                    <button onClick={() => router.push(`/flashcard/${deck.id}`)}
+                                      className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">편집</button>
+                                  </div>
                                   {splitting === deck.id ? (
                                     <div className="flex gap-1">
                                       <button onClick={() => splitDeck(deck, 2)}
-                                        className="bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded-lg text-xs font-bold transition">2분할</button>
+                                        className="bg-orange-700 hover:bg-orange-600 px-2 py-1 rounded-lg text-xs font-bold transition">2분할</button>
                                       <button onClick={() => splitDeck(deck, 3)}
-                                        className="bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded-lg text-xs font-bold transition">3분할</button>
+                                        className="bg-orange-700 hover:bg-orange-600 px-2 py-1 rounded-lg text-xs font-bold transition">3분할</button>
                                       <button onClick={() => setSplitting(null)}
-                                        className="text-gray-500 px-1.5 py-1.5 rounded-lg text-xs">✕</button>
+                                        className="text-gray-400 px-1.5 py-1 rounded-lg text-xs">✕</button>
                                     </div>
                                   ) : (
-                                    <button onClick={() => setSplitting(deck.id)}
-                                      className="text-gray-600 hover:text-orange-400 px-2 py-1.5 rounded-lg text-xs transition opacity-0 group-hover:opacity-100">✂️</button>
+                                    <div className="flex gap-1.5">
+                                      <button onClick={() => setSplitting(deck.id)}
+                                        className="text-orange-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">✂️ 분할</button>
+                                      <button onClick={() => deleteDeck(deck.id)}
+                                        className="text-red-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">🗑 삭제</button>
+                                    </div>
                                   )}
-                                  <button onClick={() => deleteDeck(deck.id)}
-                                    className="text-gray-700 hover:text-red-400 px-2 py-1.5 rounded-lg text-xs transition opacity-0 group-hover:opacity-100">🗑</button>
                                 </div>
                               )}
                             </div>
