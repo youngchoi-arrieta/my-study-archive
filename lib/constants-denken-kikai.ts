@@ -38,23 +38,23 @@ export type KikaiExam = {
 
 export const KIKAI_EXAMS: KikaiExam[] = [
   // 2024~ 연 2회
-  { id: 'ki_2026_1', year: 2026, term: '上期', label: '令和8年 上期', totalQ: 18 },
-  { id: 'ki_2025_2', year: 2025, term: '下期', label: '令和7年 下期', totalQ: 18 },
-  { id: 'ki_2025_1', year: 2025, term: '上期', label: '令和7年 上期', totalQ: 18 },
-  { id: 'ki_2024_2', year: 2024, term: '下期', label: '令和6年 下期', totalQ: 18 },
-  { id: 'ki_2024_1', year: 2024, term: '上期', label: '令和6年 上期', totalQ: 18 },
-  { id: 'ki_2023_2', year: 2023, term: '下期', label: '令和5年 下期', totalQ: 18 },
-  { id: 'ki_2023_1', year: 2023, term: '上期', label: '令和5年 上期', totalQ: 18 },
+  { id: 'dk_2026_1', year: 2026, term: '上期', label: '令和8年 上期', totalQ: 18 },
+  { id: 'dk_2025_2', year: 2025, term: '下期', label: '令和7年 下期', totalQ: 18 },
+  { id: 'dk_2025_1', year: 2025, term: '上期', label: '令和7年 上期', totalQ: 18 },
+  { id: 'dk_2024_2', year: 2024, term: '下期', label: '令和6年 下期', totalQ: 18 },
+  { id: 'dk_2024_1', year: 2024, term: '上期', label: '令和6年 上期', totalQ: 18 },
+  { id: 'dk_2023_2', year: 2023, term: '下期', label: '令和5年 下期', totalQ: 18 },
+  { id: 'dk_2023_1', year: 2023, term: '上期', label: '令和5年 上期', totalQ: 18 },
   // 2022 이전 연 1회
-  { id: 'ki_2022_0', year: 2022, term: '', label: '令和4年',   totalQ: 18 },
-  { id: 'ki_2021_0', year: 2021, term: '', label: '令和3年',   totalQ: 18 },
-  { id: 'ki_2020_0', year: 2020, term: '', label: '令和2年',   totalQ: 18 },
-  { id: 'ki_2019_0', year: 2019, term: '', label: '令和元年',  totalQ: 18 },
-  { id: 'ki_2018_0', year: 2018, term: '', label: '平成30年',  totalQ: 18 },
-  { id: 'ki_2017_0', year: 2017, term: '', label: '平成29年',  totalQ: 18 },
-  { id: 'ki_2016_0', year: 2016, term: '', label: '平成28年',  totalQ: 18 },
-  { id: 'ki_2015_0', year: 2015, term: '', label: '平成27年',  totalQ: 18 },
-  { id: 'ki_2014_0', year: 2014, term: '', label: '平成26年',  totalQ: 18 },
+  { id: 'dk_2022_0', year: 2022, term: '', label: '令和4年',   totalQ: 18 },
+  { id: 'dk_2021_0', year: 2021, term: '', label: '令和3年',   totalQ: 18 },
+  { id: 'dk_2020_0', year: 2020, term: '', label: '令和2年',   totalQ: 18 },
+  { id: 'dk_2019_0', year: 2019, term: '', label: '令和元年',  totalQ: 18 },
+  { id: 'dk_2018_0', year: 2018, term: '', label: '平成30年',  totalQ: 18 },
+  { id: 'dk_2017_0', year: 2017, term: '', label: '平成29年',  totalQ: 18 },
+  { id: 'dk_2016_0', year: 2016, term: '', label: '平成28年',  totalQ: 18 },
+  { id: 'dk_2015_0', year: 2015, term: '', label: '平成27年',  totalQ: 18 },
+  { id: 'dk_2014_0', year: 2014, term: '', label: '平成26年',  totalQ: 18 },
 ]
 
 // 문제번호별 기본 정보
