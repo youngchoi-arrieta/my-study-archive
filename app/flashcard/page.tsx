@@ -46,6 +46,9 @@ function FlashcardPage() {
   const [customCategory, setCustomCategory] = useState('')
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [reordering, setReordering] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [splitting, setSplitting] = useState<string | null>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['어휘', '문법', '문형']))
 
   // description [태그] 우선 추출, 없으면 이름 패턴 폴백
@@ -144,6 +147,53 @@ function FlashcardPage() {
     setDecks(prev => prev.filter(d => d.id !== id))
   }
 
+  // ── 덱 분할 ──────────────────────────────────────────────────
+  const splitDeck = async (deck: Deck, parts: number) => {
+    setSplitting(null)
+    const { data: cards } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deck.id)
+    if (!cards || cards.length === 0) return alert('카드가 없어서 분할할 수 없어요.')
+    const chunkSize = Math.ceil(cards.length / parts)
+    const maxOrder = Math.max(...decks.map(d => d.sort_order), 0)
+    for (let i = 0; i < parts; i++) {
+      const chunk = cards.slice(i * chunkSize, (i + 1) * chunkSize)
+      if (chunk.length === 0) continue
+      const { data: newDeck } = await supabase.from('flashcard_decks').insert({
+        name: `${deck.name} (${i + 1}/${parts})`,
+        exam_type: deck.exam_type, description: deck.description,
+        user_id: 'flashcard_user', sort_order: maxOrder + i + 1,
+      }).select('id').single()
+      if (!newDeck) continue
+      await supabase.from('flashcard_cards').insert(
+        chunk.map(c => ({ deck_id: newDeck.id, card_type: c.card_type, fields: c.fields, occlusion: c.occlusion }))
+      )
+    }
+    await supabase.from('flashcard_decks').delete().eq('id', deck.id)
+    await loadDecks()
+  }
+
+  // ── 덱 합치기 ──────────────────────────────────────────────────
+  const mergeDecks = async () => {
+    if (selectedIds.size < 2) return
+    const sel = decks.filter(d => selectedIds.has(d.id))
+    const defaultName = sel.map(d => d.name).join(' + ')
+    const newName = prompt('합칠 덱의 이름을 입력하세요:', defaultName)
+    if (!newName) return
+    const maxOrder = Math.max(...decks.map(d => d.sort_order), 0)
+    const { data: newDeck } = await supabase.from('flashcard_decks').insert({
+      name: newName, exam_type: sel[0].exam_type, description: sel[0].description,
+      user_id: 'flashcard_user', sort_order: maxOrder + 1,
+    }).select('id').single()
+    if (!newDeck) return
+    for (const deck of sel) {
+      const { data: cards } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deck.id)
+      if (cards?.length) await supabase.from('flashcard_cards').insert(
+        cards.map(c => ({ deck_id: newDeck.id, card_type: c.card_type, fields: c.fields, occlusion: c.occlusion }))
+      )
+      await supabase.from('flashcard_decks').delete().eq('id', deck.id)
+    }
+    setSelectedIds(new Set()); setSelectMode(false); await loadDecks()
+  }
+
   // 두 덱의 sort_order를 swap
   const swapOrder = async (idxA: number, idxB: number) => {
     if (reordering) return
@@ -191,12 +241,16 @@ function FlashcardPage() {
             <h1 className="text-3xl font-bold mb-1">{pageTitle}</h1>
             <p className="text-gray-500 text-sm">멀티필드 인출 훈련 · 덱 관리</p>
           </div>
-          <button
-            onClick={() => setShowAdd(p => !p)}
-            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
-          >
-            + 새 덱
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setSelectMode(v => !v); setSelectedIds(new Set()) }}
+              className={`text-sm font-semibold px-4 py-2 rounded-xl transition ${selectMode?'bg-violet-600 text-white':'bg-gray-700 hover:bg-gray-600 text-white'}`}>
+              {selectMode ? '선택 취소' : '선택'}
+            </button>
+            <button onClick={() => setShowAdd(p => !p)}
+              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">
+              + 새 덱
+            </button>
+          </div>
         </div>
 
         {showAdd && (
@@ -273,6 +327,18 @@ function FlashcardPage() {
           )
           : (
             <div className="space-y-3">
+              {selectMode && selectedIds.size >= 2 && (
+                <div className="bg-violet-900 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <p className="text-sm text-violet-200">{selectedIds.size}개 선택됨</p>
+                  <button onClick={mergeDecks}
+                    className="bg-violet-600 hover:bg-violet-500 px-4 py-1.5 rounded-lg text-xs font-bold transition">
+                    🔗 하나로 합치기
+                  </button>
+                </div>
+              )}
+              {selectMode && selectedIds.size < 2 && (
+                <p className="text-xs text-gray-600 text-center py-1">합칠 덱을 2개 이상 선택하세요</p>
+              )}
               {sortedCats.map(key => {
                 const emoji = CAT_EMOJI[key] ?? '🏷'
                 const label = key
@@ -300,34 +366,49 @@ function FlashcardPage() {
                         {groupDecks.map((deck, idx) => {
                           const globalIdx = decks.indexOf(deck)
                           return (
-                            <div key={deck.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-800 transition group">
-                              {/* 순서 변경 */}
-                              <div className="flex flex-col gap-0.5 shrink-0">
-                                <button onClick={() => moveUp(globalIdx)} disabled={globalIdx === 0 || reordering}
-                                  className="text-gray-600 hover:text-white disabled:opacity-20 text-xs px-1 transition">▲</button>
-                                <button onClick={() => moveDown(globalIdx)} disabled={globalIdx === decks.length - 1 || reordering}
-                                  className="text-gray-600 hover:text-white disabled:opacity-20 text-xs px-1 transition">▼</button>
-                              </div>
-
-                              <div className="flex-1 cursor-pointer min-w-0" onClick={() => router.push(`/flashcard/${deck.id}`)}>
+                            <div key={deck.id} className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-800 transition group ${selectMode && selectedIds.has(deck.id) ? 'bg-violet-950' : ''}`}>
+                              {selectMode ? (
+                                <button onClick={() => setSelectedIds(prev => { const n=new Set(prev); n.has(deck.id)?n.delete(deck.id):n.add(deck.id); return n })}
+                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${selectedIds.has(deck.id)?'bg-violet-600 border-violet-600':'border-gray-600'}`}>
+                                  {selectedIds.has(deck.id) && <span className="text-white text-xs">✓</span>}
+                                </button>
+                              ) : (
+                                <div className="flex flex-col gap-0.5 shrink-0">
+                                  <button onClick={() => moveUp(globalIdx)} disabled={globalIdx === 0 || reordering}
+                                    className="text-gray-600 hover:text-white disabled:opacity-20 text-xs px-1 transition">▲</button>
+                                  <button onClick={() => moveDown(globalIdx)} disabled={globalIdx === decks.length - 1 || reordering}
+                                    className="text-gray-600 hover:text-white disabled:opacity-20 text-xs px-1 transition">▼</button>
+                                </div>
+                              )}
+                              <div className="flex-1 cursor-pointer min-w-0" onClick={() => selectMode
+                                ? setSelectedIds(prev => { const n=new Set(prev); n.has(deck.id)?n.delete(deck.id):n.add(deck.id); return n })
+                                : router.push(`/flashcard/${deck.id}`)}>
                                 <p className="font-semibold text-sm leading-snug truncate">{deck.name}</p>
                                 <p className="text-gray-600 text-xs mt-0.5">{deck.card_count}장</p>
                               </div>
-
-                              <div className="flex gap-1.5 items-center shrink-0">
-                                <button onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
-                                  className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
-                                  ▶ 퀴즈
-                                </button>
-                                <button onClick={() => router.push(`/flashcard/${deck.id}`)}
-                                  className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">
-                                  편집
-                                </button>
-                                <button onClick={() => deleteDeck(deck.id)}
-                                  className="text-gray-700 hover:text-red-400 px-2 py-1.5 rounded-lg text-xs transition opacity-0 group-hover:opacity-100">
-                                  🗑
-                                </button>
-                              </div>
+                              {!selectMode && (
+                                <div className="flex gap-1.5 items-center shrink-0">
+                                  <button onClick={() => router.push(`/flashcard/${deck.id}/quiz`)}
+                                    className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition">▶ 퀴즈</button>
+                                  <button onClick={() => router.push(`/flashcard/${deck.id}`)}
+                                    className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs transition">편집</button>
+                                  {splitting === deck.id ? (
+                                    <div className="flex gap-1">
+                                      <button onClick={() => splitDeck(deck, 2)}
+                                        className="bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded-lg text-xs font-bold transition">2분할</button>
+                                      <button onClick={() => splitDeck(deck, 3)}
+                                        className="bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded-lg text-xs font-bold transition">3분할</button>
+                                      <button onClick={() => setSplitting(null)}
+                                        className="text-gray-500 px-1.5 py-1.5 rounded-lg text-xs">✕</button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => setSplitting(deck.id)}
+                                      className="text-gray-600 hover:text-orange-400 px-2 py-1.5 rounded-lg text-xs transition opacity-0 group-hover:opacity-100">✂️</button>
+                                  )}
+                                  <button onClick={() => deleteDeck(deck.id)}
+                                    className="text-gray-700 hover:text-red-400 px-2 py-1.5 rounded-lg text-xs transition opacity-0 group-hover:opacity-100">🗑</button>
+                                </div>
+                              )}
                             </div>
                           )
                         })}
