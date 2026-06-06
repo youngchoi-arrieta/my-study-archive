@@ -452,14 +452,15 @@ export default function DenkenHub() {
                                   })() : (
                                     <button
                                       onClick={() => router.push(`/dashboard/denken/${encodeURIComponent(sub)}/${exam.id}`)}
-                                      className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                      className={`flex flex-col items-end gap-0.5 shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
                                         hasPdf
-                                          ? 'bg-blue-600/30 text-blue-400 hover:bg-blue-600/50'
+                                          ? 'bg-blue-900/20 hover:bg-blue-900/40 text-blue-400'
                                           : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
                                       }`}
                                       title="풀이 UI로 이동"
                                     >
-                                      풀기 →
+                                      <span>풀기 →</span>
+                                      {hasPdf && <span className="text-gray-600 font-normal">PDF✓</span>}
                                     </button>
                                   )}
                                 </div>
