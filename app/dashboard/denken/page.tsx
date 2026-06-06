@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ── 과거문 메타데이터 (20개년) ───────────────────────────────────
@@ -72,20 +73,29 @@ function PdfModal({
   subject,
   driveUrl,
   onClose,
+  onSaveUrl,
 }: {
   examLabel: string
   subject: Subject
   driveUrl: string | null
   onClose: () => void
+  onSaveUrl: (url: string) => Promise<void>
 }) {
   const [inputUrl, setInputUrl] = useState(driveUrl || '')
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     driveUrl ? toPreviewUrl(driveUrl) : null
   )
+  const [saving, setSaving] = useState(false)
 
-  const handleLoad = () => {
-    const url = toPreviewUrl(inputUrl.trim())
+  const handleLoad = async () => {
+    const raw = inputUrl.trim()
+    const url = toPreviewUrl(raw)
     setPreviewUrl(url)
+    if (raw) {
+      setSaving(true)
+      await onSaveUrl(raw)
+      setSaving(false)
+    }
   }
 
   return (
@@ -109,10 +119,10 @@ function PdfModal({
           />
           <button
             onClick={handleLoad}
-            disabled={!inputUrl.trim()}
+            disabled={!inputUrl.trim() || saving}
             className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
           >
-            불러오기
+            {saving ? '저장 중…' : '불러오기'}
           </button>
         </div>
       </div>
@@ -138,6 +148,7 @@ function PdfModal({
 
 // ── 메인 ────────────────────────────────────────────────────────
 export default function DenkenHub() {
+  const router = useRouter()
   const [activeTab, setActiveTab]   = useState<'scores' | 'analysis'>('scores')
   const [sessions, setSessions]     = useState<DenkenSession[]>([])
   const [loading, setLoading]       = useState(true)
@@ -196,6 +207,17 @@ export default function DenkenHub() {
     setSaving(false)
   }
 
+  // PDF 모달에서 URL 저장 (機械 제외 과목용)
+  const handleSaveUrl = useCallback(async (examId: string, subject: Subject, url: string) => {
+    await supabase.from('denken_sessions').upsert({
+      exam_id: examId,
+      subject,
+      drive_url: url || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'exam_id,subject' })
+    await fetchSessions()
+  }, [fetchSessions])
+
   // 통계
   const totalAttempts  = sessions.filter(s => s.my_score !== null).length
   const passedAttempts = sessions.filter(s => (s.my_score ?? 0) >= 60).length
@@ -221,6 +243,7 @@ export default function DenkenHub() {
           subject={pdfModal.subject}
           driveUrl={pdfSession?.drive_url ?? null}
           onClose={() => setPdfModal(null)}
+          onSaveUrl={(url) => handleSaveUrl(pdfModal.examId, pdfModal.subject, url)}
         />
       )}
 
@@ -347,18 +370,32 @@ export default function DenkenHub() {
                                       <p className="text-[10px] text-blue-500 mt-0.5 truncate">메모 있음</p>
                                     )}
                                   </button>
-                                  {/* PDF 버튼 */}
-                                  <button
-                                    onClick={() => setPdfModal({ examId: exam.id, subject: sub })}
-                                    className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                      hasPdf
-                                        ? 'bg-blue-600/30 text-blue-400 hover:bg-blue-600/50'
-                                        : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
-                                    }`}
-                                    title="PDF 기출 보기"
-                                  >
-                                    PDF
-                                  </button>
+                                  {/* PDF 버튼: 機械는 전용 풀이 UI, 나머지는 모달 */}
+                                  {sub === '機械' ? (
+                                    <button
+                                      onClick={() => router.push(`/dashboard/denken/kikai/${exam.id}`)}
+                                      className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                        hasPdf
+                                          ? 'bg-violet-600/30 text-violet-400 hover:bg-violet-600/50'
+                                          : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
+                                      }`}
+                                      title="機械 풀이 UI로 이동"
+                                    >
+                                      풀기 →
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => setPdfModal({ examId: exam.id, subject: sub })}
+                                      className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                        hasPdf
+                                          ? 'bg-blue-600/30 text-blue-400 hover:bg-blue-600/50'
+                                          : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
+                                      }`}
+                                      title="PDF 기출 보기"
+                                    >
+                                      PDF
+                                    </button>
+                                  )}
                                 </div>
 
                                 {/* 인라인 편집 패널 */}
