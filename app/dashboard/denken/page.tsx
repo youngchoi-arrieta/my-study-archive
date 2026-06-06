@@ -16,20 +16,28 @@ type DenkenExam = {
   label: string
 }
 
-// 2023~: 연 2회 (上期=8월, 下期=3월) / 2009~2022: 연 1회
-// 공개 기출 범위: 2026 上期 ~ 2009年
+// 2023~: 연 2회 (上期=8월 / 下期=翌年3월)
+// 令和 = 西暦 - 2018  (令和1年=2019, 令和7年=2025, 令和8年=2026)
+function toReiwa(y: number): number { return y - 2018 }
+function examLabel(y: number, term: '上期' | '下期' | ''): string {
+  const r = toReiwa(y)
+  if (term === '') return `令和${r}年`
+  // 下期 시험은 翌年 3월에 실시되지만 '年度' 기준으로 표기
+  return `令和${r}年度 ${term}`
+}
+
 const PAST_EXAMS: DenkenExam[] = [
   ...([2026, 2025, 2024, 2023].flatMap(y => {
     const exams: DenkenExam[] = [
-      { id: `dk_${y}_1`, year: y, term: '上期', label: `${y}年 上期` },
+      { id: `dk_${y}_1`, year: y, term: '上期', label: examLabel(y, '上期') },
     ]
     if (y !== 2026) {
-      exams.push({ id: `dk_${y}_2`, year: y, term: '下期', label: `${y}年 下期` })
+      exams.push({ id: `dk_${y}_2`, year: y, term: '下期', label: examLabel(y, '下期') })
     }
     return exams
   })),
   ...[2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010,2009].map(y => ({
-    id: `dk_${y}_0`, year: y, term: '' as const, label: `${y}年`,
+    id: `dk_${y}_0`, year: y, term: '' as const, label: examLabel(y, ''),
   })),
 ]
 

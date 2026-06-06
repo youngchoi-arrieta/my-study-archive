@@ -28,6 +28,7 @@ type Session = {
   id: string
   exam_id: string
   drive_url: string | null
+  answer_drive_url: string | null
   selected_q: number | null   // 17 or 18
 }
 
@@ -225,7 +226,10 @@ export default function KikaiExamPage() {
   )
   const [selectedQ, setSelectedQ] = useState<17 | 18 | null>(null)
   const [driveUrl, setDriveUrl] = useState('')
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl]       = useState<string | null>(null)
+  const [answerUrl, setAnswerUrl]         = useState('')
+  const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
+  const [pdfTab, setPdfTab]               = useState<'question' | 'answer'>('question')
   const [activeQ, setActiveQ] = useState<number>(1)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -243,7 +247,7 @@ export default function KikaiExamPage() {
     setLoading(true)
     const { data: sess } = await supabase
       .from('denken_kikai_sessions')
-      .select('id, exam_id, drive_url, selected_q')
+      .select('id, exam_id, drive_url, answer_drive_url, selected_q')
       .eq('exam_id', examId)
       .maybeSingle()
 
@@ -252,6 +256,8 @@ export default function KikaiExamPage() {
       setDriveUrl(sess.drive_url || '')
       setUrlInput(sess.drive_url || '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
+      setAnswerUrl(sess.answer_drive_url || '')
+      if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
       if (sess.selected_q) setSelectedQ(sess.selected_q as 17 | 18)
 
       const { data: ans } = await supabase
@@ -293,7 +299,7 @@ export default function KikaiExamPage() {
       .select('id')
       .single()
     if (error || !data) throw new Error('세션 생성 실패')
-    setSession({ id: data.id, exam_id: examId, drive_url: null, selected_q: null })
+    setSession({ id: data.id, exam_id: examId, drive_url: null, answer_drive_url: null, selected_q: null })
     return data.id
   }, [session, examId])
 
@@ -390,16 +396,26 @@ export default function KikaiExamPage() {
   // ── PDF URL 저장 ──────────────────────────────────────────────
   const handleUrlLoad = useCallback(async () => {
     const url = urlInput.trim()
-    const preview = url ? toPreviewUrl(url) : null
-    setPreviewUrl(preview)
+    setPreviewUrl(url ? toPreviewUrl(url) : null)
     setDriveUrl(url)
     setSaving(true)
-    const sessionId = await ensureSession()
-    await supabase.from('denken_kikai_sessions')
-      .update({ drive_url: url || null, updated_at: new Date().toISOString() })
-      .eq('id', sessionId)
+    await supabase.from('denken_kikai_sessions').upsert(
+      { exam_id: examId, drive_url: url || null, updated_at: new Date().toISOString() },
+      { onConflict: 'exam_id' }
+    )
     setSaving(false)
-  }, [urlInput, ensureSession])
+  }, [urlInput, examId])
+
+  const handleAnswerUrlLoad = useCallback(async () => {
+    const url = answerUrl.trim()
+    setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
+    setSaving(true)
+    await supabase.from('denken_kikai_sessions').upsert(
+      { exam_id: examId, answer_drive_url: url || null, updated_at: new Date().toISOString() },
+      { onConflict: 'exam_id' }
+    )
+    setSaving(false)
+  }, [answerUrl, examId])
 
   // ── 점수 계산 ─────────────────────────────────────────────────
   const score = calcScore(answers, selectedQ)
@@ -536,39 +552,70 @@ export default function KikaiExamPage() {
 
         {/* PDF 뷰어 */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#050d1a]">
-          {/* URL 입력바 */}
+          {/* 탭 + URL 입력바 */}
           <div className="flex items-center gap-2 px-3 py-2 bg-[#080f1e] border-b border-white/5 shrink-0">
-            <input
-              value={urlInput}
-              onChange={e => setUrlInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleUrlLoad()}
-              placeholder="구글 드라이브 PDF URL 붙여넣기..."
-              className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500/60 placeholder-gray-700 font-mono"
-            />
-            <button
-              onClick={handleUrlLoad}
-              disabled={saving}
-              className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-            >
-              {saving ? '…' : '불러오기'}
-            </button>
+            {/* 문제지/정답지 탭 */}
+            <div className="flex bg-[#0f1c2e] rounded-lg p-0.5 shrink-0">
+              <button
+                onClick={() => setPdfTab('question')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'question' ? 'bg-violet-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+              >問題</button>
+              <button
+                onClick={() => setPdfTab('answer')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'answer' ? 'bg-emerald-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+              >解答</button>
+            </div>
+            {/* URL 입력 */}
+            {pdfTab === 'question' ? (
+              <>
+                <input
+                  value={urlInput}
+                  onChange={e => setUrlInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleUrlLoad()}
+                  placeholder="문제지 PDF URL..."
+                  className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-violet-500/60 placeholder-gray-700 font-mono"
+                />
+                <button onClick={handleUrlLoad} disabled={saving}
+                  className="bg-violet-700 hover:bg-violet-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                  {saving ? '…' : '불러오기'}
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  value={answerUrl}
+                  onChange={e => setAnswerUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAnswerUrlLoad()}
+                  placeholder="정답지 PDF URL..."
+                  className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500/60 placeholder-gray-700 font-mono"
+                />
+                <button onClick={handleAnswerUrlLoad} disabled={saving}
+                  className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                  {saving ? '…' : '불러오기'}
+                </button>
+              </>
+            )}
           </div>
           {/* PDF 영역 */}
           <div className="flex-1 relative">
-            {previewUrl ? (
-              <iframe
-                src={previewUrl}
-                className="w-full h-full border-0"
-                allow="autoplay"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
-                <div className="text-5xl opacity-30">📄</div>
-                <div className="text-center">
-                  <p className="text-sm text-gray-600">구글 드라이브 PDF URL을 입력하세요</p>
-                  <p className="text-xs text-gray-800 mt-1">drive.google.com/file/d/… 형식</p>
+            {pdfTab === 'question' ? (
+              previewUrl ? (
+                <iframe src={previewUrl} className="w-full h-full border-0" allow="autoplay" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
+                  <div className="text-5xl opacity-30">📄</div>
+                  <p className="text-sm text-gray-600">문제지 PDF URL을 입력하세요</p>
                 </div>
-              </div>
+              )
+            ) : (
+              answerPreviewUrl ? (
+                <iframe src={answerPreviewUrl} className="w-full h-full border-0" allow="autoplay" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
+                  <div className="text-5xl opacity-30">✅</div>
+                  <p className="text-sm text-gray-600">정답지 PDF URL을 입력하세요</p>
+                </div>
+              )
             )}
           </div>
         </div>

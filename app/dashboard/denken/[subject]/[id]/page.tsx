@@ -14,22 +14,22 @@ const SUBJECT_META: Record<string, { color: string; accent: string; label: strin
 
 // 기출 메타 (denken/page.tsx의 PAST_EXAMS와 동일 포맷)
 const PAST_EXAMS: Record<string, { label: string; year: number; term: string }> = {
-  'dk_2026_1': { label: '令和8年 上期',  year: 2026, term: '上期' },
-  'dk_2025_1': { label: '令和7年 上期',  year: 2025, term: '上期' },
-  'dk_2025_2': { label: '令和7年 下期',  year: 2025, term: '下期' },
-  'dk_2024_1': { label: '令和6年 上期',  year: 2024, term: '上期' },
-  'dk_2024_2': { label: '令和6年 下期',  year: 2024, term: '下期' },
-  'dk_2023_1': { label: '令和5年 上期',  year: 2023, term: '上期' },
-  'dk_2023_2': { label: '令和5年 下期',  year: 2023, term: '下期' },
-  'dk_2022_0': { label: '令和4年',       year: 2022, term: '' },
-  'dk_2021_0': { label: '令和3年',       year: 2021, term: '' },
-  'dk_2020_0': { label: '令和2年',       year: 2020, term: '' },
-  'dk_2019_0': { label: '令和元年',      year: 2019, term: '' },
-  'dk_2018_0': { label: '平成30年',      year: 2018, term: '' },
-  'dk_2017_0': { label: '平成29年',      year: 2017, term: '' },
-  'dk_2016_0': { label: '平成28年',      year: 2016, term: '' },
-  'dk_2015_0': { label: '平成27年',      year: 2015, term: '' },
-  'dk_2014_0': { label: '平成26年',      year: 2014, term: '' },
+  'dk_2026_1': { label: '2026년도 상반기 (2026.8)',  year: 2026, term: '上期' },
+  'dk_2025_1': { label: '2025년도 상반기 (2025.8)',  year: 2025, term: '上期' },
+  'dk_2025_2': { label: '2025년도 하반기 (2026.3)',  year: 2025, term: '下期' },
+  'dk_2024_1': { label: '2024년도 상반기 (2024.8)',  year: 2024, term: '上期' },
+  'dk_2024_2': { label: '2024년도 하반기 (2025.3)',  year: 2024, term: '下期' },
+  'dk_2023_1': { label: '2023년도 상반기 (2023.8)',  year: 2023, term: '上期' },
+  'dk_2023_2': { label: '2023년도 하반기 (2024.3)',  year: 2023, term: '下期' },
+  'dk_2022_0': { label: '2022년도',       year: 2022, term: '' },
+  'dk_2021_0': { label: '2021년도',       year: 2021, term: '' },
+  'dk_2020_0': { label: '2020년도',       year: 2020, term: '' },
+  'dk_2019_0': { label: '2019년도',      year: 2019, term: '' },
+  'dk_2018_0': { label: '2018년도',      year: 2018, term: '' },
+  'dk_2017_0': { label: '2017년도',      year: 2017, term: '' },
+  'dk_2016_0': { label: '2016년도',      year: 2016, term: '' },
+  'dk_2015_0': { label: '2015년도',      year: 2015, term: '' },
+  'dk_2014_0': { label: '2014년도',      year: 2014, term: '' },
 }
 
 // 과목별 문제 수 & 선택문제
@@ -59,6 +59,7 @@ type Session = {
   exam_id: string
   subject: string
   drive_url: string | null
+  answer_drive_url: string | null
   selected_q: number | null
   my_score: number | null
 }
@@ -150,7 +151,10 @@ export default function GeneralSubjectPage() {
     Array.from({ length: cfg.totalQ }, (_, i) => ({ q_num: i + 1, result: null, memo: '' }))
   )
   const [selectedQ, setSelectedQ] = useState<number | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl]           = useState<string | null>(null)
+  const [answerUrl, setAnswerUrl]             = useState('')
+  const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
+  const [pdfTab, setPdfTab]                   = useState<'question' | 'answer'>('question')
   const [activeQ, setActiveQ]     = useState<number>(1)
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
@@ -168,7 +172,7 @@ export default function GeneralSubjectPage() {
     setLoading(true)
     const { data: sess } = await supabase
       .from('denken_sessions')
-      .select('id, exam_id, subject, drive_url, selected_q, my_score')
+      .select('id, exam_id, subject, drive_url, answer_drive_url, selected_q, my_score')
       .eq('exam_id', examId)
       .eq('subject', subject)
       .maybeSingle()
@@ -177,6 +181,8 @@ export default function GeneralSubjectPage() {
       setSession(sess as Session)
       setUrlInput(sess.drive_url || '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
+      setAnswerUrl(sess.answer_drive_url || '')
+      if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
       if (sess.selected_q) setSelectedQ(sess.selected_q)
 
       const { data: ans } = await supabase
@@ -212,7 +218,7 @@ export default function GeneralSubjectPage() {
       .select('id')
       .single()
     if (error || !data) throw new Error('세션 생성 실패')
-    setSession({ id: data.id, exam_id: examId, subject, drive_url: null, selected_q: null, my_score: null })
+    setSession({ id: data.id, exam_id: examId, subject, drive_url: null, answer_drive_url: null, selected_q: null, my_score: null })
     return data.id
   }, [session, examId, subject])
 
@@ -257,10 +263,10 @@ export default function GeneralSubjectPage() {
   const handleSelectQ = useCallback(async (q: number) => {
     const next = selectedQ === q ? null : q
     setSelectedQ(next)
-    const sessionId = await ensureSession()
-    await supabase.from('denken_sessions')
-      .update({ selected_q: next, updated_at: new Date().toISOString() })
-      .eq('id', sessionId)
+    await supabase.from('denken_sessions').upsert(
+      { exam_id: examId, subject, selected_q: next, updated_at: new Date().toISOString() },
+      { onConflict: 'exam_id,subject' }
+    )
   }, [selectedQ, ensureSession])
 
   // ── PDF URL 저장 ─────────────────────────────────────────────────
@@ -268,12 +274,23 @@ export default function GeneralSubjectPage() {
     const url = urlInput.trim()
     setPreviewUrl(url ? toPreviewUrl(url) : null)
     setSaving(true)
-    const sessionId = await ensureSession()
-    await supabase.from('denken_sessions')
-      .update({ drive_url: url || null, updated_at: new Date().toISOString() })
-      .eq('id', sessionId)
+    await supabase.from('denken_sessions').upsert(
+      { exam_id: examId, subject, drive_url: url || null, updated_at: new Date().toISOString() },
+      { onConflict: 'exam_id,subject' }
+    )
     setSaving(false)
-  }, [urlInput, ensureSession])
+  }, [urlInput, examId, subject])
+
+  const handleAnswerUrlLoad = useCallback(async () => {
+    const url = answerUrl.trim()
+    setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
+    setSaving(true)
+    await supabase.from('denken_sessions').upsert(
+      { exam_id: examId, subject, answer_drive_url: url || null, updated_at: new Date().toISOString() },
+      { onConflict: 'exam_id,subject' }
+    )
+    setSaving(false)
+  }, [answerUrl, examId, subject])
 
   // ── 드래그 리사이저 ──────────────────────────────────────────────
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -395,31 +412,64 @@ export default function GeneralSubjectPage() {
         {/* PDF 뷰어 */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#050d1a]">
           <div className="flex items-center gap-2 px-3 py-2 bg-[#080f1e] border-b border-white/5 shrink-0">
-            <input
-              value={urlInput}
-              onChange={e => setUrlInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleUrlLoad()}
-              placeholder="구글 드라이브 PDF URL 붙여넣기..."
-              className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500/60 placeholder-gray-700 font-mono"
-            />
-            <button
-              onClick={handleUrlLoad}
-              disabled={saving}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition text-white"
-              style={{ backgroundColor: meta.accent }}
-            >
-              {saving ? '…' : '불러오기'}
-            </button>
+            {/* 문제지/정답지 탭 */}
+            <div className="flex bg-[#0f1c2e] rounded-lg p-0.5 shrink-0">
+              <button
+                onClick={() => setPdfTab('question')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'question' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                style={pdfTab === 'question' ? { backgroundColor: meta.accent } : {}}
+              >問題</button>
+              <button
+                onClick={() => setPdfTab('answer')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'answer' ? 'bg-emerald-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+              >解答</button>
+            </div>
+            {pdfTab === 'question' ? (
+              <>
+                <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleUrlLoad()}
+                  placeholder="문제지 PDF URL..."
+                  className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500/60 placeholder-gray-700 font-mono"
+                />
+                <button onClick={handleUrlLoad} disabled={saving}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition text-white"
+                  style={{ backgroundColor: meta.accent }}>
+                  {saving ? '…' : '불러오기'}
+                </button>
+              </>
+            ) : (
+              <>
+                <input value={answerUrl} onChange={e => setAnswerUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAnswerUrlLoad()}
+                  placeholder="정답지 PDF URL..."
+                  className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500/60 placeholder-gray-700 font-mono"
+                />
+                <button onClick={handleAnswerUrlLoad} disabled={saving}
+                  className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition text-white">
+                  {saving ? '…' : '불러오기'}
+                </button>
+              </>
+            )}
           </div>
           <div className="flex-1 relative">
-            {previewUrl ? (
-              <iframe src={previewUrl} className="w-full h-full border-0" allow="autoplay" />
+            {pdfTab === 'question' ? (
+              previewUrl ? (
+                <iframe src={previewUrl} className="w-full h-full border-0" allow="autoplay" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
+                  <div className="text-5xl opacity-30">📄</div>
+                  <p className="text-sm text-gray-600">문제지 PDF URL을 입력하세요</p>
+                </div>
+              )
             ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
-                <div className="text-5xl opacity-30">📄</div>
-                <p className="text-sm text-gray-600">구글 드라이브 PDF URL을 입력하세요</p>
-                <p className="text-xs text-gray-800">drive.google.com/file/d/… 형식</p>
-              </div>
+              answerPreviewUrl ? (
+                <iframe src={answerPreviewUrl} className="w-full h-full border-0" allow="autoplay" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
+                  <div className="text-5xl opacity-30">✅</div>
+                  <p className="text-sm text-gray-600">정답지 PDF URL을 입력하세요</p>
+                </div>
+              )
             )}
           </div>
         </div>
