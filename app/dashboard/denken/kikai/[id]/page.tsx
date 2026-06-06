@@ -245,11 +245,13 @@ export default function KikaiExamPage() {
   // ── 데이터 로드 ────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     setLoading(true)
-    const { data: sess } = await supabase
+    const { data: sessRows } = await supabase
       .from('denken_kikai_sessions')
       .select('id, exam_id, drive_url, answer_drive_url, selected_q')
       .eq('exam_id', examId)
-      .maybeSingle()
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const sess = sessRows?.[0] ?? null
 
     if (sess) {
       setSession(sess as Session)
