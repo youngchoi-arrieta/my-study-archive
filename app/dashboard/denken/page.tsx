@@ -53,6 +53,14 @@ type DenkenSession = {
   updated_at: string
 }
 
+type KikaiSummary = {
+  exam_id: string
+  score: number
+  tagCount: number
+  hasDriveUrl: boolean
+  memoCount: number
+}
+
 const SUBJECT_COLORS: Record<Subject, string> = {
   '理論': '#2563eb',
   '電力': '#059669',
@@ -159,6 +167,7 @@ export default function DenkenHub() {
   const [saving, setSaving]         = useState(false)
   const [filterSubject, setFilterSubject] = useState<Subject | null>(null)
   const [pdfModal, setPdfModal]     = useState<{ examId: string; subject: Subject } | null>(null)
+  const [kikaiMap, setKikaiMap]     = useState<Map<string, KikaiSummary>>(new Map())
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
@@ -169,7 +178,34 @@ export default function DenkenHub() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchSessions() }, [fetchSessions])
+  const fetchKikai = useCallback(async () => {
+    const [{ data: sessions }, { data: answers }] = await Promise.all([
+      supabase.from('denken_kikai_sessions').select('exam_id, drive_url, selected_q'),
+      supabase.from('denken_kikai_answers').select('exam_id, result, tag_id, memo, q_num'),
+    ])
+    const map = new Map<string, KikaiSummary>()
+    for (const s of (sessions || [])) {
+      const ans = (answers || []).filter((a: {exam_id:string,result:string|null,tag_id:number|null,memo:string|null,q_num:number}) => a.exam_id === s.exam_id)
+      // 점수 계산 (A문제 5점, B문제 10점, 선택문제 반영)
+      const selectedQ = s.selected_q as number | null
+      let score = 0
+      for (const a of ans) {
+        if (a.result !== 'correct') continue
+        if ((a.q_num === 17 || a.q_num === 18) && a.q_num !== selectedQ) continue
+        score += a.q_num <= 14 ? 5 : 10
+      }
+      map.set(s.exam_id, {
+        exam_id: s.exam_id,
+        score,
+        tagCount: ans.filter((a: {tag_id:number|null}) => a.tag_id !== null).length,
+        hasDriveUrl: !!s.drive_url,
+        memoCount: ans.filter((a: {memo:string|null}) => a.memo).length,
+      })
+    }
+    setKikaiMap(map)
+  }, [])
+
+  useEffect(() => { fetchSessions(); fetchKikai() }, [fetchSessions, fetchKikai])
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, DenkenSession>()
@@ -371,19 +407,27 @@ export default function DenkenHub() {
                                     )}
                                   </button>
                                   {/* PDF 버튼: 機械는 전용 풀이 UI, 나머지는 모달 */}
-                                  {sub === '機械' ? (
-                                    <button
-                                      onClick={() => router.push(`/dashboard/denken/kikai/${exam.id}`)}
-                                      className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                        hasPdf
-                                          ? 'bg-violet-600/30 text-violet-400 hover:bg-violet-600/50'
-                                          : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
-                                      }`}
-                                      title="機械 풀이 UI로 이동"
-                                    >
-                                      풀기 →
-                                    </button>
-                                  ) : (
+                                  {sub === '機械' ? (() => {
+                                    const ki = kikaiMap.get(exam.id)
+                                    return (
+                                      <button
+                                        onClick={() => router.push(`/dashboard/denken/kikai/${exam.id}`)}
+                                        className="flex flex-col items-end gap-0.5 shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition bg-violet-900/20 hover:bg-violet-900/40 text-violet-400"
+                                        title="機械 풀이 UI로 이동"
+                                      >
+                                        <span>풀기 →</span>
+                                        {ki && ki.score > 0 && (
+                                          <span className={ki.score >= 60 ? 'text-emerald-400' : 'text-yellow-400'}>{ki.score}점</span>
+                                        )}
+                                        {ki && ki.tagCount > 0 && (
+                                          <span className="text-violet-500 font-normal">{ki.tagCount}태그</span>
+                                        )}
+                                        {ki?.hasDriveUrl && (
+                                          <span className="text-gray-600 font-normal">PDF✓</span>
+                                        )}
+                                      </button>
+                                    )
+                                  })() : (
                                     <button
                                       onClick={() => setPdfModal({ examId: exam.id, subject: sub })}
                                       className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${

@@ -230,7 +230,11 @@ export default function KikaiExamPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [urlInput, setUrlInput] = useState('')
+  const [panelWidth, setPanelWidth] = useState(288)  // 기본 w-72 = 288px
   const memoRef = useRef<HTMLTextAreaElement>(null)
+  const isDragging = useRef(false)
+  const dragStartX = useRef(0)
+  const dragStartW = useRef(288)
 
   // ── 데이터 로드 ────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -345,6 +349,31 @@ export default function KikaiExamPage() {
     const a = answers.find(x => x.q_num === qNum)
     if (a) saveAnswer(a)
   }, [answers, saveAnswer])
+
+  // ── 드래그 리사이저 ────────────────────────────────────────────
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true
+    dragStartX.current = e.clientX
+    dragStartW.current = panelWidth
+    e.preventDefault()
+  }, [panelWidth])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      // 패널이 오른쪽에 있으므로 왼쪽으로 드래그 = 패널 넓어짐
+      const delta = dragStartX.current - e.clientX
+      const next = Math.min(600, Math.max(200, dragStartW.current + delta))
+      setPanelWidth(next)
+    }
+    const onUp = () => { isDragging.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
 
   // ── 선택문제 설정 ─────────────────────────────────────────────
   const handleSelectQ = useCallback(async (q: 17 | 18) => {
@@ -542,10 +571,17 @@ export default function KikaiExamPage() {
           </div>
         </div>
 
+        {/* 드래그 핸들 */}
+        <div
+          onMouseDown={handleDragStart}
+          className="w-1 shrink-0 bg-white/5 hover:bg-violet-500/60 active:bg-violet-500 cursor-col-resize transition-colors"
+          title="드래그해서 크기 조절"
+        />
+
         {/* 메모 패널 */}
         <div
-          className="w-72 shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5"
-          style={{ minWidth: 240, maxWidth: 360 }}
+          className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5"
+          style={{ width: panelWidth, minWidth: 200, maxWidth: 600 }}
         >
           {/* 패널 헤더 */}
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
