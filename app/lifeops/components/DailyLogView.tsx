@@ -1,30 +1,31 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
-import { DailyLog, STUDY_SUBJECTS, EXPENSE_CATEGORIES } from '../types'
+import {
+  DailyLog, STUDY_SUBJECTS, EXPENSE_CATEGORIES, INCOME_CATEGORIES,
+  Lang, Currency, t, formatAmount, fromDisplayAmount, toDisplayAmount,
+} from '../types'
 
 interface Props {
   logs: DailyLog[]
   onUpsertToday: (patch: Partial<DailyLog>) => Promise<void>
   dailyTargetKrw: number
+  lang: Lang
+  currency: Currency
 }
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function formatKRW(n: number): string {
-  return n.toLocaleString('ko-KR') + '원'
-}
-
 function sumMinutes(m: Record<string, number>): number {
   return Object.values(m).reduce((a, b) => a + (b || 0), 0)
 }
 
-function sumExpense(e: Record<string, number>): number {
+function sumKrw(e: Record<string, number>): number {
   return Object.values(e).reduce((a, b) => a + (b || 0), 0)
 }
 
-export default function DailyLogView({ logs, onUpsertToday, dailyTargetKrw }: Props) {
+export default function DailyLogView({ logs, onUpsertToday, dailyTargetKrw, lang, currency }: Props) {
   const today = todayStr()
   const todayLog = useMemo(
     () => logs.find(l => l.log_date === today) || null,
@@ -38,125 +39,161 @@ export default function DailyLogView({ logs, onUpsertToday, dailyTargetKrw }: Pr
 
   return (
     <div className="space-y-6">
-      <TodayCard log={todayLog} onUpsert={onUpsertToday} dailyTargetKrw={dailyTargetKrw} />
-      <HistoryTable logs={recent} dailyTargetKrw={dailyTargetKrw} />
+      <TodayCard
+        log={todayLog}
+        onUpsert={onUpsertToday}
+        dailyTargetKrw={dailyTargetKrw}
+        lang={lang}
+        currency={currency}
+      />
+      <HistoryTable logs={recent} dailyTargetKrw={dailyTargetKrw} lang={lang} currency={currency} />
     </div>
   )
 }
 
 function TodayCard({
-  log,
-  onUpsert,
-  dailyTargetKrw,
+  log, onUpsert, dailyTargetKrw, lang, currency,
 }: {
   log: DailyLog | null
   onUpsert: (patch: Partial<DailyLog>) => Promise<void>
   dailyTargetKrw: number
+  lang: Lang
+  currency: Currency
 }) {
-  const study = log?.study_minutes || {}
-  const expense = log?.expense_krw || {}
+  const study   = log?.study_minutes || {}
+  const expense = log?.expense_krw   || {}
+  const income  = log?.income_krw    || {}
 
-  // 빠른 추가 입력 상태
   const [addSubject, setAddSubject] = useState<string>(STUDY_SUBJECTS[0])
-  const [addMin, setAddMin] = useState<string>('')
-  const [addCat, setAddCat] = useState<string>(EXPENSE_CATEGORIES[0].key)
-  const [addKrw, setAddKrw] = useState<string>('')
-  const [condition, setCondition] = useState<number>(log?.condition || 3)
-  const [memo, setMemo] = useState<string>(log?.memo || '')
+  const [addMin,     setAddMin]     = useState<string>('')
 
-  // log prop 변경 시 로컬 state 동기화
+  const [addExpCat, setAddExpCat]   = useState<string>(EXPENSE_CATEGORIES[0].key)
+  const [addExpAmt, setAddExpAmt]   = useState<string>('')
+
+  const [addIncCat, setAddIncCat]   = useState<string>(INCOME_CATEGORIES[0].key)
+  const [addIncAmt, setAddIncAmt]   = useState<string>('')
+
+  const [weightInput, setWeightInput] = useState<string>(
+    log?.weight_kg != null ? String(log.weight_kg) : ''
+  )
+  const [condition, setCondition] = useState<number>(log?.condition || 3)
+  const [memo,      setMemo]      = useState<string>(log?.memo || '')
+
   useEffect(() => {
     if (log) {
       setCondition(log.condition || 3)
       setMemo(log.memo || '')
+      setWeightInput(log.weight_kg != null ? String(log.weight_kg) : '')
     }
   }, [log])
 
-  const totalStudyMin = sumMinutes(study)
-  const totalExpense = sumExpense(expense)
-  const overBudget = totalExpense > dailyTargetKrw
+  const totalExpenseKrw = sumKrw(expense)
+  const totalIncomeKrw  = sumKrw(income)
+  const netKrw          = totalIncomeKrw - totalExpenseKrw
+  const overBudget      = totalExpenseKrw > dailyTargetKrw
+
+  // currency-aware amount parser
+  function parseInput(raw: string): number {
+    const n = parseFloat(raw.replace(/,/g, ''))
+    if (!n || n <= 0) return 0
+    return fromDisplayAmount(n, currency)  // → KRW
+  }
 
   async function addStudy() {
     const m = parseInt(addMin)
     if (!m || m <= 0) return
-    const next = { ...study, [addSubject]: (study[addSubject] || 0) + m }
-    await onUpsert({ study_minutes: next })
+    await onUpsert({ study_minutes: { ...study, [addSubject]: (study[addSubject] || 0) + m } })
     setAddMin('')
   }
 
   async function addExpense() {
-    const k = parseInt(addKrw.replace(/,/g, ''))
-    if (!k || k <= 0) return
-    const next = { ...expense, [addCat]: (expense[addCat] || 0) + k }
-    await onUpsert({ expense_krw: next })
-    setAddKrw('')
+    const krw = parseInput(addExpAmt)
+    if (!krw) return
+    await onUpsert({ expense_krw: { ...expense, [addExpCat]: (expense[addExpCat] || 0) + krw } })
+    setAddExpAmt('')
   }
 
-  async function removeStudy(subject: string) {
-    const next = { ...study }
-    delete next[subject]
+  async function addIncome() {
+    const krw = parseInput(addIncAmt)
+    if (!krw) return
+    await onUpsert({ income_krw: { ...income, [addIncCat]: (income[addIncCat] || 0) + krw } })
+    setAddIncAmt('')
+  }
+
+  async function removeStudy(sub: string) {
+    const next = { ...study }; delete next[sub]
     await onUpsert({ study_minutes: next })
   }
 
   async function removeExpense(cat: string) {
-    const next = { ...expense }
-    delete next[cat]
+    const next = { ...expense }; delete next[cat]
     await onUpsert({ expense_krw: next })
+  }
+
+  async function removeIncome(cat: string) {
+    const next = { ...income }; delete next[cat]
+    await onUpsert({ income_krw: next })
+  }
+
+  async function saveWeight() {
+    const w = parseFloat(weightInput)
+    await onUpsert({ weight_kg: isNaN(w) ? null : w })
   }
 
   async function saveMeta() {
     await onUpsert({ condition, memo: memo.trim() || null })
   }
 
+  const catLabel = (cats: typeof EXPENSE_CATEGORIES | typeof INCOME_CATEGORIES, key: string) =>
+    (cats as Array<{key:string; en:string; es:string}>).find(c => c.key === key)?.[lang] || key
+
+  const inputPlaceholder = currency === 'KRW' ? '원' : 'COP'
+
   return (
     <div className="bg-gray-900 rounded-2xl p-5">
       <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-lg font-bold">오늘의 기록</h3>
+        <h3 className="text-lg font-bold">{t('todayRecord', lang)}</h3>
         <p className="text-xs text-gray-500">{todayStr()}</p>
       </div>
 
-      {/* 요약 스탯 */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      {/* Summary stats */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-gray-950 rounded-xl p-3">
-          <p className="text-xs text-gray-500 mb-1">총 공부 시간</p>
-          <p className="text-2xl font-bold">
-            {Math.floor(totalStudyMin / 60)}
-            <span className="text-sm text-gray-400 font-normal">시간 </span>
-            {totalStudyMin % 60}
-            <span className="text-sm text-gray-400 font-normal">분</span>
+          <p className="text-xs text-gray-500 mb-1">{t('studyTime', lang)}</p>
+          <p className="text-xl font-bold">
+            {Math.floor(sumMinutes(study) / 60)}
+            <span className="text-sm text-gray-400 font-normal">h </span>
+            {sumMinutes(study) % 60}
+            <span className="text-sm text-gray-400 font-normal">m</span>
           </p>
         </div>
         <div className="bg-gray-950 rounded-xl p-3">
           <p className="text-xs text-gray-500 mb-1">
-            지출 / 목표 {formatKRW(dailyTargetKrw)}
+            {t('expense', lang)} / {formatAmount(dailyTargetKrw, currency)}
           </p>
-          <p className={`text-2xl font-bold ${overBudget ? 'text-red-400' : 'text-green-400'}`}>
-            {formatKRW(totalExpense)}
+          <p className={`text-xl font-bold ${overBudget ? 'text-red-400' : 'text-green-400'}`}>
+            {formatAmount(totalExpenseKrw, currency)}
+          </p>
+        </div>
+        <div className="bg-gray-950 rounded-xl p-3">
+          <p className="text-xs text-gray-500 mb-1">Net</p>
+          <p className={`text-xl font-bold ${netKrw >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {netKrw >= 0 ? '+' : ''}{formatAmount(netKrw, currency)}
           </p>
         </div>
       </div>
 
-      {/* 공부 섹션 */}
-      <div className="mb-5">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-gray-300">📚 공부</h4>
-        </div>
-        <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
+      {/* Study */}
+      <Section title={`📚 ${t('studyTime', lang)}`}>
+        <TagRow>
           {Object.entries(study).map(([sub, min]) => (
-            <button
-              key={sub}
-              onClick={() => removeStudy(sub)}
-              className="bg-blue-900/40 hover:bg-red-900/40 text-blue-200 hover:text-red-200 text-xs px-2.5 py-1 rounded-full transition"
-              title="클릭하여 삭제"
-            >
-              {sub} · {min}분 ×
-            </button>
+            <Tag key={sub} onClick={() => removeStudy(sub)} color="blue">
+              {sub} · {min}m ×
+            </Tag>
           ))}
-          {Object.keys(study).length === 0 && (
-            <p className="text-xs text-gray-600 py-1">기록 없음</p>
-          )}
-        </div>
-        <div className="flex gap-2">
+          {Object.keys(study).length === 0 && <Empty lang={lang} />}
+        </TagRow>
+        <InputRow>
           <select
             className="bg-gray-800 rounded-lg px-2 py-1.5 text-sm flex-1"
             value={addSubject}
@@ -165,72 +202,102 @@ function TodayCard({
             {STUDY_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <input
-            type="number"
-            inputMode="numeric"
-            className="bg-gray-800 rounded-lg px-3 py-1.5 text-sm w-24"
-            placeholder="분"
+            type="number" inputMode="numeric"
+            className="bg-gray-800 rounded-lg px-3 py-1.5 text-sm w-20"
+            placeholder="min"
             value={addMin}
             onChange={e => setAddMin(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && addStudy()}
           />
-          <button
-            onClick={addStudy}
-            className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg text-sm"
-          >추가</button>
-        </div>
-      </div>
+          <AddBtn onClick={addStudy} color="blue" label={t('add', lang)} />
+        </InputRow>
+      </Section>
 
-      {/* 지출 섹션 */}
-      <div className="mb-5">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-gray-300">💸 지출</h4>
-        </div>
-        <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
-          {Object.entries(expense).map(([cat, krw]) => {
-            const label = EXPENSE_CATEGORIES.find(c => c.key === cat)?.label || cat
-            return (
-              <button
-                key={cat}
-                onClick={() => removeExpense(cat)}
-                className="bg-amber-900/40 hover:bg-red-900/40 text-amber-200 hover:text-red-200 text-xs px-2.5 py-1 rounded-full transition"
-                title="클릭하여 삭제"
-              >
-                {label} · {formatKRW(krw)} ×
-              </button>
-            )
-          })}
-          {Object.keys(expense).length === 0 && (
-            <p className="text-xs text-gray-600 py-1">기록 없음</p>
-          )}
-        </div>
-        <div className="flex gap-2">
+      {/* Expense */}
+      <Section title={`💸 ${t('expense', lang)}`}>
+        <TagRow>
+          {Object.entries(expense).map(([cat, krw]) => (
+            <Tag key={cat} onClick={() => removeExpense(cat)} color="amber">
+              {catLabel(EXPENSE_CATEGORIES, cat)} · {formatAmount(krw, currency)} ×
+            </Tag>
+          ))}
+          {Object.keys(expense).length === 0 && <Empty lang={lang} />}
+        </TagRow>
+        <InputRow>
           <select
             className="bg-gray-800 rounded-lg px-2 py-1.5 text-sm flex-1"
-            value={addCat}
-            onChange={e => setAddCat(e.target.value)}
+            value={addExpCat}
+            onChange={e => setAddExpCat(e.target.value)}
           >
-            {EXPENSE_CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+            {EXPENSE_CATEGORIES.map(c => (
+              <option key={c.key} value={c.key}>{c[lang]}</option>
+            ))}
           </select>
           <input
-            type="text"
-            inputMode="numeric"
+            type="text" inputMode="numeric"
             className="bg-gray-800 rounded-lg px-3 py-1.5 text-sm w-28"
-            placeholder="원"
-            value={addKrw}
-            onChange={e => setAddKrw(e.target.value.replace(/[^0-9,]/g, ''))}
+            placeholder={inputPlaceholder}
+            value={addExpAmt}
+            onChange={e => setAddExpAmt(e.target.value.replace(/[^0-9.,]/g, ''))}
             onKeyDown={e => e.key === 'Enter' && addExpense()}
           />
-          <button
-            onClick={addExpense}
-            className="bg-amber-600 hover:bg-amber-500 px-3 py-1.5 rounded-lg text-sm"
-          >추가</button>
-        </div>
-      </div>
+          <AddBtn onClick={addExpense} color="amber" label={t('add', lang)} />
+        </InputRow>
+      </Section>
 
-      {/* 컨디션 + 메모 */}
-      <div className="border-t border-gray-800 pt-4">
-        <div className="flex items-center gap-4 mb-3">
-          <span className="text-xs text-gray-400">컨디션</span>
+      {/* Income */}
+      <Section title={`💰 ${t('income', lang)}`}>
+        <TagRow>
+          {Object.entries(income).map(([cat, krw]) => (
+            <Tag key={cat} onClick={() => removeIncome(cat)} color="emerald">
+              {catLabel(INCOME_CATEGORIES, cat)} · {formatAmount(krw, currency)} ×
+            </Tag>
+          ))}
+          {Object.keys(income).length === 0 && <Empty lang={lang} />}
+        </TagRow>
+        <InputRow>
+          <select
+            className="bg-gray-800 rounded-lg px-2 py-1.5 text-sm flex-1"
+            value={addIncCat}
+            onChange={e => setAddIncCat(e.target.value)}
+          >
+            {INCOME_CATEGORIES.map(c => (
+              <option key={c.key} value={c.key}>{c[lang]}</option>
+            ))}
+          </select>
+          <input
+            type="text" inputMode="numeric"
+            className="bg-gray-800 rounded-lg px-3 py-1.5 text-sm w-28"
+            placeholder={inputPlaceholder}
+            value={addIncAmt}
+            onChange={e => setAddIncAmt(e.target.value.replace(/[^0-9.,]/g, ''))}
+            onKeyDown={e => e.key === 'Enter' && addIncome()}
+          />
+          <AddBtn onClick={addIncome} color="emerald" label={t('add', lang)} />
+        </InputRow>
+      </Section>
+
+      {/* Weight + Condition + Memo */}
+      <div className="border-t border-gray-800 pt-4 space-y-3">
+        {/* Weight */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 w-20">⚖️ {t('weight', lang)}</span>
+          <input
+            type="number" inputMode="decimal" step="0.1"
+            className="bg-gray-800 rounded-lg px-3 py-1.5 text-sm w-24"
+            placeholder="kg"
+            value={weightInput}
+            onChange={e => setWeightInput(e.target.value)}
+            onBlur={saveWeight}
+          />
+          {log?.weight_kg != null && (
+            <span className="text-xs text-gray-500">{log.weight_kg} kg saved</span>
+          )}
+        </div>
+
+        {/* Condition */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 w-20">🌡️ {t('condition', lang)}</span>
           <div className="flex gap-1">
             {[1, 2, 3, 4, 5].map(n => (
               <button
@@ -243,56 +310,73 @@ function TodayCard({
             ))}
           </div>
         </div>
+
+        {/* Memo */}
         <textarea
           className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm resize-none"
           rows={2}
-          placeholder="한 줄 메모 (무엇이 잘 됐나? 막힌 지점은?)"
+          placeholder={t('memoPlaceholder', lang)}
           value={memo}
           onChange={e => setMemo(e.target.value)}
           onBlur={saveMeta}
         />
-        <p className="text-xs text-gray-600 mt-1">* 입력 칸 밖 클릭 시 자동 저장</p>
+        <p className="text-xs text-gray-600">{t('autoSave', lang)}</p>
       </div>
     </div>
   )
 }
 
-function HistoryTable({ logs, dailyTargetKrw }: { logs: DailyLog[]; dailyTargetKrw: number }) {
+// ── History table ────────────────────────────────────────────────────────────
+function HistoryTable({
+  logs, dailyTargetKrw, lang, currency,
+}: {
+  logs: DailyLog[]
+  dailyTargetKrw: number
+  lang: Lang
+  currency: Currency
+}) {
   if (logs.length === 0) return null
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-widest">최근 2주</h3>
+      <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-widest">
+        {t('recentTwo', lang)}
+      </h3>
       <div className="bg-gray-900 rounded-2xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-950 text-xs text-gray-500">
             <tr>
-              <th className="text-left px-3 py-2">날짜</th>
-              <th className="text-right px-3 py-2">공부</th>
-              <th className="text-right px-3 py-2">지출</th>
-              <th className="text-center px-3 py-2">컨디션</th>
-              <th className="text-left px-3 py-2 hidden md:table-cell">메모</th>
+              <th className="text-left px-3 py-2">{t('date', lang)}</th>
+              <th className="text-right px-3 py-2">{t('study', lang)}</th>
+              <th className="text-right px-3 py-2">{t('expense', lang)}</th>
+              <th className="text-right px-3 py-2">{t('income', lang)}</th>
+              <th className="text-right px-3 py-2 hidden sm:table-cell">⚖️</th>
+              <th className="text-center px-3 py-2">{t('condition', lang)}</th>
             </tr>
           </thead>
           <tbody>
             {logs.map(l => {
-              const study = sumMinutes(l.study_minutes)
-              const expense = sumExpense(l.expense_krw)
-              const over = expense > dailyTargetKrw
+              const studyMin = sumMinutes(l.study_minutes)
+              const expKrw   = sumKrw(l.expense_krw)
+              const incKrw   = sumKrw(l.income_krw || {})
+              const over     = expKrw > dailyTargetKrw
               return (
                 <tr key={l.id} className="border-t border-gray-800">
                   <td className="px-3 py-2 text-gray-400">{l.log_date.slice(5)}</td>
                   <td className="px-3 py-2 text-right">
-                    {Math.floor(study / 60)}h {study % 60}m
+                    {Math.floor(studyMin / 60)}h {studyMin % 60}m
                   </td>
                   <td className={`px-3 py-2 text-right ${over ? 'text-red-400' : ''}`}>
-                    {formatKRW(expense)}
+                    {formatAmount(expKrw, currency)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-emerald-400">
+                    {incKrw > 0 ? `+${formatAmount(incKrw, currency)}` : '–'}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-400 hidden sm:table-cell">
+                    {l.weight_kg != null ? `${l.weight_kg}` : '–'}
                   </td>
                   <td className="px-3 py-2 text-center text-gray-400">
-                    {l.condition || '-'}
-                  </td>
-                  <td className="px-3 py-2 text-gray-500 text-xs truncate max-w-xs hidden md:table-cell">
-                    {l.memo || ''}
+                    {l.condition || '–'}
                   </td>
                 </tr>
               )
@@ -302,4 +386,62 @@ function HistoryTable({ logs, dailyTargetKrw }: { logs: DailyLog[]; dailyTargetK
       </div>
     </div>
   )
+}
+
+// ── Primitive components ─────────────────────────────────────────────────────
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-5">
+      <h4 className="text-sm font-semibold text-gray-300 mb-2">{title}</h4>
+      {children}
+    </div>
+  )
+}
+
+function TagRow({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">{children}</div>
+}
+
+function Tag({
+  children, onClick, color,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  color: 'blue' | 'amber' | 'emerald'
+}) {
+  const base: Record<string, string> = {
+    blue:    'bg-blue-900/40 hover:bg-red-900/40 text-blue-200 hover:text-red-200',
+    amber:   'bg-amber-900/40 hover:bg-red-900/40 text-amber-200 hover:text-red-200',
+    emerald: 'bg-emerald-900/40 hover:bg-red-900/40 text-emerald-200 hover:text-red-200',
+  }
+  return (
+    <button
+      onClick={onClick}
+      className={`${base[color]} text-xs px-2.5 py-1 rounded-full transition`}
+      title="Click to remove"
+    >
+      {children}
+    </button>
+  )
+}
+
+function InputRow({ children }: { children: React.ReactNode }) {
+  return <div className="flex gap-2">{children}</div>
+}
+
+function AddBtn({ onClick, color, label }: { onClick: () => void; color: 'blue' | 'amber' | 'emerald'; label: string }) {
+  const cls: Record<string, string> = {
+    blue:    'bg-blue-600 hover:bg-blue-500',
+    amber:   'bg-amber-600 hover:bg-amber-500',
+    emerald: 'bg-emerald-600 hover:bg-emerald-500',
+  }
+  return (
+    <button onClick={onClick} className={`${cls[color]} px-3 py-1.5 rounded-lg text-sm`}>
+      {label}
+    </button>
+  )
+}
+
+function Empty({ lang }: { lang: Lang }) {
+  return <p className="text-xs text-gray-600 py-1">{t('noRecord', lang)}</p>
 }
