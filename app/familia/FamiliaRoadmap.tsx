@@ -538,6 +538,9 @@ export default function FamiliaRoadmap() {
             <Link href="/familia/memorias" className={styles.langBtn} style={{ textDecoration: 'none' }}>
               🌹 Memorias
             </Link>
+            <Link href="/lifeops" className={styles.langBtn} style={{ textDecoration: 'none' }}>
+              📊 Life Ops
+            </Link>
             <button
               className={styles.langBtn}
               onClick={() => setLang(l => l === 'en' ? 'es' : 'en')}
