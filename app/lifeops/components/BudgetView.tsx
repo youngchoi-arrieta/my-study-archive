@@ -14,385 +14,326 @@ interface Props {
   currency: Currency
 }
 
-function sumKrw(e: Record<string, number>): number {
-  return Object.values(e).reduce((a, b) => a + (b || 0), 0)
+function sumKrw(e: Record<string, number>) { return Object.values(e).reduce((a, b) => a + b, 0) }
+function daysBetween(a: string, b: string) {
+  return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
 }
-
-function daysBetween(a: string, b: string): number {
-  return Math.round(
-    (new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000
-  )
-}
-
-function todayStr(): string { return new Date().toISOString().slice(0, 10) }
-
-function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
-}
-
-function survivalDate(balanceKrw: number, netDailyBurnKrw: number, fromDate: string): string | null {
-  if (netDailyBurnKrw <= 0) return null  // infinite — income covers it
-  const days = Math.floor(balanceKrw / netDailyBurnKrw)
-  return addDays(fromDate, days)
+function todayStr() { return new Date().toISOString().slice(0, 10) }
+function addDays(d: string, n: number) {
+  const dt = new Date(d + 'T00:00:00'); dt.setDate(dt.getDate() + n)
+  return dt.toISOString().slice(0, 10)
 }
 
 export default function BudgetView({ logs, config, onUpdateConfig, lang, currency }: Props) {
   const today = todayStr()
+  const copPerKrw = config.cop_per_krw ?? 0.42
+  const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)
 
-  const { totalExpenseKrw, totalIncomeKrw, expenseByDate, incomeByDate } = useMemo(() => {
-    let tExp = 0, tInc = 0
+  const { totalExp, totalInc, expByDate, incByDate } = useMemo(() => {
+    let tE = 0, tI = 0
     const eMap = new Map<string, number>()
     const iMap = new Map<string, number>()
     logs.forEach(l => {
-      const exp = sumKrw(l.expense_krw)
-      const inc = sumKrw(l.income_krw || {})
-      tExp += exp; tInc += inc
-      eMap.set(l.log_date, exp)
-      iMap.set(l.log_date, inc)
+      const e = sumKrw(l.expense_krw); const i = sumKrw(l.income_krw || {})
+      tE += e; tI += i; eMap.set(l.log_date, e); iMap.set(l.log_date, i)
     })
-    return { totalExpenseKrw: tExp, totalIncomeKrw: tInc, expenseByDate: eMap, incomeByDate: iMap }
+    return { totalExp: tE, totalInc: tI, expByDate: eMap, incByDate: iMap }
   }, [logs])
 
-  const daysSinceStart   = daysBetween(config.start_date, today)
-  const actualBalance    = config.start_balance_krw - totalExpenseKrw + totalIncomeKrw
-  const avgDailyExpense  = daysSinceStart > 0 ? totalExpenseKrw / daysSinceStart : 0
-  const avgDailyIncome   = daysSinceStart > 0 ? totalIncomeKrw  / daysSinceStart : 0
-  const netDailyBurn     = avgDailyExpense - avgDailyIncome   // positive = burning cash
+  const elapsed      = daysBetween(config.start_date, today)
+  const balance      = config.start_balance_krw - totalExp + totalInc
+  const avgExp       = elapsed > 0 ? totalExp / elapsed : 0
+  const avgInc       = elapsed > 0 ? totalInc / elapsed : 0
+  const netBurn      = avgExp - avgInc
+  const daysToPivot  = config.pivot_date ? daysBetween(today, config.pivot_date) : 0
+  const pivotBalance = config.pivot_date ? balance - netBurn * daysToPivot : null
 
-  const daysToPivot      = config.pivot_date ? daysBetween(today, config.pivot_date) : 0
-  const projectedAtPivot = actualBalance - netDailyBurn * daysToPivot
+  // Survival at current pace
+  const survivalDays = netBurn > 0 ? Math.floor(balance / netBurn) : null
+  const survivalDate = survivalDays != null ? addDays(today, survivalDays) : null
 
-  // Pace status vs target
-  const pace       = avgDailyExpense - config.daily_target_krw
-  const paceStatus = pace < -5000 ? 'good' : pace > 5000 ? 'bad' : 'warn'
+  // Pace vs target
+  const pace       = avgExp - config.daily_target_krw
+  const paceStatus = pace < -3000 ? 'good' : pace > 5000 ? 'bad' : 'warn'
 
-  // Survival scenarios
-  const cuts = [0, 5000, 10000, 20000]
-  const scenarios = cuts.map(cut => {
-    const adjustedBurn = Math.max(0, netDailyBurn - cut)
-    const date = survivalDate(actualBalance, adjustedBurn, today)
-    return { cut, adjustedBurn, date }
-  })
-
-  // Weight data for mini chart
-  const weightData = useMemo(() => {
-    return [...logs]
-      .filter(l => l.weight_kg != null)
-      .sort((a, b) => a.log_date.localeCompare(b.log_date))
-      .map(l => ({ date: l.log_date.slice(5), kg: l.weight_kg as number }))
-  }, [logs])
-
-  // Main balance chart
+  // Chart
   const chartData = useMemo(() => {
     if (!config.pivot_date) return []
-    const start    = config.start_date
-    const end      = config.pivot_date
-    const totalDays = daysBetween(start, end)
-    if (totalDays <= 0) return []
+    const start = config.start_date, end = config.pivot_date
+    const total = daysBetween(start, end)
+    if (total <= 0) return []
 
-    // Build cumulative actuals by date
-    let cumExp = 0, cumInc = 0
-    const actualBalByDate = new Map<string, number>()
-    const sortedDates = [...new Set([...expenseByDate.keys(), ...incomeByDate.keys()])].sort()
-    for (const d of sortedDates) {
-      cumExp += expenseByDate.get(d) || 0
-      cumInc += incomeByDate.get(d)  || 0
-      actualBalByDate.set(d, config.start_balance_krw - cumExp + cumInc)
+    let cumE = 0, cumI = 0
+    const actMap = new Map<string, number>()
+    const dates = [...new Set([...expByDate.keys(), ...incByDate.keys()])].sort()
+    for (const d of dates) {
+      cumE += expByDate.get(d) || 0; cumI += incByDate.get(d) || 0
+      actMap.set(d, config.start_balance_krw - cumE + cumI)
     }
 
-    const step = totalDays > 90 ? 3 : 1
-    const data: Array<{
-      date: string
-      target: number
-      actual: number | null
-      forecast: number | null
-    }> = []
+    const step = total > 90 ? 3 : 1
+    const data: { date: string; target: number; actual: number | null; forecast: number | null }[] = []
 
-    for (let i = 0; i <= totalDays; i += step) {
-      const d      = addDays(start, i)
+    for (let i = 0; i <= total; i += step) {
+      const d = addDays(start, i)
       const target = config.start_balance_krw - config.daily_target_krw * i
-
-      let actual: number | null   = null
-      let forecast: number | null = null
+      let actual: number | null = null, forecast: number | null = null
 
       if (d <= today) {
         let last = config.start_balance_krw
-        for (const [dt, v] of actualBalByDate) {
-          if (dt <= d) last = v
-          else break
-        }
+        for (const [dt, v] of actMap) { if (dt <= d) last = v; else break }
         actual = last
       } else {
-        const daysAhead = daysBetween(today, d)
-        forecast = actualBalance - netDailyBurn * daysAhead
+        forecast = balance - netBurn * daysBetween(today, d)
       }
-
       data.push({ date: d.slice(5), target, actual, forecast })
     }
 
-    // Connect forecast to last actual point
-    const lastActualIdx = [...data].reverse().findIndex(p => p.actual !== null)
-    if (lastActualIdx >= 0) {
-      const idx = data.length - 1 - lastActualIdx
-      data[idx].forecast = data[idx].actual
-    }
+    // Bridge actual → forecast
+    const lastActIdx = [...data].reverse().findIndex(p => p.actual !== null)
+    if (lastActIdx >= 0) data[data.length - 1 - lastActIdx].forecast = data[data.length - 1 - lastActIdx].actual
 
     return data
-  }, [config, expenseByDate, incomeByDate, today, actualBalance, netDailyBurn])
+  }, [config, expByDate, incByDate, today, balance, netBurn])
+
+  // Weight chart
+  const weightData = useMemo(() =>
+    [...logs].filter(l => l.weight_kg != null)
+      .sort((a, b) => a.log_date.localeCompare(b.log_date))
+      .map(l => ({ date: l.log_date.slice(5), kg: l.weight_kg as number })),
+    [logs]
+  )
 
   const [settingsOpen, setSettingsOpen] = useState(false)
-
-  // Currency-aware tick formatter
-  const tickFmt = (v: number) => {
-    if (currency === 'KRW') return (v / 10000).toFixed(0) + '만'
-    return (v * 0.42 / 1000).toFixed(0) + 'k'
-  }
+  const tickFmt = (v: number) => currency === 'KRW'
+    ? (v / 10000).toFixed(0) + '만'
+    : (v * copPerKrw / 1000).toFixed(0) + 'k'
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
-      {/* Key stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          label={t('balance', lang)}
-          value={formatAmount(actualBalance, currency)}
-          sub={`start: ${formatAmount(config.start_balance_krw, currency)}`}
-        />
-        <StatCard
-          label={t('totalSpent', lang)}
-          value={formatAmount(totalExpenseKrw, currency)}
-          sub={`${daysSinceStart}d elapsed`}
-        />
-        <StatCard
-          label={t('totalIncome', lang)}
-          value={`+${formatAmount(totalIncomeKrw, currency)}`}
-          tone="emerald"
-          sub={`avg +${formatAmount(Math.round(avgDailyIncome), currency)}/day`}
-        />
-        <StatCard
-          label={t('netBurn', lang)}
-          value={formatAmount(Math.round(netDailyBurn), currency)}
-          sub={`${t('targetPace', lang)}: ${formatAmount(config.daily_target_krw, currency)}`}
-          tone={netDailyBurn <= config.daily_target_krw ? 'green' : 'red'}
-        />
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label={t('balance', lang)} value={fmt(balance)}
+          sub={`start ${fmt(config.start_balance_krw)}`} tone="neutral" />
+        <StatCard label={t('netBurn', lang)} value={`${fmt(Math.round(netBurn))}/d`}
+          sub={`target ${fmt(config.daily_target_krw)}`}
+          tone={netBurn <= config.daily_target_krw ? 'green' : 'red'} />
+        <StatCard label={t('totalSpent', lang)} value={fmt(totalExp)}
+          sub={`${elapsed}d elapsed`} tone="neutral" />
+        <StatCard label={t('totalIncome', lang)} value={`+${fmt(totalInc)}`}
+          sub={`avg +${fmt(Math.round(avgInc))}/d`} tone="emerald" />
       </div>
 
-      {/* Pace banner */}
-      <div className={`rounded-2xl p-4 ${
+      {/* Pace + survival */}
+      <div className={`rounded-2xl p-4 text-sm ${
         paceStatus === 'good' ? 'bg-green-900/20 border border-green-800/40' :
         paceStatus === 'bad'  ? 'bg-red-900/20 border border-red-800/40' :
-                                'bg-amber-900/20 border border-amber-800/40'
-      }`}>
-        <p className="text-sm">
-          {paceStatus === 'good' && (
-            <>{t('good', lang)} <span className="font-bold text-green-400">{formatAmount(Math.round(-pace), currency)}</span> {t('underTarget', lang)}.</>
+                                'bg-amber-900/20 border border-amber-800/40'}`}>
+        <div className="flex items-center justify-between">
+          <span>
+            {paceStatus === 'good' && `✅ ${fmt(Math.round(-pace))} under target/day`}
+            {paceStatus === 'warn' && '⚖️ Close to target'}
+            {paceStatus === 'bad'  && `⚠️ ${fmt(Math.round(pace))} over target/day`}
+          </span>
+          {survivalDate && (
+            <span className="text-gray-400 text-xs">
+              survives until <span className="text-white font-mono">{survivalDate}</span>
+            </span>
           )}
-          {paceStatus === 'warn' && t('warn', lang)}
-          {paceStatus === 'bad' && (
-            <>{t('bad', lang)} <span className="font-bold text-red-400">{formatAmount(Math.round(pace), currency)}</span> {t('overTarget', lang)}.</>
-          )}
-        </p>
-      </div>
-
-      {/* Survival scenarios */}
-      <div className="bg-gray-900 rounded-2xl p-4">
-        <h3 className="text-sm font-semibold mb-3">
-          {lang === 'en' ? '🧮 Survival Scenarios' : '🧮 Escenarios de supervivencia'}
-        </h3>
-        <div className="space-y-2">
-          {scenarios.map(({ cut, adjustedBurn, date }) => (
-            <div key={cut} className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">
-                {cut === 0
-                  ? (lang === 'en' ? 'Current pace' : 'Ritmo actual')
-                  : `${t('scenarioIf', lang)} ${formatAmount(cut, currency)}${t('scenarioPer', lang)}`
-                }
-              </span>
-              <span className={`font-mono ${cut > 0 ? 'text-emerald-400' : 'text-gray-200'}`}>
-                {date
-                  ? `${t('scenarioSurvive', lang)} ${date}`
-                  : (lang === 'en' ? '∞ (income covers burn)' : '∞ (ingresos cubren gastos)')
-                }
-              </span>
-            </div>
-          ))}
+          {!survivalDate && <span className="text-emerald-400 text-xs">∞ income covers burn</span>}
         </div>
-        {config.pivot_date && (
-          <p className="text-xs text-gray-600 mt-3 border-t border-gray-800 pt-2">
-            Pivot {config.pivot_date} · {t('survivalAt', lang)}: {formatAmount(Math.round(projectedAtPivot), currency)}
-            {' '}(D-{daysToPivot})
+        {pivotBalance != null && (
+          <p className="text-xs text-gray-500 mt-1">
+            Pivot {config.pivot_date} (D-{daysToPivot}) → {fmt(Math.round(pivotBalance))}
           </p>
         )}
       </div>
 
-      {/* Balance trajectory chart */}
+      {/* Trajectory chart */}
       {chartData.length > 0 && (
         <div className="bg-gray-900 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold">{t('balanceTrajectory', lang)}</h3>
-            <button onClick={() => setSettingsOpen(true)} className="text-xs text-gray-400 hover:text-white">
+            <h3 className="text-sm font-semibold">Balance Trajectory</h3>
+            <button onClick={() => setSettingsOpen(true)} className="text-xs text-gray-500 hover:text-white">
               ⚙️ {t('settings', lang)}
             </button>
           </div>
-          <div style={{ width: '100%', height: 280 }}>
+          <div style={{ width: '100%', height: 260 }}>
             <ResponsiveContainer>
-              <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: 11 }} />
-                <YAxis stroke="#6b7280" style={{ fontSize: 11 }} tickFormatter={tickFmt} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }}
-                  formatter={(v) => typeof v === 'number' ? formatAmount(Math.round(v), currency) : '–'}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="3 3" />
-                <Line
-                  type="monotone" dataKey="target"
-                  name={lang === 'en' ? 'Target pace' : 'Meta'}
-                  stroke="#6b7280" strokeDasharray="4 4" dot={false} strokeWidth={1.5}
-                />
-                <Line
-                  type="monotone" dataKey="actual"
-                  name={lang === 'en' ? 'Actual' : 'Real'}
-                  stroke="#3b82f6" dot={false} strokeWidth={2} connectNulls={false}
-                />
-                <Line
-                  type="monotone" dataKey="forecast"
-                  name={lang === 'en' ? 'Forecast' : 'Proyección'}
-                  stroke="#f59e0b" strokeDasharray="2 2" dot={false} strokeWidth={2} connectNulls={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* Weight mini chart */}
-      {weightData.length >= 2 && (
-        <div className="bg-gray-900 rounded-2xl p-4">
-          <h3 className="text-sm font-semibold mb-3">⚖️ {t('weight', lang)}</h3>
-          <div style={{ width: '100%', height: 160 }}>
-            <ResponsiveContainer>
-              <LineChart data={weightData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                 <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: 10 }} />
-                <YAxis
-                  stroke="#6b7280" style={{ fontSize: 10 }}
-                  domain={['dataMin - 1', 'dataMax + 1']}
-                  tickFormatter={v => `${v}kg`}
-                />
+                <YAxis stroke="#6b7280" style={{ fontSize: 10 }} tickFormatter={tickFmt} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }}
-                  formatter={(v) => [`${v} kg`, '']}
-                />
-                <Line
-                  type="monotone" dataKey="kg"
-                  stroke="#a78bfa" dot={{ r: 3 }} strokeWidth={2}
-                />
+                  formatter={(v) => typeof v === 'number' ? fmt(Math.round(v)) : '–'} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="3 3" />
+                <Line type="monotone" dataKey="target" name="Target"
+                  stroke="#6b7280" strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
+                <Line type="monotone" dataKey="actual" name="Actual"
+                  stroke="#3b82f6" dot={false} strokeWidth={2} connectNulls={false} />
+                <Line type="monotone" dataKey="forecast" name="Forecast"
+                  stroke="#f59e0b" strokeDasharray="2 2" dot={false} strokeWidth={2} connectNulls={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
       )}
 
+      {/* No pivot set */}
       {!config.pivot_date && (
         <div className="bg-gray-900 rounded-2xl p-4 text-center">
-          <p className="text-gray-400 text-sm mb-3">
-            {lang === 'en' ? 'No pivot date set.' : 'Sin fecha pivote.'}
-          </p>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm"
-          >
+          <p className="text-gray-500 text-sm mb-3">No pivot date set.</p>
+          <button onClick={() => setSettingsOpen(true)}
+            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm">
             ⚙️ {t('settings', lang)}
           </button>
         </div>
       )}
 
+      {/* Settings button if chart visible */}
+      {chartData.length > 0 && (
+        <button onClick={() => setSettingsOpen(true)}
+          className="w-full text-xs text-gray-600 hover:text-gray-400 py-1 transition">
+          ⚙️ {t('settings', lang)} (balance · target · pivot · exchange rate)
+        </button>
+      )}
+
+      {/* Weight chart */}
+      {weightData.length >= 2 && (
+        <div className="bg-gray-900 rounded-2xl p-4">
+          <h3 className="text-sm font-semibold mb-3">⚖️ Weight</h3>
+          <div style={{ width: '100%', height: 140 }}>
+            <ResponsiveContainer>
+              <LineChart data={weightData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: 10 }} />
+                <YAxis stroke="#6b7280" style={{ fontSize: 10 }}
+                  domain={['dataMin - 1', 'dataMax + 1']}
+                  tickFormatter={v => `${v}kg`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }}
+                  formatter={(v) => [`${v} kg`, '']} />
+                <Line type="monotone" dataKey="kg" stroke="#a78bfa" dot={{ r: 3 }} strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {settingsOpen && (
-        <BudgetSettingsModal
-          config={config}
-          lang={lang}
-          onSave={async (patch) => { await onUpdateConfig(patch); setSettingsOpen(false) }}
-          onClose={() => setSettingsOpen(false)}
-        />
+        <SettingsModal config={config} lang={lang} copPerKrw={copPerKrw}
+          onSave={async p => { await onUpdateConfig(p); setSettingsOpen(false) }}
+          onClose={() => setSettingsOpen(false)} />
       )}
     </div>
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-function StatCard({
-  label, value, sub, tone,
-}: {
+// ── StatCard ──────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, tone }: {
   label: string; value: string; sub?: string
-  tone?: 'green' | 'red' | 'amber' | 'emerald'
+  tone: 'neutral' | 'green' | 'red' | 'emerald'
 }) {
-  const toneCls =
-    tone === 'green'   ? 'text-green-400'   :
-    tone === 'red'     ? 'text-red-400'     :
-    tone === 'amber'   ? 'text-amber-400'   :
-    tone === 'emerald' ? 'text-emerald-400' :
-                         'text-white'
+  const cls = tone === 'green' ? 'text-green-400' : tone === 'red' ? 'text-red-400'
+    : tone === 'emerald' ? 'text-emerald-400' : 'text-white'
   return (
     <div className="bg-gray-900 rounded-2xl p-4">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-xl font-bold ${toneCls}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-600 mt-1">{sub}</p>}
+      <p className={`text-xl font-bold ${cls}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-600 mt-0.5">{sub}</p>}
     </div>
   )
 }
 
-function BudgetSettingsModal({
-  config, lang, onSave, onClose,
-}: {
-  config: BudgetConfig
-  lang: Lang
+// ── Settings modal ────────────────────────────────────────────────────────────
+function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
+  config: BudgetConfig; lang: Lang; copPerKrw: number
   onSave: (p: Partial<BudgetConfig>) => Promise<void>
   onClose: () => void
 }) {
-  const [startBal,   setStartBal]   = useState(String(config.start_balance_krw))
-  const [startDate,  setStartDate]  = useState(config.start_date)
-  const [target,     setTarget]     = useState(String(config.daily_target_krw))
-  const [pivotDate,  setPivotDate]  = useState(config.pivot_date || '')
+  const [bal,       setBal]       = useState(String(config.start_balance_krw))
+  const [startDate, setStartDate] = useState(config.start_date)
+  const [target,    setTarget]    = useState(String(config.daily_target_krw))
+  const [pivot,     setPivot]     = useState(config.pivot_date || '')
+  const [cop,       setCop]       = useState(String(copPerKrw))
+  // Balance adjustment
+  const [adjMode,   setAdjMode]   = useState<'set' | 'add' | 'sub'>('set')
+  const [adjAmt,    setAdjAmt]    = useState('')
+
+  function computeNewBalance(): number {
+    const base = parseInt(bal) || 0
+    const adj  = parseInt(adjAmt) || 0
+    if (adjMode === 'add') return base + adj
+    if (adjMode === 'sub') return base - adj
+    return parseInt(adjAmt) || base
+  }
+
+  async function handleSave() {
+    const newBal = adjAmt ? computeNewBalance() : (parseInt(bal) || 0)
+    await onSave({
+      start_balance_krw: newBal,
+      start_date:        startDate,
+      daily_target_krw:  parseInt(target) || 0,
+      pivot_date:        pivot || null,
+      cop_per_krw:       parseFloat(cop) || 0.42,
+    })
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-gray-900 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">⚙️ {t('settings', lang)}</h2>
-        <div className="space-y-3">
-          {[
-            { label: t('startBalance', lang), val: startBal,  set: setStartBal,  type: 'number' },
-            { label: t('startDate',    lang), val: startDate, set: setStartDate, type: 'date'   },
-            { label: t('dailyTarget',  lang), val: target,    set: setTarget,    type: 'number' },
-            { label: t('pivotDate',    lang), val: pivotDate, set: setPivotDate, type: 'date'   },
-          ].map(({ label, val, set, type }) => (
-            <div key={label}>
-              <label className="text-xs text-gray-500 block mb-1">{label}</label>
-              <input
-                type={type}
-                className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm"
-                value={val}
-                onChange={e => set(e.target.value)}
-              />
-            </div>
-          ))}
+    <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-4"
+      onClick={onClose}>
+      <div className="bg-gray-900 rounded-2xl p-5 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+        <h2 className="text-base font-bold">⚙️ {t('settings', lang)}</h2>
+
+        {/* Balance section */}
+        <div className="bg-gray-800 rounded-xl p-4 space-y-3">
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Balance (KRW)</p>
+          <p className="text-2xl font-bold">{parseInt(bal).toLocaleString('ko-KR')}원</p>
+
+          {/* Adjustment mode */}
+          <div className="flex gap-2">
+            {(['set','add','sub'] as const).map(m => (
+              <button key={m} onClick={() => { setAdjMode(m); setAdjAmt('') }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  adjMode === m ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                {m === 'set' ? 'Set' : m === 'add' ? '+ Add' : '− Subtract'}
+              </button>
+            ))}
+          </div>
+          <input type="number" inputMode="numeric"
+            className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm"
+            placeholder={adjMode === 'set' ? 'New balance' : 'Amount to adjust'}
+            value={adjAmt} onChange={e => setAdjAmt(e.target.value)} />
+          {adjAmt && (
+            <p className="text-xs text-gray-400">
+              Result: <span className="text-white font-mono">{computeNewBalance().toLocaleString('ko-KR')}원</span>
+            </p>
+          )}
         </div>
-        <div className="flex gap-2 mt-5 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg">
+
+        {/* Other fields */}
+        {[
+          { label: 'Start date',           val: startDate, set: setStartDate, type: 'date'   },
+          { label: 'Daily target (KRW)',    val: target,    set: setTarget,    type: 'number' },
+          { label: 'Pivot date',            val: pivot,     set: setPivot,     type: 'date'   },
+          { label: '1 KRW = ? COP (rate)', val: cop,       set: setCop,       type: 'number' },
+        ].map(({ label, val, set, type }) => (
+          <div key={label}>
+            <label className="text-xs text-gray-500 block mb-1">{label}</label>
+            <input type={type} step={type === 'number' && label.includes('COP') ? '0.001' : '1'}
+              className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm"
+              value={val} onChange={e => set(e.target.value)} />
+          </div>
+        ))}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg">
             {t('cancel', lang)}
           </button>
-          <button
-            onClick={() => onSave({
-              start_balance_krw: parseInt(startBal)  || 0,
-              start_date:        startDate,
-              daily_target_krw:  parseInt(target)    || 0,
-              pivot_date:        pivotDate || null,
-            })}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg"
-          >
+          <button onClick={handleSave} className="flex-1 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold">
             {t('save', lang)}
           </button>
         </div>
