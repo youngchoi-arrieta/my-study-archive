@@ -144,8 +144,8 @@ function TodayCard({
     await onUpsert({ condition, memo: memo.trim() || null })
   }
 
-  const catLabel = (cats: typeof EXPENSE_CATEGORIES | typeof INCOME_CATEGORIES, key: string) =>
-    (cats as Array<{key:string; en:string; es:string}>).find(c => c.key === key)?.[lang] || key
+  const catLabel = (cats: ReadonlyArray<{readonly key: string; readonly en: string; readonly es: string}>, key: string) =>
+    cats.find(c => c.key === key)?.[lang] || key
 
   const inputPlaceholder = currency === 'KRW' ? '원' : 'COP'
 
