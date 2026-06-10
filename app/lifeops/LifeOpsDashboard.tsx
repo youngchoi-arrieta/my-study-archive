@@ -181,8 +181,8 @@ export default function LifeOpsDashboard() {
         )}
 
         {!loading && tab === 'log' && config && (
-          <DailyLogView logs={logs} onUpsertToday={upsertToday}
-            dailyTargetKrw={config.daily_target_krw}
+          <DailyLogView logs={logs} config={config}
+            onUpsertToday={upsertToday} onUpdateConfig={updateConfig}
             lang={lang} currency={currency} copPerKrw={copPerKrw} />
         )}
 
