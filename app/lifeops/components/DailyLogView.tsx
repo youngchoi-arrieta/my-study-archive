@@ -57,7 +57,6 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
           config={config}
           onSave={async (patch) => { await onUpdateConfig(patch); setBalanceOpen(false) }}
           onClose={() => setBalanceOpen(false)}
-          fmt={fmt}
         />
       )}
     </div>
@@ -65,19 +64,20 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
 }
 
 // ── Balance modal ─────────────────────────────────────────────────────────────
-function BalanceModal({ config, onSave, onClose, fmt }: {
+function BalanceModal({ config, onSave, onClose }: {
   config: BudgetConfig
   onSave: (p: Partial<BudgetConfig>) => Promise<void>
   onClose: () => void
-  fmt: (n: number) => string
 }) {
-  const totalExp = 0 // passed as prop would be cleaner but unused here — raw KRW
   const [mode, setMode] = useState<'set'|'add'|'sub'>('set')
   const [amt,  setAmt]  = useState('')
+  const [cop,  setCop]  = useState(String(config.cop_per_krw ?? 0.42))
 
   const current = config.start_balance_krw
   const parsed  = parseInt(amt.replace(/,/g, '')) || 0
   const result  = mode === 'set' ? parsed : mode === 'add' ? current + parsed : current - parsed
+
+  const copRate = parseFloat(cop) || 0.42
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-4" onClick={onClose}>
@@ -108,10 +108,26 @@ function BalanceModal({ config, onSave, onClose, fmt }: {
           </p>
         )}
 
+        {/* Exchange rate */}
+        <div className="border-t border-gray-800 pt-3">
+          <label className="text-xs text-gray-500 block mb-1.5">💱 Exchange rate (1 KRW = ? COP)</label>
+          <div className="flex items-center gap-2">
+            <input type="number" inputMode="decimal" step="0.001"
+              className="bg-gray-800 rounded-lg px-3 py-2 text-sm font-mono w-32"
+              value={cop} onChange={e => setCop(e.target.value)} />
+            <span className="text-xs text-gray-600">
+              1만원 ≈ {Math.round(10000 * copRate).toLocaleString('es-CO')} COP
+            </span>
+          </div>
+        </div>
+
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg bg-gray-800 text-sm">Cancel</button>
           <button
-            onClick={() => onSave({ start_balance_krw: amt ? result : current })}
+            onClick={() => onSave({
+              start_balance_krw: amt ? result : current,
+              cop_per_krw: copRate,
+            })}
             className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold">
             Save
           </button>
