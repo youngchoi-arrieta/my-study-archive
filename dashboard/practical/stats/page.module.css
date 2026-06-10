@@ -1,0 +1,194 @@
+.main { min-height: 100dvh; position: relative; }
+.bg { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 0%, #0d1f3c, #050d1a 70%); z-index: 0; }
+.loading { display: flex; align-items: center; justify-content: center; height: 100dvh; font-size: 48px; }
+.inner { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 20px 16px 80px; }
+
+.nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.backBtn { font-size: 14px; color: var(--text3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; }
+.pageTitle { font-size: 20px; font-weight: 800; color: var(--text); }
+.userName { font-size: 14px; color: var(--text3); }
+
+.filterRow { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; scrollbar-width: none; }
+.filterRow::-webkit-scrollbar { display: none; }
+.filterBtn { flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; color: var(--text2); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.filterActive { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+.tabRow { display: flex; gap: 8px; margin-bottom: 20px; }
+.tab { flex: 1; padding: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text3); font-size: 14px; font-weight: 700; }
+.tabActive { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+.empty { text-align: center; padding: 60px 0; color: var(--text3); font-size: 15px; }
+
+/* 세션 카드 */
+.sessionList { display: flex; flex-direction: column; gap: 10px; }
+.sessCard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.sessTop { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sessNo { font-size: 13px; color: var(--text3); min-width: 52px; }
+.sessDate { flex: 1; font-size: 12px; color: var(--text3); }
+.sessTime { font-size: 17px; font-weight: 800; font-family: 'Courier New', monospace; }
+.ok { color: var(--green); }
+.over { color: var(--red); }
+.stepChips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font-size: 11px; padding: 3px 8px; border-radius: 5px; }
+.chipOk { background: #14532d33; color: #86efac; }
+.chipOver { background: #7f1d1d33; color: #fca5a5; }
+.sessMistakes { margin-top: 8px; font-size: 12px; color: var(--red); }
+
+/* 공정별 */
+.stepStatList { display: flex; flex-direction: column; gap: 10px; }
+.stepStatCard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.stepStatTop { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 4px; }
+.stepStatName { font-size: 15px; font-weight: 700; color: var(--text); }
+.stepStatTimes { font-size: 13px; color: var(--text3); }
+.bar { height: 7px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.barFill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+/* 실수 */
+.mistakeStatList { display: flex; flex-direction: column; }
+.mistakeStatRow { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.mistakeRank { font-size: 13px; color: var(--red); font-weight: 700; min-width: 28px; }
+.mistakeName { flex: 1; font-size: 14px; color: var(--text2); }
+.mistakeBarWrap { display: flex; align-items: center; gap: 8px; }
+.mistakeBar { width: 80px; height: 6px; background: var(--surface2); border-radius: 3px; }
+.mistakeBarFill { height: 100%; background: var(--red); border-radius: 3px; }
+.mistakeCnt { font-size: 13px; color: var(--red); font-weight: 700; min-width: 28px; text-align: right; }
+
+/* 기록 편집 */
+.editBtn {
+  font-size: 13px; color: var(--text3);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 10px; margin-left: auto; flex-shrink: 0;
+  transition: all 0.15s;
+}
+.editBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+.editBox {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 8px;
+}
+.editHint { font-size: 12px; color: var(--text3); }
+.editRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.editName { font-size: 13px; color: var(--text2); flex: 1; min-width: 100px; }
+.editTimeRow { display: flex; align-items: center; gap: 6px; }
+.timeInput { width: 50px; background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 15px; font-weight: 700; text-align: center; outline: none; }
+.timeInput:focus { border-color: var(--accent); }
+.timeUnit { font-size: 12px; color: var(--text3); }
+.editTotal { font-size: 14px; color: var(--text2); text-align: right; }
+.editTotal strong { color: var(--text); }
+.saveBtn { background: var(--accent); border-radius: 8px; padding: 11px; color: #fff; font-size: 14px; font-weight: 700; width: 100%; }
+.saveBtn:disabled { opacity: 0.5; }
+.chipZero { background: var(--surface2); color: var(--text3); border-color: var(--border); }
+
+/* 카드 버튼 그룹 */
+.sessBtns { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.editBtn {
+  font-size: 12px; color: var(--text3);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 10px; transition: all 0.15s; white-space: nowrap;
+}
+.editBtn:hover { border-color: var(--accent); color: var(--accent); }
+.editBtnActive { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+.reviewBtn:hover { border-color: #a78bfa; color: #a78bfa; }
+.reviewBtn.editBtnActive { border-color: #a78bfa; color: #a78bfa; }
+
+/* 반성 패널 */
+.reviewBox {
+  background: #0d0a1a; border: 1px solid #3b2a6e;
+  border-radius: var(--radius-sm); padding: 16px;
+  display: flex; flex-direction: column; gap: 16px; margin-top: 10px;
+}
+.reviewStep {
+  border-bottom: 1px solid var(--border); padding-bottom: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.reviewStep:last-child { border-bottom: none; padding-bottom: 0; }
+.reviewStepName { font-size: 14px; font-weight: 700; color: #a78bfa; }
+.tagGrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 6px; padding: 6px 12px;
+  color: var(--text3); font-size: 13px; transition: all 0.15s;
+}
+.tag:hover { border-color: #f87171; color: #fca5a5; }
+.tagActive { background: #2d0a0a; border-color: #f87171; color: #fca5a5; font-weight: 700; }
+.memoInput {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 10px 12px;
+  color: var(--text); font-size: 14px; resize: none; outline: none;
+  font-family: inherit;
+}
+.memoInput:focus { border-color: #a78bfa; }
+
+
+/* 사진 버튼 */
+.photoBtn { border-color: var(--border) !important; }
+.photoBtnHas { border-color: #34d399 !important; color: #34d399 !important; }
+
+/* 사진 박스 */
+.photoBox {
+  margin-top: 10px; display: flex; flex-direction: column;
+  align-items: center; gap: 10px;
+}
+.photoImg {
+  width: 100%; max-width: 480px; border-radius: 10px;
+  border: 1px solid var(--border); object-fit: cover;
+}
+.photoDelete {
+  font-size: 13px; color: var(--text3);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 14px; transition: all 0.15s;
+}
+.photoDelete:hover { border-color: var(--red); color: #fca5a5; }
+
+/* 사진 없을 때 */
+.photoEmpty {
+  margin-top: 10px; background: var(--surface);
+  border: 1px dashed var(--border2); border-radius: 10px;
+  padding: 20px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.photoEmpty p { color: var(--text3); font-size: 14px; }
+.photoUploadBtn {
+  background: var(--accent2); border-radius: 8px;
+  padding: 10px 20px; color: #fff; font-size: 14px; font-weight: 700;
+}
+
+/* 태그 직접 추가 */
+.tagInputRow { display: flex; gap: 6px; margin-top: 6px; }
+.tagInput { flex: 1; background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; }
+.tagInput:focus { border-color: #a78bfa; }
+.tagAddBtn { background: #4c1d95; border-radius: 6px; width: 34px; color: #a78bfa; font-size: 20px; flex-shrink: 0; }
+.tagCustom { background: #1a0d2e !important; border-color: #7c3aed !important; color: #c4b5fd !important; }
+
+/* 태그 래퍼 (태그 + 삭제버튼) */
+.tagWrap { display: flex; align-items: center; gap: 2px; }
+.tagDel { font-size: 10px; color: var(--text3); padding: 2px 4px; line-height: 1; transition: color 0.15s; flex-shrink: 0; }
+.tagDel:hover { color: #f87171; }
+
+/* 수동 기록 추가 */
+.addRecordBtn {
+  background: var(--surface); border: 1px dashed var(--border2);
+  border-radius: 10px; padding: 12px;
+  color: var(--text3); font-size: 14px; font-weight: 700;
+  width: 100%; transition: all 0.15s;
+}
+.addRecordBtn:hover { border-color: var(--accent); color: var(--accent); }
+.addRecordBox {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius-sm); padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.addRecordHeader { display: flex; align-items: center; justify-content: space-between; }
+.addRecordClose { font-size: 16px; color: var(--text3); padding: 4px 8px; }
+.addRecordClose:hover { color: var(--text); }
+.problemSelect {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 6px; padding: 6px 10px;
+  color: var(--text); font-size: 14px; outline: none;
+}
+
+.photoBtns { display: flex; gap: 8px; }
+.photoChange { font-size: 13px; color: var(--text2); border: 1px solid var(--border2); border-radius: 6px; padding: 6px 14px; transition: all 0.15s; }
+.photoChange:hover { border-color: var(--accent); color: var(--accent); }

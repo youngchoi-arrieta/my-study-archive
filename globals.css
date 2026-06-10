@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* practical trainer 변수 */
+  --bg: #050d1a;
+  --bg2: #0a1628;
+  --surface: #0f1f35;
+  --surface2: #1a2f4a;
+  --border: #1e3a5f;
+  --border2: #2d4f6e;
+  --text: #e2eaf4;
+  --text2: #8ba3bf;
+  --text3: #4a6580;
+  --accent: #3b82f6;
+  --accent2: #1d4ed8;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+/* practical 로딩 화면 흰 배경 방지 */
+[class*="loading"] {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}

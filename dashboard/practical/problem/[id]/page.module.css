@@ -1,0 +1,94 @@
+.main { min-height: 100dvh; position: relative; }
+.bg { position: fixed; inset: 0; background: radial-gradient(ellipse at 30% 10%, #0d1f3c 0%, #050d1a 70%); z-index: 0; }
+.loading { display: flex; align-items: center; justify-content: center; height: 100dvh; font-size: 48px; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.inner { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 20px 20px 80px; }
+
+.nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.backBtn { font-size: 14px; color: var(--text3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; }
+.backBtn:hover { color: var(--text); border-color: var(--border2); }
+.diagramBtn { font-size: 14px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 16px; transition: all 0.15s; }
+.diagramBtn:hover { background: var(--accent); color: #fff; }
+
+.header { text-align: center; margin-bottom: 24px; }
+.problemBadge { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; color: var(--text3); font-size: 12px; letter-spacing: 1px; margin-bottom: 8px; }
+.problemNo { font-size: clamp(56px, 15vw, 96px); font-weight: 900; color: var(--text); line-height: 1; letter-spacing: -3px; }
+
+.statsRow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 24px; }
+.statCard { flex: 1; min-width: 90px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.statIcon { font-size: 16px; }
+.statValue { font-size: 18px; font-weight: 800; color: var(--text); }
+.statLabel { font-size: 11px; color: var(--text3); }
+
+.startBtn { width: 100%; background: linear-gradient(135deg, var(--accent2), var(--accent)); border-radius: var(--radius); padding: 20px; color: #fff; font-size: 20px; font-weight: 800; box-shadow: 0 0 40px #3b82f622; transition: all 0.2s; margin-bottom: 12px; }
+.startBtn:hover { transform: translateY(-2px); }
+.resumeBtn { width: 100%; background: #1a2a1a; border: 1px solid #34d399; border-radius: var(--radius); padding: 14px 20px; color: #34d399; font-size: 16px; font-weight: 700; transition: all 0.2s; margin-bottom: 28px; }
+.resumeBtn:hover { background: #1e3a1e; }
+
+.section { margin-bottom: 24px; }
+.sectionRow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.sectionTitle { font-size: 12px; font-weight: 700; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; }
+.editBtn { font-size: 13px; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 5px 12px; }
+
+/* 공정 목록 */
+.stepList { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.stepRow { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.stepRow:last-child { border-bottom: none; }
+.stepNum { font-size: 12px; color: var(--text3); min-width: 20px; }
+.stepRowName { flex: 1; font-size: 14px; color: var(--text2); }
+.stepTarget { font-size: 14px; font-weight: 700; color: var(--text); }
+
+/* 편집 박스 */
+.editBox { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.editRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.editName { font-size: 14px; color: var(--text2); flex: 1; min-width: 120px; }
+.editTimeRow { display: flex; align-items: center; gap: 6px; }
+.timeInput { width: 52px; background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 15px; font-weight: 700; text-align: center; outline: none; }
+.timeInput:focus { border-color: var(--accent); }
+.timeUnit { font-size: 12px; color: var(--text3); }
+.saveBtn { background: var(--accent); border-radius: 8px; padding: 12px; color: #fff; font-size: 15px; font-weight: 700; width: 100%; }
+
+/* 세션 기록 */
+.sessionList { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.sessionRow { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+.sessionRow:last-child { border-bottom: none; }
+.sessNum { color: var(--text3); font-size: 12px; min-width: 28px; }
+.sessDate { color: var(--text2); font-size: 13px; flex: 1; }
+.sessTime { font-weight: 700; font-size: 16px; font-family: 'Courier New', monospace; }
+.ok { color: var(--green); }
+.over { color: var(--red); }
+.hasMistake { font-size: 11px; color: var(--red); background: #7f1d1d33; border-radius: 4px; padding: 2px 6px; }
+.deleteBtn { font-size: 14px; color: var(--text3); padding: 4px 6px; border-radius: 4px; transition: color 0.15s; }
+.deleteBtn:hover { color: var(--red); }
+
+/* 공정 아코디언 */
+.stepAccordion { display: flex; flex-direction: column; gap: 6px; }
+.stepItem { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.stepItemHeader { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 16px; transition: background 0.15s; }
+.stepItemHeader:hover { background: var(--surface2); }
+.stepItemHeaderOpen { background: var(--surface2); border-bottom: 1px solid var(--border); }
+.stepItemNum { font-size: 12px; color: var(--text3); min-width: 18px; }
+.stepItemName { flex: 1; font-size: 14px; font-weight: 600; color: var(--text); text-align: left; }
+.stepItemTarget { font-size: 13px; color: var(--accent); font-weight: 700; }
+.stepItemArrow { font-size: 11px; color: var(--text3); }
+
+.stepItemBody { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.editTabs { display: flex; gap: 6px; }
+.editTab { flex: 1; padding: 8px 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; color: var(--text3); font-size: 12px; font-weight: 600; }
+.editTabActive { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+.targetEdit { display: flex; align-items: center; gap: 8px; }
+.targetLabel { font-size: 13px; color: var(--text2); flex: 1; }
+
+.listEdit { display: flex; flex-direction: column; gap: 8px; }
+.listEditRow { display: flex; gap: 8px; align-items: center; }
+.listInput { flex: 1; background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px; padding: 8px 10px; color: var(--text); font-size: 13px; outline: none; }
+.listInput:focus { border-color: var(--accent); }
+.listDelBtn { color: var(--text3); font-size: 13px; padding: 4px 8px; border-radius: 4px; flex-shrink: 0; }
+.listDelBtn:hover { color: var(--red); }
+.addItemBtn { background: none; border: 1px dashed var(--border); border-radius: 6px; padding: 8px; color: var(--text3); font-size: 13px; width: 100%; }
+.addItemBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+.sectionRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.linkBtn { font-size: 13px; color: var(--accent); }
