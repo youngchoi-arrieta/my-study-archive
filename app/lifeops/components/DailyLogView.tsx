@@ -11,6 +11,8 @@ interface Props {
   config: BudgetConfig
   onUpsertToday: (patch: Partial<DailyLog>) => Promise<void>
   onUpdateConfig: (patch: Partial<BudgetConfig>) => Promise<void>
+  onUpdateLog: (id: string, patch: Partial<DailyLog>) => Promise<void>
+  onDeleteLog: (id: string) => Promise<void>
   lang: Lang
   currency: Currency
   copPerKrw: number
@@ -19,7 +21,7 @@ interface Props {
 function todayStr() { return new Date().toISOString().slice(0, 10) }
 function sumKrw(e: Record<string, number>) { return Object.values(e).reduce((a, b) => a + b, 0) }
 
-export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConfig, lang, currency, copPerKrw }: Props) {
+export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConfig, onUpdateLog, onDeleteLog, lang, currency, copPerKrw }: Props) {
   const today = todayStr()
   const todayLog = useMemo(() => logs.find(l => l.log_date === today) || null, [logs, today])
   const recent   = useMemo(() => [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date)).slice(0, 14), [logs])
@@ -46,7 +48,9 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
         dailyTargetKrw={config.daily_target_krw}
         lang={lang} currency={currency} copPerKrw={copPerKrw} fmt={fmt}
       />
-      <HistoryTable logs={recent} dailyTargetKrw={config.daily_target_krw} fmt={fmt} lang={lang} />
+      <HistoryTable logs={recent} dailyTargetKrw={config.daily_target_krw}
+        fmt={fmt} lang={lang} expenseCats={expenseCats} incomeCats={incomeCats}
+        onUpdateLog={onUpdateLog} onDeleteLog={onDeleteLog} />
 
       {balanceOpen && (
         <BalanceModal
@@ -467,42 +471,124 @@ function IncCatEditorInline({ incomeCats, lang, onSave }: {
 }
 
 // ── History table ─────────────────────────────────────────────────────────────
-function HistoryTable({ logs, dailyTargetKrw, fmt, lang }: {
+function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats, onUpdateLog, onDeleteLog }: {
   logs: DailyLog[]; dailyTargetKrw: number; fmt: (n: number) => string; lang: Lang
+  expenseCats: ExpenseCat[]; incomeCats: IncomeCat[]
+  onUpdateLog: (id: string, patch: Partial<DailyLog>) => Promise<void>
+  onDeleteLog: (id: string) => Promise<void>
 }) {
+  const [openId, setOpenId] = useState<string | null>(null)
   if (logs.length === 0) return null
+
+  function entryLabel(key: string, cats: ExpenseCat[] | IncomeCat[]) {
+    const [catKey, ...rest] = key.split(':')
+    const catObj = cats.find(c => c.key === catKey)
+    const catName = catObj?.[lang] ?? catKey
+    return rest.length ? `${catName} · ${rest.join(':')}` : catName
+  }
+
   return (
     <div className="bg-gray-900 rounded-2xl overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-950 text-xs text-gray-500">
-          <tr>
-            <th className="text-left px-4 py-2.5">Date</th>
-            <th className="text-right px-4 py-2.5">{t('expense', lang)}</th>
-            <th className="text-right px-4 py-2.5">{t('income', lang)}</th>
-            <th className="text-right px-4 py-2.5 hidden sm:table-cell">kg</th>
-            <th className="text-center px-4 py-2.5">😐</th>
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map(l => {
-            const exp = sumKrw(l.expense_krw)
-            const inc = sumKrw(l.income_krw || {})
-            return (
-              <tr key={l.id} className="border-t border-gray-800/60">
-                <td className="px-4 py-2.5 text-gray-400 tabular-nums">{l.log_date.slice(5)}</td>
-                <td className={`px-4 py-2.5 text-right tabular-nums ${exp > dailyTargetKrw ? 'text-red-400' : ''}`}>
-                  {fmt(exp)}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-emerald-400">
-                  {inc > 0 ? `+${fmt(inc)}` : '–'}
-                </td>
-                <td className="px-4 py-2.5 text-right text-gray-500 hidden sm:table-cell">{l.weight_kg ?? '–'}</td>
-                <td className="px-4 py-2.5 text-center text-gray-500">{l.condition ?? '–'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      {/* header row */}
+      <div className="bg-gray-950 text-xs text-gray-500 grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2.5">
+        <span>Date</span>
+        <span className="text-right w-20">{t('expense', lang)}</span>
+        <span className="text-right w-20">{t('income', lang)}</span>
+        <span className="text-right w-10 hidden sm:block">kg</span>
+        <span className="text-center w-6">😐</span>
+      </div>
+
+      {logs.map(l => {
+        const exp = sumKrw(l.expense_krw)
+        const inc = sumKrw(l.income_krw || {})
+        const isOpen = openId === l.id
+        const hasDetail = Object.keys(l.expense_krw).length > 0
+          || Object.keys(l.income_krw || {}).length > 0
+          || l.memo
+
+        return (
+          <div key={l.id} className="border-t border-gray-800/60">
+            {/* summary row (click to expand) */}
+            <button
+              onClick={() => setOpenId(isOpen ? null : l.id)}
+              className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2.5 text-sm hover:bg-gray-800/40 transition text-left">
+              <span className="text-gray-400 tabular-nums flex items-center gap-1">
+                <span className={`text-gray-600 transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
+                {l.log_date.slice(5)}
+              </span>
+              <span className={`text-right w-20 tabular-nums ${exp > dailyTargetKrw ? 'text-red-400' : ''}`}>{fmt(exp)}</span>
+              <span className="text-right w-20 tabular-nums text-emerald-400">{inc > 0 ? `+${fmt(inc)}` : '–'}</span>
+              <span className="text-right w-10 text-gray-500 hidden sm:block">{l.weight_kg ?? '–'}</span>
+              <span className="text-center w-6 text-gray-500">{l.condition ?? '–'}</span>
+            </button>
+
+            {/* expanded detail */}
+            {isOpen && (
+              <div className="px-4 pb-4 pt-1 bg-gray-950/40 space-y-3 text-sm">
+                {/* expense entries */}
+                {Object.keys(l.expense_krw).length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">💸 {t('expense', lang)}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(l.expense_krw).map(([key, krw]) => (
+                        <button key={key}
+                          onClick={async () => {
+                            const next = { ...l.expense_krw }; delete next[key]
+                            await onUpdateLog(l.id, { expense_krw: next })
+                          }}
+                          className="bg-gray-800 hover:bg-red-900/40 text-gray-300 hover:text-red-200 text-xs px-2.5 py-1 rounded-full transition">
+                          {entryLabel(key, expenseCats)} · {fmt(krw)} ×
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* income entries */}
+                {Object.keys(l.income_krw || {}).length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">💰 {t('income', lang)}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(l.income_krw).map(([key, krw]) => (
+                        <button key={key}
+                          onClick={async () => {
+                            const next = { ...l.income_krw }; delete next[key]
+                            await onUpdateLog(l.id, { income_krw: next })
+                          }}
+                          className="bg-emerald-900/30 hover:bg-red-900/40 text-emerald-200 hover:text-red-200 text-xs px-2.5 py-1 rounded-full transition">
+                          {entryLabel(key, incomeCats)} · +{fmt(krw)} ×
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* meta */}
+                <div className="flex gap-4 text-xs text-gray-500">
+                  {l.weight_kg != null && <span>⚖️ {l.weight_kg} kg</span>}
+                  {l.condition != null && <span>🌡️ {l.condition}/5</span>}
+                </div>
+                {/* memo */}
+                {l.memo && (
+                  <div className="bg-gray-900 rounded-lg p-3 text-gray-300 text-xs whitespace-pre-wrap">
+                    📝 {l.memo}
+                  </div>
+                )}
+                {!hasDetail && <p className="text-xs text-gray-600">No entries.</p>}
+
+                {/* delete whole day */}
+                <button
+                  onClick={async () => {
+                    if (confirm(`Delete all data for ${l.log_date}?`)) {
+                      await onDeleteLog(l.id); setOpenId(null)
+                    }
+                  }}
+                  className="text-xs text-red-400/70 hover:text-red-400 transition">
+                  🗑️ Delete this day
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

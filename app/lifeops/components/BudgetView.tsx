@@ -29,21 +29,28 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
   const copPerKrw = config.cop_per_krw ?? 0.42
   const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)
 
-  const { totalExp, totalInc, expByDate, incByDate } = useMemo(() => {
+  const { totalExp, totalInc, expByDate, incByDate, loggedDates } = useMemo(() => {
     let tE = 0, tI = 0
     const eMap = new Map<string, number>()
     const iMap = new Map<string, number>()
+    const dates = new Set<string>()
     logs.forEach(l => {
       const e = sumKrw(l.expense_krw); const i = sumKrw(l.income_krw || {})
       tE += e; tI += i; eMap.set(l.log_date, e); iMap.set(l.log_date, i)
+      if (e > 0 || i > 0) dates.add(l.log_date)
     })
-    return { totalExp: tE, totalInc: tI, expByDate: eMap, incByDate: iMap }
+    const sorted = [...dates].sort()
+    return { totalExp: tE, totalInc: tI, expByDate: eMap, incByDate: iMap, loggedDates: sorted }
   }, [logs])
 
-  const elapsed      = daysBetween(config.start_date, today)
+  const elapsed      = daysBetween(config.start_date, today)   // calendar days (display only)
+  const loggedDays   = loggedDates.length                      // days actually recorded
+  const firstLogged  = loggedDates[0] ?? null
+  const lastLogged   = loggedDates[loggedDates.length - 1] ?? null
+
   const balance      = config.start_balance_krw - totalExp + totalInc
-  const avgExp       = elapsed > 0 ? totalExp / elapsed : 0
-  const avgInc       = elapsed > 0 ? totalInc / elapsed : 0
+  const avgExp       = loggedDays > 0 ? totalExp / loggedDays : 0
+  const avgInc       = loggedDays > 0 ? totalInc / loggedDays : 0
   const netBurn      = avgExp - avgInc
   const daysToPivot  = config.pivot_date ? daysBetween(today, config.pivot_date) : 0
   const pivotBalance = config.pivot_date ? balance - netBurn * daysToPivot : null
@@ -117,13 +124,29 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
         <StatCard label={t('balance', lang)} value={fmt(balance)}
           sub={`start ${fmt(config.start_balance_krw)}`} tone="neutral" />
         <StatCard label={t('netBurn', lang)} value={`${fmt(Math.round(netBurn))}/d`}
-          sub={`target ${fmt(config.daily_target_krw)}`}
+          sub={loggedDays > 0 ? `over ${loggedDays} logged day${loggedDays > 1 ? 's' : ''}` : 'no data yet'}
           tone={netBurn <= config.daily_target_krw ? 'green' : 'red'} />
         <StatCard label={t('totalSpent', lang)} value={fmt(totalExp)}
-          sub={`${elapsed}d elapsed`} tone="neutral" />
+          sub={`avg ${fmt(Math.round(avgExp))}/logged day`} tone="neutral" />
         <StatCard label={t('totalIncome', lang)} value={`+${fmt(totalInc)}`}
-          sub={`avg +${fmt(Math.round(avgInc))}/d`} tone="emerald" />
+          sub={`avg +${fmt(Math.round(avgInc))}/logged day`} tone="emerald" />
       </div>
+
+      {/* Calculation basis — transparency */}
+      <div className="bg-gray-900/60 rounded-xl px-4 py-2.5 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+        <span>📅 Start: <span className="text-gray-300">{config.start_date}</span></span>
+        <span>🧮 Based on <span className="text-gray-300">{loggedDays}</span> logged day{loggedDays !== 1 ? 's' : ''}</span>
+        {firstLogged && lastLogged && (
+          <span>Range: <span className="text-gray-300">{firstLogged === lastLogged ? firstLogged : `${firstLogged} ~ ${lastLogged}`}</span></span>
+        )}
+        <span className="text-gray-600">({elapsed} calendar days since start)</span>
+      </div>
+
+      {loggedDays < 3 && (
+        <div className="bg-amber-900/20 border border-amber-800/40 rounded-xl px-4 py-2.5 text-xs text-amber-300">
+          ⚠️ Only {loggedDays} day{loggedDays !== 1 ? 's' : ''} logged — projection needs a few more days of data to be meaningful.
+        </div>
+      )}
 
       {/* Pace + survival */}
       <div className={`rounded-2xl p-4 text-sm ${

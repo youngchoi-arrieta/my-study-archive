@@ -84,6 +84,16 @@ export default function LifeOpsDashboard() {
     await fetchAll()
   }
 
+  // ── Edit / delete any past log by id ─────────────────────────────────────
+  async function updateLog(id: string, patch: Partial<DailyLog>) {
+    await supabase.from('daily_logs').update(patch).eq('id', id)
+    await fetchAll()
+  }
+  async function deleteLog(id: string) {
+    await supabase.from('daily_logs').delete().eq('id', id)
+    await fetchAll()
+  }
+
   // ── Config update ────────────────────────────────────────────────────────
   async function updateConfig(patch: Partial<BudgetConfig>) {
     if (config) await supabase.from('budget_config').update(patch).eq('id', 1)
@@ -183,6 +193,7 @@ export default function LifeOpsDashboard() {
         {!loading && tab === 'log' && config && (
           <DailyLogView logs={logs} config={config}
             onUpsertToday={upsertToday} onUpdateConfig={updateConfig}
+            onUpdateLog={updateLog} onDeleteLog={deleteLog}
             lang={lang} currency={currency} copPerKrw={copPerKrw} />
         )}
 
