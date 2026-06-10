@@ -79,6 +79,7 @@ export default function LifeOpsDashboard() {
         weight_kg:   patch.weight_kg   ?? null,
         condition:   patch.condition   ?? null,
         memo:        patch.memo        ?? null,
+        reflection:  patch.reflection  ?? null,
       })
     }
     await fetchAll()

@@ -5,6 +5,7 @@ import {
   DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS,
   Lang, Currency, t, formatAmount, parseToKrw,
 } from '../types'
+import { quoteOfDay, promptOfDay } from '../quotes'
 
 interface Props {
   logs: DailyLog[]
@@ -41,6 +42,14 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
         <span className="text-xl font-bold">{fmt(config.start_balance_krw - logs.reduce((s,l)=>s+sumKrw(l.expense_krw),0) + logs.reduce((s,l)=>s+sumKrw(l.income_krw||{}),0))}</span>
         <span className="text-xs text-gray-600 group-hover:text-gray-400">tap to adjust ✏️</span>
       </button>
+
+      {/* Quote of the day */}
+      <div className="bg-gradient-to-br from-gray-900 to-gray-900/40 rounded-2xl px-5 py-4 border border-gray-800/50">
+        <p className="text-sm text-gray-200 italic leading-relaxed">
+          "{quoteOfDay(today)[lang]}"
+        </p>
+        <p className="text-xs text-gray-500 mt-2">— {quoteOfDay(today).who}</p>
+      </div>
 
       <TodayCard
         log={todayLog} expenseCats={expenseCats} incomeCats={incomeCats}
@@ -160,6 +169,7 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
   const [weightInput, setWeightInput] = useState(log?.weight_kg != null ? String(log.weight_kg) : '')
   const [condition,   setCondition]   = useState(log?.condition ?? 3)
   const [memo,        setMemo]        = useState(log?.memo ?? '')
+  const [reflection,  setReflection]  = useState(log?.reflection ?? '')
   const [saving,      setSaving]      = useState(false)
   const [editCats,    setEditCats]    = useState(false)
 
@@ -167,6 +177,7 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
     if (log) {
       setCondition(log.condition ?? 3)
       setMemo(log.memo ?? '')
+      setReflection(log.reflection ?? '')
       setWeightInput(log.weight_kg != null ? String(log.weight_kg) : '')
     }
   }, [log?.id])
@@ -197,7 +208,12 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
 
   async function saveMeta() {
     const w = parseFloat(weightInput)
-    await onUpsert({ condition, memo: memo.trim() || null, weight_kg: isNaN(w) ? null : w })
+    await onUpsert({
+      condition,
+      memo: memo.trim() || null,
+      reflection: reflection.trim() || null,
+      weight_kg: isNaN(w) ? null : w,
+    })
   }
 
   const typeColor = (type: string) =>
@@ -330,7 +346,7 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
           <span className="text-xs text-gray-500 w-20">🌡️ {t('condition', lang)}</span>
           <div className="flex gap-1.5">
             {[1,2,3,4,5].map(n => (
-              <button key={n} onClick={() => setCondition(n)}
+              <button key={n} onClick={() => { setCondition(n); onUpsert({ condition: n }) }}
                 className={`w-8 h-8 rounded-lg text-sm transition
                   ${condition === n ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}>
                 {n}
@@ -341,6 +357,18 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
         <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm resize-none"
           rows={2} placeholder={t('memoPlaceholder', lang)}
           value={memo} onChange={e => setMemo(e.target.value)} onBlur={saveMeta} />
+
+        {/* Reflection prompt of the day */}
+        <div className="bg-gray-950/60 rounded-lg p-3 space-y-2 border border-gray-800/60">
+          <p className="text-xs text-purple-300/80 italic">
+            🪞 {promptOfDay(today)[lang]}
+          </p>
+          <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm resize-none"
+            rows={2}
+            placeholder={lang === 'en' ? 'A line of reflection…' : 'Una línea de reflexión…'}
+            value={reflection} onChange={e => setReflection(e.target.value)} onBlur={saveMeta} />
+        </div>
+
         <p className="text-xs text-gray-600">* auto-saved on blur</p>
       </div>
     </div>
@@ -500,7 +528,7 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
         const isOpen = openId === l.id
         const hasDetail = Object.keys(l.expense_krw).length > 0
           || Object.keys(l.income_krw || {}).length > 0
-          || l.memo
+          || l.memo || l.reflection
 
         return (
           <div key={l.id} className="border-t border-gray-800/60">
@@ -566,6 +594,12 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
                 {l.memo && (
                   <div className="bg-gray-900 rounded-lg p-3 text-gray-300 text-xs whitespace-pre-wrap">
                     📝 {l.memo}
+                  </div>
+                )}
+                {/* reflection */}
+                {l.reflection && (
+                  <div className="bg-purple-950/30 border border-purple-900/30 rounded-lg p-3 text-purple-200/90 text-xs whitespace-pre-wrap italic">
+                    🪞 {l.reflection}
                   </div>
                 )}
                 {!hasDetail && <p className="text-xs text-gray-600">No entries.</p>}

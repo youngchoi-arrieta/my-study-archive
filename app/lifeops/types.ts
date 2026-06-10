@@ -19,6 +19,7 @@ export interface DailyLog {
   weight_kg: number | null
   condition: number | null
   memo: string | null
+  reflection: string | null
   study_minutes?: Record<string, number>
 }
 
