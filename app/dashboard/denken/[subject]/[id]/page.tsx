@@ -254,12 +254,25 @@ export default function GeneralSubjectPage() {
             </>)}
           </div>
           <div className="flex-1 relative">
-            {pdfTab === 'question'
-              ? (previewUrl ? <iframe src={previewUrl} className="w-full h-full border-0" allow="autoplay" />
-                : <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700"><div className="text-5xl opacity-30">📄</div><p className="text-sm">문제지 PDF URL을 입력하세요</p></div>)
-              : (answerPreviewUrl ? <iframe src={answerPreviewUrl} className="w-full h-full border-0" allow="autoplay" />
-                : <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700"><div className="text-5xl opacity-30">✅</div><p className="text-sm">정답지 PDF URL을 입력하세요</p></div>)
-            }
+            {/* Both iframes stay mounted; we only toggle visibility so the PDF
+                doesn't reload (page & scroll position are preserved) */}
+            {previewUrl && (
+              <iframe src={previewUrl} className="absolute inset-0 w-full h-full border-0"
+                allow="autoplay"
+                style={{ display: pdfTab === 'question' ? 'block' : 'none' }} />
+            )}
+            {answerPreviewUrl && (
+              <iframe src={answerPreviewUrl} className="absolute inset-0 w-full h-full border-0"
+                allow="autoplay"
+                style={{ display: pdfTab === 'answer' ? 'block' : 'none' }} />
+            )}
+            {/* Empty-state placeholders (only when that tab has no URL) */}
+            {pdfTab === 'question' && !previewUrl && (
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700"><div className="text-5xl opacity-30">📄</div><p className="text-sm">문제지 PDF URL을 입력하세요</p></div>
+            )}
+            {pdfTab === 'answer' && !answerPreviewUrl && (
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700"><div className="text-5xl opacity-30">✅</div><p className="text-sm">정답지 PDF URL을 입력하세요</p></div>
+            )}
           </div>
         </div>
 

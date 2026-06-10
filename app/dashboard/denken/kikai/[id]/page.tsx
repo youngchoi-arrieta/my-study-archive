@@ -600,24 +600,28 @@ export default function KikaiExamPage() {
           </div>
           {/* PDF 영역 */}
           <div className="flex-1 relative">
-            {pdfTab === 'question' ? (
-              previewUrl ? (
-                <iframe src={previewUrl} className="w-full h-full border-0" allow="autoplay" />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
-                  <div className="text-5xl opacity-30">📄</div>
-                  <p className="text-sm text-gray-600">문제지 PDF URL을 입력하세요</p>
-                </div>
-              )
-            ) : (
-              answerPreviewUrl ? (
-                <iframe src={answerPreviewUrl} className="w-full h-full border-0" allow="autoplay" />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
-                  <div className="text-5xl opacity-30">✅</div>
-                  <p className="text-sm text-gray-600">정답지 PDF URL을 입력하세요</p>
-                </div>
-              )
+            {/* Both iframes stay mounted; toggle visibility so PDF state persists */}
+            {previewUrl && (
+              <iframe src={previewUrl} className="absolute inset-0 w-full h-full border-0"
+                allow="autoplay"
+                style={{ display: pdfTab === 'question' ? 'block' : 'none' }} />
+            )}
+            {answerPreviewUrl && (
+              <iframe src={answerPreviewUrl} className="absolute inset-0 w-full h-full border-0"
+                allow="autoplay"
+                style={{ display: pdfTab === 'answer' ? 'block' : 'none' }} />
+            )}
+            {pdfTab === 'question' && !previewUrl && (
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
+                <div className="text-5xl opacity-30">📄</div>
+                <p className="text-sm text-gray-600">문제지 PDF URL을 입력하세요</p>
+              </div>
+            )}
+            {pdfTab === 'answer' && !answerPreviewUrl && (
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-700">
+                <div className="text-5xl opacity-30">✅</div>
+                <p className="text-sm text-gray-600">정답지 PDF URL을 입력하세요</p>
+              </div>
             )}
           </div>
         </div>
