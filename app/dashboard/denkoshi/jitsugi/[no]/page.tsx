@@ -118,9 +118,6 @@ export default function JitsugiProblemPage() {
       .map((a, i) => ({ round: i + 1, min: Math.round((a.duration_sec ?? 0) / 60 * 10) / 10, passed: a.passed_self })),
     [attempts])
 
-  const previewUrl = problem
-    ? toPreviewUrl(pdfView === 'q' ? (problem.q_drive_url ?? '') : (problem.a_drive_url ?? ''))
-    : null
 
   if (!meta) {
     return <main className="min-h-screen bg-gray-950 text-white p-8"><p>없는 문제예요. <Link href="/dashboard/denkoshi/jitsugi" className="text-blue-400">← 목록</Link></p></main>
@@ -180,15 +177,40 @@ export default function JitsugiProblemPage() {
               <span className="text-[11px] text-gray-600 ml-auto">{pdfView === 'q' ? '문제지' : '정답·복선도'}</span>
             </div>
             <div className="flex-1 bg-gray-950">
-              {previewUrl ? (
-                <iframe src={previewUrl} className="w-full h-full border-0" style={{ minHeight: 470 }} />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600 p-6 text-center" style={{ minHeight: 470 }}>
-                  <p className="text-3xl">📄</p>
-                  <p className="text-sm">{pdfView === 'q' ? '문제' : '정답'} PDF가 아직 없어요.</p>
-                  <button onClick={() => setEditUrls(true)} className="text-xs text-blue-400 hover:underline">🔗 PDF 링크 추가</button>
-                </div>
-              )}
+              {/* 두 iframe 모두 렌더, CSS로 토글 → 탭 전환 시 현재 페이지 유지 */}
+
+              {[{ id: 'q', url: problem?.q_drive_url }, { id: 'a', url: problem?.a_drive_url }].map(({ id, url }) => {
+
+                const preview = url ? toPreviewUrl(url) : null
+
+                return (
+
+                  <div key={id} style={{ display: pdfView === id ? 'block' : 'none', height: '100%', minHeight: 470 }}>
+
+                    {preview ? (
+
+                      <iframe src={preview} className="w-full h-full border-0" style={{ minHeight: 470 }} />
+
+                    ) : (
+
+                      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600 p-6 text-center" style={{ minHeight: 470 }}>
+
+                        <p className="text-3xl">📄</p>
+
+                        <p className="text-sm">{id === 'q' ? '문제' : '정답'} PDF가 아직 없어요.</p>
+
+                        <button onClick={() => setEditUrls(true)} className="text-xs text-blue-400 hover:underline">🔗 PDF 링크 추가</button>
+
+                      </div>
+
+                    )}
+
+                  </div>
+
+                )
+
+              })}
+
             </div>
           </div>
 
