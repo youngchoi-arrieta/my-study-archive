@@ -534,7 +534,10 @@ export default function FamiliaRoadmap() {
               {lang === 'en' ? 'Our shared roadmap' : 'Nuestro camino compartido'} · 2026
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Link href="/" className={styles.langBtn} style={{ textDecoration: 'none' }}>
+              🏠 {lang === 'en' ? 'Home' : 'Inicio'}
+            </Link>
             <Link href="/familia/memorias" className={styles.langBtn} style={{ textDecoration: 'none' }}>
               🌹 Memorias
             </Link>
