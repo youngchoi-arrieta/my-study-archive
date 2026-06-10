@@ -179,21 +179,9 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
     setIncAmtInput(''); setActiveInc(null); setSaving(false)
   }
 
-  async function removeEntry(map: Record<string, number>, key: string, field: 'expense_krw' | 'income_krw') {
-    const next = { ...map }; delete next[key]
-    await onUpsert({ [field]: next })
-  }
-
   async function saveMeta() {
     const w = parseFloat(weightInput)
     await onUpsert({ condition, memo: memo.trim() || null, weight_kg: isNaN(w) ? null : w })
-  }
-
-  function entryLabel(key: string, cats: ExpenseCat[] | IncomeCat[]) {
-    const [catKey, ...rest] = key.split(':')
-    const catObj = cats.find(c => c.key === catKey)
-    const catName = catObj?.[lang] ?? catKey
-    return rest.length ? `${catName} · ${rest.join(':')}` : catName
   }
 
   const typeColor = (type: string) =>
@@ -222,16 +210,12 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
           </button>
         </div>
 
-        {/* Entered items */}
+        {/* Entered today — compact summary, no per-note chips */}
         {Object.keys(expense).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {Object.entries(expense).map(([key, krw]) => (
-              <button key={key} onClick={() => removeEntry(expense, key, 'expense_krw')}
-                className="bg-gray-800 hover:bg-red-900/40 text-gray-200 hover:text-red-200 text-xs px-3 py-1.5 rounded-full transition">
-                {entryLabel(key, expenseCats)} · {fmt(krw)} ×
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            {Object.keys(expense).length} item{Object.keys(expense).length > 1 ? 's' : ''} logged today · <span className="text-gray-300">{fmt(sumKrw(expense))}</span>
+            <span className="text-gray-600"> · edit in history below</span>
+          </p>
         )}
 
         {/* Category tags (edit mode or normal) */}
@@ -280,14 +264,10 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">💰 {t('income', lang)}</p>
 
         {Object.keys(income).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {Object.entries(income).map(([key, krw]) => (
-              <button key={key} onClick={() => removeEntry(income, key, 'income_krw')}
-                className="bg-emerald-900/30 hover:bg-red-900/40 text-emerald-200 hover:text-red-200 text-xs px-3 py-1.5 rounded-full transition">
-                {entryLabel(key, incomeCats)} · +{fmt(krw)} ×
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            {Object.keys(income).length} item{Object.keys(income).length > 1 ? 's' : ''} · <span className="text-emerald-400">+{fmt(sumKrw(income))}</span>
+            <span className="text-gray-600"> · edit in history below</span>
+          </p>
         )}
 
         <div className="flex flex-wrap gap-2 mb-3">
