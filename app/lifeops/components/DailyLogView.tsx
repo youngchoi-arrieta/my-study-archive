@@ -40,6 +40,7 @@ function TodayCard({ log, onUpsert, dailyTargetKrw, lang, currency, copPerKrw, f
   lang: Lang; currency: Currency; copPerKrw: number
   fmt: (n: number) => string
 }) {
+  const today   = todayStr()
   const expense = log?.expense_krw || {}
   const income  = log?.income_krw  || {}
 
