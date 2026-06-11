@@ -238,7 +238,6 @@ export default function KikaiExamPage() {
   const [panelWidth, setPanelWidth] = useState(() =>
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
   )
-  // memoRef 제거됨 - DenkenMemoEditor가 자체 focus 관리
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartW = useRef(480)
@@ -653,15 +652,14 @@ export default function KikaiExamPage() {
           </div>
 
           {/* 메모 입력 */}
-          <div className="flex-1 p-3 flex flex-col gap-3 min-h-0">
-            <textarea
-              ref={memoRef}
+          <div className="flex-1 p-3 flex flex-col min-h-0">
+            <DenkenMemoEditor
               key={activeQ}
-              value={activeAnswer?.memo ?? ''}
-              onChange={e => handleMemoChange(activeQ, e.target.value)}
+              content={activeAnswer?.memo ?? ''}
+              onChange={(val) => handleMemoChange(activeQ, val)}
               onBlur={() => handleMemoBlur(activeQ)}
-              placeholder={`Q${activeQ} — 오답 메모, 일본어 단어, 공식 등 자유 형식으로...`}
-              className="flex-1 bg-[#0f1c2e] rounded-xl px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-700 resize-none leading-relaxed"
+              placeholder={`Q${activeQ} — 오답 메모, 수식(Σ), 이미지 붙여넣기 가능`}
+              accentColor="#6d28d9"
             />
           </div>
 

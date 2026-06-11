@@ -84,7 +84,6 @@ export default function GeneralSubjectPage() {
   const [panelWidth, setPanelWidth]         = useState(() =>
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
   )
-  // memoRef 제거됨 - DenkenMemoEditor가 자체 focus 관리
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartW = useRef(480)
@@ -117,7 +116,6 @@ export default function GeneralSubjectPage() {
   }, [examId, subject])
 
   useEffect(() => { loadData() }, [loadData])
-
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (session?.id) return session.id
@@ -287,10 +285,13 @@ export default function GeneralSubjectPage() {
             </span>
           </div>
           <div className="flex-1 p-3 flex flex-col min-h-0">
-            <textarea ref={memoRef} key={activeQ} value={activeAnswer?.memo ?? ''}
-              onChange={e => handleMemoChange(activeQ, e.target.value)} onBlur={() => handleMemoBlur(activeQ)}
-              placeholder={`Q${activeQ} — 오답 메모, 공식, 단어 등...`}
-              className="flex-1 bg-[#0f1c2e] rounded-xl px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-700 resize-none leading-relaxed" />
+            <DenkenMemoEditor
+              key={activeQ}
+              content={activeAnswer?.memo ?? ''}
+              onChange={(val) => handleMemoChange(activeQ, val)}
+              onBlur={() => handleMemoBlur(activeQ)}
+              placeholder={`Q${activeQ} — 오답 메모, 수식(Σ), 이미지 붙여넣기 가능`}
+            />
           </div>
           <div className="border-t border-white/5 px-3 py-3 overflow-y-auto max-h-48">
             <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">메모 있는 문제</p>
