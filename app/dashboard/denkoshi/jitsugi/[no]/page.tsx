@@ -364,7 +364,8 @@ function JitsugiPdfModal({
   onClose: () => void
   onEditUrls: () => void
 }) {
-  const [view, setView] = useState<'q' | 'a'>(initial)
+  // 한 모달 = PDF 하나(고정). src가 바뀌지 않으므로 스크롤이 초기화되지 않음.
+  const view = initial
   const url = view === 'q' ? qUrl : aUrl
   const preview = url ? toPreviewUrl(url) : null
 
@@ -373,16 +374,9 @@ function JitsugiPdfModal({
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0">
         <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">← 닫기</button>
         <span className="font-bold text-sm text-blue-400">No.{problemNo}</span>
-        <div className="flex gap-2 ml-3">
-          <button onClick={() => setView('q')}
-            className={`text-xs px-3 py-1.5 rounded-lg transition ${view === 'q' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}>
-            문제
-          </button>
-          <button onClick={() => setView('a')}
-            className={`text-xs px-3 py-1.5 rounded-lg transition ${view === 'a' ? 'bg-green-600' : 'bg-gray-800 hover:bg-gray-700'}`}>
-            정답·복선도
-          </button>
-        </div>
+        <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold text-white ${view === 'q' ? 'bg-blue-600' : 'bg-green-600'}`}>
+          {view === 'q' ? '문제' : '정답·복선도'}
+        </span>
         <button onClick={onEditUrls} className="ml-auto text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition">
           🔗 PDF 링크
         </button>
