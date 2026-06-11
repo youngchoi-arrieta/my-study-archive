@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { supabase } from '@/lib/supabase'
 
 const SUBJECT_META: Record<string, { accent: string; label: string; totalQ: number; selectPair: [number,number]; splitAt: number; scoreA: number; scoreB: number }> = {
@@ -84,6 +83,7 @@ export default function GeneralSubjectPage() {
   const [panelWidth, setPanelWidth]         = useState(() =>
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
   )
+  const memoRef    = useRef<HTMLTextAreaElement>(null)
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartW = useRef(480)
@@ -116,6 +116,7 @@ export default function GeneralSubjectPage() {
   }, [examId, subject])
 
   useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { memoRef.current?.focus() }, [activeQ])
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (session?.id) return session.id
@@ -285,13 +286,10 @@ export default function GeneralSubjectPage() {
             </span>
           </div>
           <div className="flex-1 p-3 flex flex-col min-h-0">
-            <DenkenMemoEditor
-              key={activeQ}
-              content={activeAnswer?.memo ?? ''}
-              onChange={(val) => handleMemoChange(activeQ, val)}
-              onBlur={() => handleMemoBlur(activeQ)}
-              placeholder={`Q${activeQ} — 오답 메모, 수식(Σ), 이미지 붙여넣기 가능`}
-            />
+            <textarea ref={memoRef} key={activeQ} value={activeAnswer?.memo ?? ''}
+              onChange={e => handleMemoChange(activeQ, e.target.value)} onBlur={() => handleMemoBlur(activeQ)}
+              placeholder={`Q${activeQ} — 오답 메모, 공식, 단어 등...`}
+              className="flex-1 bg-[#0f1c2e] rounded-xl px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-700 resize-none leading-relaxed" />
           </div>
           <div className="border-t border-white/5 px-3 py-3 overflow-y-auto max-h-48">
             <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">메모 있는 문제</p>
@@ -301,7 +299,7 @@ export default function GeneralSubjectPage() {
                   <button key={a.q_num} onClick={() => setActiveQ(a.q_num)}
                     className={`w-full text-left flex items-start gap-2 rounded-lg px-2 py-1.5 transition ${activeQ === a.q_num ? 'bg-blue-900/40' : 'hover:bg-[#0f1c2e]'}`}>
                     <span className={`text-[10px] font-bold mt-0.5 shrink-0 ${a.result === 'correct' ? 'text-emerald-400' : a.result === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>Q{a.q_num}</span>
-                    <span className="text-[11px] text-gray-400 truncate" dangerouslySetInnerHTML={{ __html: a.memo.replace(/<[^>]+>/g, " ").substring(0, 60) }} />
+                    <span className="text-[11px] text-gray-400 truncate">{a.memo}</span>
                   </button>
                 ))}</div>
             }

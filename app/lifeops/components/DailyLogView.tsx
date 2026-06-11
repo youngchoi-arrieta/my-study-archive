@@ -599,23 +599,9 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
                     </div>
                   </div>
                 )}
-                {/* meta */}
-                <div className="flex gap-4 text-xs text-gray-500">
-                  {l.weight_kg != null && <span>⚖️ {l.weight_kg} kg</span>}
-                  {l.condition != null && <span>🌡️ {l.condition}/5</span>}
-                </div>
-                {/* memo */}
-                {l.memo && (
-                  <div className="bg-gray-900 rounded-lg p-3 text-gray-300 text-xs whitespace-pre-wrap">
-                    📝 {l.memo}
-                  </div>
-                )}
-                {/* reflection */}
-                {l.reflection && (
-                  <div className="bg-purple-950/30 border border-purple-900/30 rounded-lg p-3 text-purple-200/90 text-xs whitespace-pre-wrap italic">
-                    🪞 {l.reflection}
-                  </div>
-                )}
+                {/* meta + memo + reflection — inline editable */}
+                <HistoryMetaEditor log={l} lang={lang} onSave={onUpdateLog} />
+
                 {!hasDetail && <p className="text-xs text-gray-600">No entries.</p>}
 
                 {/* delete whole day */}
@@ -633,6 +619,81 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── Inline meta editor for past log entries ───────────────────────────────────
+function HistoryMetaEditor({ log, lang, onSave }: {
+  log: DailyLog
+  lang: Lang
+  onSave: (id: string, patch: Partial<DailyLog>) => Promise<void>
+}) {
+  const [weight,     setWeight]     = useState(log.weight_kg != null ? String(log.weight_kg) : '')
+  const [condition,  setCondition]  = useState<number>(log.condition ?? 0)
+  const [memo,       setMemo]       = useState(log.memo ?? '')
+  const [reflection, setReflection] = useState(log.reflection ?? '')
+  const [saving,     setSaving]     = useState(false)
+
+  // sync when parent log changes (e.g. after save)
+  useEffect(() => {
+    setWeight(log.weight_kg != null ? String(log.weight_kg) : '')
+    setCondition(log.condition ?? 0)
+    setMemo(log.memo ?? '')
+    setReflection(log.reflection ?? '')
+  }, [log.id, log.weight_kg, log.condition, log.memo, log.reflection])
+
+  async function save() {
+    setSaving(true)
+    const w = parseFloat(weight)
+    await onSave(log.id, {
+      weight_kg:  isNaN(w) ? null : w,
+      condition:  condition || null,
+      memo:       memo.trim() || null,
+      reflection: reflection.trim() || null,
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div className="space-y-2 pt-1">
+      {/* weight + condition row */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">⚖️</span>
+          <input type="number" inputMode="decimal" step="0.1"
+            className="bg-gray-800 rounded-lg px-2 py-1 text-xs w-20 font-mono"
+            placeholder="kg" value={weight}
+            onChange={e => setWeight(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-500">🌡️</span>
+          {[1,2,3,4,5].map(n => (
+            <button key={n} onClick={() => setCondition(condition === n ? 0 : n)}
+              className={`w-6 h-6 rounded text-xs transition ${
+                condition === n ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}>
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* memo */}
+      <textarea
+        className="w-full bg-gray-800 rounded-lg px-3 py-2 text-xs resize-none"
+        rows={2} placeholder="📝 memo…"
+        value={memo} onChange={e => setMemo(e.target.value)} />
+
+      {/* reflection */}
+      <textarea
+        className="w-full bg-purple-950/30 border border-purple-900/30 rounded-lg px-3 py-2 text-xs resize-none text-purple-100 placeholder-purple-800"
+        rows={2} placeholder="🪞 reflection…"
+        value={reflection} onChange={e => setReflection(e.target.value)} />
+
+      <button onClick={save} disabled={saving}
+        className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-3 py-1.5 rounded-lg transition">
+        {saving ? 'Saving…' : '💾 Save changes'}
+      </button>
     </div>
   )
 }
