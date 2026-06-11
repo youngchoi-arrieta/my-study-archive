@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { supabase } from '@/lib/supabase'
 import {
   KIKAI_EXAMS,
@@ -237,7 +238,7 @@ export default function KikaiExamPage() {
   const [panelWidth, setPanelWidth] = useState(() =>
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
   )
-  const memoRef = useRef<HTMLTextAreaElement>(null)
+  // memoRef 제거됨 - DenkenMemoEditor가 자체 focus 관리
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartW = useRef(480)
@@ -286,11 +287,7 @@ export default function KikaiExamPage() {
   useEffect(() => { loadData() }, [loadData])
 
   // 메모 포커스 이동
-  useEffect(() => {
-    if (memoRef.current) {
-      memoRef.current.focus()
-    }
-  }, [activeQ])
+  // 에디터 포커스는 DenkenMemoEditor 내부에서 처리
 
   // ── 세션 upsert ────────────────────────────────────────────────
   const ensureSession = useCallback(async (): Promise<string> => {
@@ -689,7 +686,7 @@ export default function KikaiExamPage() {
                     }`}>
                       Q{a.q_num}
                     </span>
-                    <span className="text-[11px] text-gray-400 truncate leading-relaxed">{a.memo}</span>
+                    <span className="text-[11px] text-gray-400 truncate leading-relaxed" dangerouslySetInnerHTML={{ __html: a.memo.replace(/<[^>]+>/g, " ").substring(0, 60) }} />
                     {a.tag_id && <TagBadge tagId={a.tag_id} small />}
                   </button>
                 ))}

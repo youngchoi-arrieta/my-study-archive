@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { supabase } from '@/lib/supabase'
 
 const SUBJECT_META: Record<string, { accent: string; label: string; totalQ: number; selectPair: [number,number]; splitAt: number; scoreA: number; scoreB: number }> = {
@@ -83,7 +84,7 @@ export default function GeneralSubjectPage() {
   const [panelWidth, setPanelWidth]         = useState(() =>
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
   )
-  const memoRef    = useRef<HTMLTextAreaElement>(null)
+  // memoRef 제거됨 - DenkenMemoEditor가 자체 focus 관리
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartW = useRef(480)
@@ -116,7 +117,7 @@ export default function GeneralSubjectPage() {
   }, [examId, subject])
 
   useEffect(() => { loadData() }, [loadData])
-  useEffect(() => { memoRef.current?.focus() }, [activeQ])
+
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (session?.id) return session.id
@@ -299,7 +300,7 @@ export default function GeneralSubjectPage() {
                   <button key={a.q_num} onClick={() => setActiveQ(a.q_num)}
                     className={`w-full text-left flex items-start gap-2 rounded-lg px-2 py-1.5 transition ${activeQ === a.q_num ? 'bg-blue-900/40' : 'hover:bg-[#0f1c2e]'}`}>
                     <span className={`text-[10px] font-bold mt-0.5 shrink-0 ${a.result === 'correct' ? 'text-emerald-400' : a.result === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>Q{a.q_num}</span>
-                    <span className="text-[11px] text-gray-400 truncate">{a.memo}</span>
+                    <span className="text-[11px] text-gray-400 truncate" dangerouslySetInnerHTML={{ __html: a.memo.replace(/<[^>]+>/g, " ").substring(0, 60) }} />
                   </button>
                 ))}</div>
             }
