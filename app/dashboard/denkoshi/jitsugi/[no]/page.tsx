@@ -23,7 +23,7 @@ export default function JitsugiProblemPage() {
   const [loading, setLoading] = useState(true)
 
   // PDF 보기 상태: 'q' | 'a' | null
-  const [pdfView, setPdfView] = useState<'q' | 'a'>('q')
+  const [pdfModal, setPdfModal] = useState<'q' | 'a' | null>(null)
   const [editUrls, setEditUrls] = useState(false)
   const [qUrl, setQUrl] = useState('')
   const [aUrl, setAUrl] = useState('')
@@ -128,6 +128,17 @@ export default function JitsugiProblemPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
+        {/* PDF 전체화면 모달 */}
+        {pdfModal && (
+          <JitsugiPdfModal
+            problemNo={no}
+            initial={pdfModal}
+            qUrl={problem?.q_drive_url ?? null}
+            aUrl={problem?.a_drive_url ?? null}
+            onClose={() => setPdfModal(null)}
+            onEditUrls={() => { setPdfModal(null); setEditUrls(true) }}
+          />
+        )}
         <div className="mb-3 flex items-center gap-2">
           <Link href="/dashboard/denkoshi/jitsugi" className="text-gray-400 hover:text-white text-sm">← 목록</Link>
           <span className="text-gray-700">·</span>
@@ -162,59 +173,25 @@ export default function JitsugiProblemPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* ── 왼쪽: PDF ── */}
-          <div className="bg-gray-900 rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: 520 }}>
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800">
-              <button onClick={() => setPdfView('q')}
-                className={`text-xs px-3 py-1 rounded-lg transition ${pdfView === 'q' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}>
-                문제
-              </button>
-              <button onClick={() => setPdfView('a')}
-                className={`text-xs px-3 py-1 rounded-lg transition ${pdfView === 'a' ? 'bg-green-600' : 'bg-gray-800 hover:bg-gray-700'}`}>
-                정답
-              </button>
-              <span className="text-[11px] text-gray-600 ml-auto">{pdfView === 'q' ? '문제지' : '정답·복선도'}</span>
+        <div className="space-y-4">
+          {/* ── PDF: 모달 트리거 ── */}
+          <div className="bg-gray-900 rounded-2xl p-4 flex items-center gap-3">
+            <span className="text-2xl">📄</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold">도면 보기</p>
+              <p className="text-[11px] text-gray-500">전체화면으로 문제·정답 PDF를 띄웁니다</p>
             </div>
-            <div className="flex-1 bg-gray-950">
-              {/* 두 iframe 모두 렌더, CSS로 토글 → 탭 전환 시 현재 페이지 유지 */}
-
-              {[{ id: 'q', url: problem?.q_drive_url }, { id: 'a', url: problem?.a_drive_url }].map(({ id, url }) => {
-
-                const preview = url ? toPreviewUrl(url) : null
-
-                return (
-
-                  <div key={id} style={{ display: pdfView === id ? 'block' : 'none', height: '100%', minHeight: 470 }}>
-
-                    {preview ? (
-
-                      <iframe src={preview} className="w-full h-full border-0" style={{ minHeight: 470 }} />
-
-                    ) : (
-
-                      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600 p-6 text-center" style={{ minHeight: 470 }}>
-
-                        <p className="text-3xl">📄</p>
-
-                        <p className="text-sm">{id === 'q' ? '문제' : '정답'} PDF가 아직 없어요.</p>
-
-                        <button onClick={() => setEditUrls(true)} className="text-xs text-blue-400 hover:underline">🔗 PDF 링크 추가</button>
-
-                      </div>
-
-                    )}
-
-                  </div>
-
-                )
-
-              })}
-
-            </div>
+            <button onClick={() => setPdfModal('q')}
+              className="text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition font-semibold">
+              문제
+            </button>
+            <button onClick={() => setPdfModal('a')}
+              className="text-sm px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 transition font-semibold">
+              정답·복선도
+            </button>
           </div>
 
-          {/* ── 오른쪽: 타이머 + 채점 ── */}
+          {/* ── 타이머 + 채점 ── */}
           <div className="space-y-4">
             {/* 타이머 */}
             <div className="bg-gray-900 rounded-2xl p-5 text-center">
@@ -372,5 +349,55 @@ export default function JitsugiProblemPage() {
         {loading && <p className="text-gray-600 text-sm mt-4">불러오는 중…</p>}
       </div>
     </main>
+  )
+}
+
+
+// ── PDF 전체화면 모달 (덴켄 PdfModal 패턴) ──────────────────────
+function JitsugiPdfModal({
+  problemNo, initial, qUrl, aUrl, onClose, onEditUrls,
+}: {
+  problemNo: number
+  initial: 'q' | 'a'
+  qUrl: string | null
+  aUrl: string | null
+  onClose: () => void
+  onEditUrls: () => void
+}) {
+  const [view, setView] = useState<'q' | 'a'>(initial)
+  const url = view === 'q' ? qUrl : aUrl
+  const preview = url ? toPreviewUrl(url) : null
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0">
+        <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">← 닫기</button>
+        <span className="font-bold text-sm text-blue-400">No.{problemNo}</span>
+        <div className="flex gap-2 ml-3">
+          <button onClick={() => setView('q')}
+            className={`text-xs px-3 py-1.5 rounded-lg transition ${view === 'q' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}>
+            문제
+          </button>
+          <button onClick={() => setView('a')}
+            className={`text-xs px-3 py-1.5 rounded-lg transition ${view === 'a' ? 'bg-green-600' : 'bg-gray-800 hover:bg-gray-700'}`}>
+            정답·복선도
+          </button>
+        </div>
+        <button onClick={onEditUrls} className="ml-auto text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition">
+          🔗 PDF 링크
+        </button>
+      </div>
+      <div className="flex-1 bg-gray-950">
+        {preview ? (
+          <iframe src={preview} className="w-full h-full border-0" allow="autoplay" />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-600">
+            <p className="text-4xl">📄</p>
+            <p className="text-sm">{view === 'q' ? '문제' : '정답'} PDF가 아직 없어요.</p>
+            <button onClick={onEditUrls} className="text-xs text-blue-400 hover:underline">🔗 PDF 링크 추가</button>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
