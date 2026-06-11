@@ -23,7 +23,21 @@ function todayStr() { return new Date().toISOString().slice(0, 10) }
 function sumKrw(e: Record<string, number>) { return Object.values(e).reduce((a, b) => a + b, 0) }
 
 export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConfig, onUpdateLog, onDeleteLog, lang, currency, copPerKrw }: Props) {
-  const today = todayStr()
+  const [today, setToday] = useState(todayStr())
+
+  // 자정에 today 갱신
+  useEffect(() => {
+    function msUntilMidnight() {
+      const now = new Date()
+      const midnight = new Date(now)
+      midnight.setHours(24, 0, 0, 0)
+      return midnight.getTime() - now.getTime()
+    }
+    const timeout = setTimeout(() => {
+      setToday(todayStr())
+    }, msUntilMidnight() + 500)
+    return () => clearTimeout(timeout)
+  }, [today])  // today가 바뀔 때마다 다음 자정 타이머 재설정
   const todayLog = useMemo(() => logs.find(l => l.log_date === today) || null, [logs, today])
   const recent   = useMemo(() => [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date)).slice(0, 14), [logs])
   const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)

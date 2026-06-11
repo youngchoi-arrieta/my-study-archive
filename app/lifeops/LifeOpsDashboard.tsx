@@ -45,6 +45,23 @@ export default function LifeOpsDashboard() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  // ── 자정 감지: 날짜가 바뀌면 fetchAll 재호출 ─────────────────────────────
+  useEffect(() => {
+    function msUntilMidnight() {
+      const now = new Date()
+      const midnight = new Date(now)
+      midnight.setHours(24, 0, 0, 0)
+      return midnight.getTime() - now.getTime()
+    }
+    // 자정 직후 한 번 fetchAll, 그 다음은 매 24시간마다
+    const timeout = setTimeout(() => {
+      fetchAll()
+      const interval = setInterval(fetchAll, 24 * 60 * 60 * 1000)
+      return () => clearInterval(interval)
+    }, msUntilMidnight() + 500)   // +500ms 여유
+    return () => clearTimeout(timeout)
+  }, [fetchAll])
+
   // ── Milestone handlers ───────────────────────────────────────────────────
   async function saveMilestone(patch: Partial<Milestone>, id?: string) {
     if (id) await supabase.from('milestones').update(patch).eq('id', id)
