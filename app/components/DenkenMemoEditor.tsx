@@ -1,23 +1,20 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useEditor, EditorContent, Extension } from '@tiptap/react'
+import { useEffect, useState } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Placeholder from '@tiptap/extension-placeholder'
 import ResizeImage from 'tiptap-extension-resize-image'
 import { compressToBase64 } from '@/lib/imageUtils'
 import katex from 'katex'
-
-
+import 'katex/dist/katex.min.css'
 
 // ── 수식 삽입 모달 ───────────────────────────────────────────────
 function MathModal({ onInsert, onClose }: { onInsert: (tex: string) => void; onClose: () => void }) {
   const [tex, setTex] = useState('')
-  const preview = (() => {
-    try { return katex.renderToString(tex, { throwOnError: false, displayMode: false }) }
-    catch { return '' }
-  })()
+  let preview = ''
+  try { preview = katex.renderToString(tex, { throwOnError: false, displayMode: false }) } catch { preview = '' }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -31,27 +28,14 @@ function MathModal({ onInsert, onClose }: { onInsert: (tex: string) => void; onC
           placeholder="예: \frac{V}{I} = Z"
           className="w-full bg-[#1e3048] rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/60 font-mono mb-3"
         />
-        {/* 미리보기 */}
         <div className="bg-[#050d1a] rounded-lg px-4 py-3 min-h-10 flex items-center justify-center mb-4">
-          {tex ? (
-            <span dangerouslySetInnerHTML={{ __html: preview }} className="text-white" />
-          ) : (
-            <span className="text-gray-600 text-xs">미리보기</span>
-          )}
+          {tex ? <span dangerouslySetInnerHTML={{ __html: preview }} className="text-white" /> : <span className="text-gray-600 text-xs">미리보기</span>}
         </div>
-        {/* 자주 쓰는 수식 */}
         <div className="flex flex-wrap gap-1.5 mb-4">
           {[
-            ['분수', '\\frac{a}{b}'],
-            ['제곱근', '\\sqrt{x}'],
-            ['합계', '\\sum_{i=1}^{n}'],
-            ['적분', '\\int_{a}^{b}'],
-            ['오메가', '\\omega'],
-            ['델타', '\\Delta'],
-            ['파이', '\\pi'],
-            ['theta', '\\theta'],
-            ['각도', '\\angle'],
-            ['±', '\\pm'],
+            ['분수', '\\frac{a}{b}'], ['제곱근', '\\sqrt{x}'], ['합', '\\sum_{i=1}^{n}'],
+            ['적분', '\\int_{a}^{b}'], ['ω', '\\omega'], ['Δ', '\\Delta'],
+            ['π', '\\pi'], ['θ', '\\theta'], ['∠', '\\angle'], ['±', '\\pm'],
           ].map(([label, val]) => (
             <button key={label} onClick={() => setTex(p => p + val)}
               className="text-[10px] bg-[#1e3048] hover:bg-[#253d5c] text-gray-300 px-2 py-1 rounded font-mono transition">
@@ -62,16 +46,13 @@ function MathModal({ onInsert, onClose }: { onInsert: (tex: string) => void; onC
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-500 hover:text-white transition">취소</button>
           <button onClick={() => { if (tex.trim()) { onInsert(tex.trim()); onClose() } }}
-            className="px-4 py-1.5 text-xs font-bold bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition">
-            삽입
-          </button>
+            className="px-4 py-1.5 text-xs font-bold bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition">삽입</button>
         </div>
       </div>
     </div>
   )
 }
 
-// ── 메인 에디터 ──────────────────────────────────────────────────
 type Props = {
   content: string
   onChange: (val: string) => void
@@ -80,9 +61,8 @@ type Props = {
   accentColor?: string
 }
 
-export default function DenkenMemoEditor({ content, onChange, onBlur, placeholder, accentColor = '#2563eb' }: Props) {
+export default function DenkenMemoEditor({ content, onChange, onBlur, placeholder }: Props) {
   const [mathModal, setMathModal] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -90,12 +70,7 @@ export default function DenkenMemoEditor({ content, onChange, onBlur, placeholde
       StarterKit,
       Image.configure({ inline: true }),
       ResizeImage,
-      Placeholder.configure({ placeholder: placeholder || 'Q — 오답 메모, 수식, 이미지...' }),
-      // blur 이벤트 전파용
-      Extension.create({
-        name: 'blurHandler',
-        addKeyboardShortcuts() { return {} },
-      }),
+      Placeholder.configure({ placeholder: placeholder || '오답 메모, 수식, 이미지...' }),
     ],
     content: '',
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
@@ -117,16 +92,17 @@ export default function DenkenMemoEditor({ content, onChange, onBlur, placeholde
     },
   })
 
-  // content 주입 (DB에서 늦게 도착해도 반영)
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return
+    if (!editor) return
     const current = editor.getHTML()
-    if (current !== content && content) {
+    if (content && current !== content) {
       editor.commands.setContent(content, { emitUpdate: false })
     }
-  }, [content]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!content && current !== '<p></p>') {
+      editor.commands.clearContent(false)
+    }
+  }, [editor, content])
 
-  // 이미지 삽입
   const insertImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -135,18 +111,20 @@ export default function DenkenMemoEditor({ content, onChange, onBlur, placeholde
     e.target.value = ''
   }
 
-  // 수식 삽입 — span[data-math] 으로 저장
   const insertMath = (tex: string) => {
+    let rendered = tex
+    try { rendered = katex.renderToString(tex, { throwOnError: false, displayMode: false }) } catch { rendered = tex }
     const encoded = encodeURIComponent(tex)
-    const rendered = (() => {
-      try { return katex.renderToString(tex, { throwOnError: false, displayMode: false }) }
-      catch { return tex }
-    })()
-    const html = `<span data-math="${encoded}" class="katex-inline">${rendered}</span>&nbsp;`
-    editor?.chain().focus().insertContent(html).run()
+    editor?.chain().focus().insertContent(`<span data-math="${encoded}" class="katex-inline">${rendered}</span>&nbsp;`).run()
   }
 
-  if (!editor) return null
+  if (!editor) {
+    return (
+      <div className="flex-1 bg-[#0f1c2e] rounded-xl flex items-center justify-center text-gray-700 text-xs">
+        에디터 로딩 중...
+      </div>
+    )
+  }
 
   const btnBase = 'px-2 py-1 rounded text-xs font-bold transition'
   const btn = (active: boolean) => `${btnBase} ${active ? 'bg-blue-600 text-white' : 'bg-[#1e3048] text-gray-400 hover:text-white'}`
@@ -155,31 +133,18 @@ export default function DenkenMemoEditor({ content, onChange, onBlur, placeholde
     <>
       {mathModal && <MathModal onInsert={insertMath} onClose={() => setMathModal(false)} />}
       <div className="flex flex-col flex-1 min-h-0 rounded-xl overflow-hidden border border-white/5">
-        {/* 툴바 */}
         <div className="flex gap-1 px-2 py-1.5 bg-[#0a1628] border-b border-white/5 flex-wrap shrink-0">
-          <button type="button" onClick={() => editor.chain().focus().toggleBold().run()}
-            className={btn(editor.isActive('bold'))}>B</button>
-          <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()}
-            className={`${btn(editor.isActive('italic'))} italic`}>I</button>
-          <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()}
-            className={btn(editor.isActive('bulletList'))}>• 목록</button>
-          <button type="button" onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            className={btn(editor.isActive('codeBlock'))}>{'</>'}</button>
+          <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btn(editor.isActive('bold'))}>B</button>
+          <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={`${btn(editor.isActive('italic'))} italic`}>I</button>
+          <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive('bulletList'))}>• 목록</button>
+          <button type="button" onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={btn(editor.isActive('codeBlock'))}>{'</>'}</button>
           <div className="w-px bg-white/10 mx-1" />
-          {/* 수식 버튼 */}
-          <button type="button" onClick={() => setMathModal(true)}
-            className={`${btnBase} bg-[#1e3048] text-yellow-400 hover:bg-[#253d5c]`}
-            title="수식 삽입 (LaTeX)">
-            Σ 수식
-          </button>
-          {/* 이미지 버튼 */}
+          <button type="button" onClick={() => setMathModal(true)} className={`${btnBase} bg-[#1e3048] text-yellow-400 hover:bg-[#253d5c]`} title="수식 삽입 (LaTeX)">Σ 수식</button>
           <label className={`${btnBase} bg-[#1e3048] text-gray-400 hover:text-white cursor-pointer`}>
             🖼️
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={insertImage} />
+            <input type="file" accept="image/*" className="hidden" onChange={insertImage} />
           </label>
-          <span className="text-[9px] text-gray-700 flex items-center ml-1">Ctrl+V 붙여넣기 가능</span>
         </div>
-        {/* 에디터 본문 */}
         <EditorContent
           editor={editor}
           className="flex-1 overflow-y-auto bg-[#0f1c2e] text-sm text-white
