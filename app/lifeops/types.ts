@@ -42,6 +42,7 @@ export interface BudgetConfig {
   start_balance_krw: number
   start_date: string
   daily_target_krw: number
+  monthly_fixed_krw: number
   pivot_date: string | null
   cop_per_krw: number
   expense_cats: ExpenseCat[] | null

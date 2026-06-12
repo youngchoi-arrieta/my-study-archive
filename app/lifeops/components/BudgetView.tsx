@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
 } from 'recharts'
-import { DailyLog, BudgetConfig, Lang, Currency, t, formatAmount } from '../types'
+import { DailyLog, BudgetConfig, Lang, Currency, t, formatAmount, DEFAULT_EXPENSE_CATS } from '../types'
 
 interface Props {
   logs: DailyLog[]
@@ -27,40 +27,73 @@ function addDays(d: string, n: number) {
 export default function BudgetView({ logs, config, onUpdateConfig, lang, currency }: Props) {
   const today = todayStr()
   const copPerKrw = config.cop_per_krw ?? 0.42
+  const monthlyFixed = config.monthly_fixed_krw ?? 0
   const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)
 
-  const { totalExp, totalInc, expByDate, incByDate, loggedDates } = useMemo(() => {
-    let tE = 0, tI = 0
+  // Map each expense category key → its type (daily | fixed | invest)
+  const catType = useMemo(() => {
+    const cats = config.expense_cats ?? DEFAULT_EXPENSE_CATS
+    const m = new Map<string, 'daily' | 'fixed' | 'invest'>()
+    cats.forEach(c => m.set(c.key, c.type))
+    return m
+  }, [config.expense_cats])
+
+  // Split a day's expense map into operational vs lump sums
+  function splitExpense(expMap: Record<string, number>) {
+    let op = 0, lump = 0
+    for (const [key, amt] of Object.entries(expMap)) {
+      const catKey = key.split(':')[0]
+      const type = catType.get(catKey) ?? 'daily'
+      if (type === 'daily') op += amt
+      else lump += amt   // fixed + invest are one-off / not extrapolated
+    }
+    return { op, lump }
+  }
+
+  const { totalExp, totalOp, totalLump, totalInc, opByDate, expByDate, incByDate, loggedDates } = useMemo(() => {
+    let tE = 0, tOp = 0, tLump = 0, tI = 0
+    const opMap = new Map<string, number>()
     const eMap = new Map<string, number>()
     const iMap = new Map<string, number>()
     const dates = new Set<string>()
     logs.forEach(l => {
-      const e = sumKrw(l.expense_krw); const i = sumKrw(l.income_krw || {})
-      tE += e; tI += i; eMap.set(l.log_date, e); iMap.set(l.log_date, i)
+      const { op, lump } = splitExpense(l.expense_krw)
+      const e = op + lump
+      const i = sumKrw(l.income_krw || {})
+      tE += e; tOp += op; tLump += lump; tI += i
+      opMap.set(l.log_date, op)
+      eMap.set(l.log_date, e)
+      iMap.set(l.log_date, i)
       if (e > 0 || i > 0) dates.add(l.log_date)
     })
     const sorted = [...dates].sort()
-    return { totalExp: tE, totalInc: tI, expByDate: eMap, incByDate: iMap, loggedDates: sorted }
-  }, [logs])
+    return { totalExp: tE, totalOp: tOp, totalLump: tLump, totalInc: tI, opByDate: opMap, expByDate: eMap, incByDate: iMap, loggedDates: sorted }
+  }, [logs, catType])
 
-  const elapsed      = daysBetween(config.start_date, today)   // calendar days (display only)
-  const loggedDays   = loggedDates.length                      // days actually recorded
+  const elapsed      = daysBetween(config.start_date, today)
+  const loggedDays   = loggedDates.length
   const firstLogged  = loggedDates[0] ?? null
   const lastLogged   = loggedDates[loggedDates.length - 1] ?? null
 
   const balance      = config.start_balance_krw - totalExp + totalInc
-  const avgExp       = loggedDays > 0 ? totalExp / loggedDays : 0
+
+  // ── Operational burn: only daily-type expenses minus income, over logged days ──
+  const avgOp        = loggedDays > 0 ? totalOp / loggedDays : 0
   const avgInc       = loggedDays > 0 ? totalInc / loggedDays : 0
-  const netBurn      = avgExp - avgInc
+  const opBurn       = avgOp - avgInc                 // daily operational soak
+  // ── Plus monthly fixed cost spread to a daily-equivalent for the headline ──
+  const fixedPerDay  = monthlyFixed / 30
+  const netBurn      = opBurn + fixedPerDay           // total effective daily burn
+
   const daysToPivot  = config.pivot_date ? daysBetween(today, config.pivot_date) : 0
   const pivotBalance = config.pivot_date ? balance - netBurn * daysToPivot : null
 
-  // Survival at current pace
+  // Survival at current pace (operational + fixed)
   const survivalDays = netBurn > 0 ? Math.floor(balance / netBurn) : null
   const survivalDate = survivalDays != null ? addDays(today, survivalDays) : null
 
-  // Pace vs target
-  const pace       = avgExp - config.daily_target_krw
+  // Pace vs target (operational spending only)
+  const pace       = avgOp - config.daily_target_krw
   const paceStatus = pace < -3000 ? 'good' : pace > 5000 ? 'bad' : 'warn'
 
   // Chart
@@ -70,6 +103,7 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
     const total = daysBetween(start, end)
     if (total <= 0) return []
 
+    // actual balance curve uses ALL spending (op + lump)
     let cumE = 0, cumI = 0
     const actMap = new Map<string, number>()
     const dates = [...new Set([...expByDate.keys(), ...incByDate.keys()])].sort()
@@ -79,29 +113,46 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
     }
 
     const step = total > 90 ? 3 : 1
-    const data: { date: string; target: number; actual: number | null; forecast: number | null }[] = []
+    const data: { date: string; target: number; actual: number | null; forecast: number | null; opForecast: number | null }[] = []
+
+    // forecast: smooth operational burn + stepped monthly fixed on the 1st of each month
+    function fixedHitsBetween(fromDate: string, toDate: string): number {
+      let count = 0
+      const f = new Date(fromDate + 'T00:00:00')
+      const t = new Date(toDate + 'T00:00:00')
+      const cur = new Date(f.getFullYear(), f.getMonth() + 1, 1)
+      while (cur <= t) { count++; cur.setMonth(cur.getMonth() + 1) }
+      return count
+    }
 
     for (let i = 0; i <= total; i += step) {
       const d = addDays(start, i)
       const target = config.start_balance_krw - config.daily_target_krw * i
-      let actual: number | null = null, forecast: number | null = null
+      let actual: number | null = null, forecast: number | null = null, opForecast: number | null = null
 
       if (d <= today) {
         let last = config.start_balance_krw
         for (const [dt, v] of actMap) { if (dt <= d) last = v; else break }
         actual = last
       } else {
-        forecast = balance - netBurn * daysBetween(today, d)
+        const aheadDays = daysBetween(today, d)
+        const fixedHits = fixedHitsBetween(today, d) * monthlyFixed
+        opForecast = balance - opBurn * aheadDays                  // operational only (smooth)
+        forecast   = opForecast - fixedHits                        // + stepped fixed
       }
-      data.push({ date: d.slice(5), target, actual, forecast })
+      data.push({ date: d.slice(5), target, actual, forecast, opForecast })
     }
 
     // Bridge actual → forecast
     const lastActIdx = [...data].reverse().findIndex(p => p.actual !== null)
-    if (lastActIdx >= 0) data[data.length - 1 - lastActIdx].forecast = data[data.length - 1 - lastActIdx].actual
+    if (lastActIdx >= 0) {
+      const bridge = data[data.length - 1 - lastActIdx]
+      bridge.forecast = bridge.actual
+      bridge.opForecast = bridge.actual
+    }
 
     return data
-  }, [config, expByDate, incByDate, today, balance, netBurn])
+  }, [config, expByDate, incByDate, today, balance, opBurn, monthlyFixed])
 
   // Weight chart
   const weightData = useMemo(() =>
@@ -123,13 +174,13 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
       <div className="grid grid-cols-2 gap-3">
         <StatCard label={t('balance', lang)} value={fmt(balance)}
           sub={`start ${fmt(config.start_balance_krw)}`} tone="neutral" />
-        <StatCard label={t('netBurn', lang)} value={`${fmt(Math.round(netBurn))}/d`}
-          sub={loggedDays > 0 ? `over ${loggedDays} logged day${loggedDays > 1 ? 's' : ''}` : 'no data yet'}
+        <StatCard label="Daily burn (effective)" value={`${fmt(Math.round(netBurn))}/d`}
+          sub={`op ${fmt(Math.round(opBurn))} + fixed ${fmt(Math.round(fixedPerDay))}`}
           tone={netBurn <= config.daily_target_krw ? 'green' : 'red'} />
-        <StatCard label={t('totalSpent', lang)} value={fmt(totalExp)}
-          sub={`avg ${fmt(Math.round(avgExp))}/logged day`} tone="neutral" />
-        <StatCard label={t('totalIncome', lang)} value={`+${fmt(totalInc)}`}
-          sub={`avg +${fmt(Math.round(avgInc))}/logged day`} tone="emerald" />
+        <StatCard label="☕ Operational" value={fmt(totalOp)}
+          sub={`avg ${fmt(Math.round(avgOp))}/logged day`} tone="neutral" />
+        <StatCard label="🏠🚀 Fixed + one-off" value={fmt(totalLump)}
+          sub="not extrapolated" tone="amber" />
       </div>
 
       {/* Calculation basis — transparency */}
@@ -139,7 +190,13 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
         {firstLogged && lastLogged && (
           <span>Range: <span className="text-gray-300">{firstLogged === lastLogged ? firstLogged : `${firstLogged} ~ ${lastLogged}`}</span></span>
         )}
+        <span>💰 Income: <span className="text-emerald-400">+{fmt(totalInc)}</span></span>
+        <span>🏠 Monthly fixed est: <span className="text-gray-300">{monthlyFixed > 0 ? fmt(monthlyFixed) : 'not set'}</span></span>
         <span className="text-gray-600">({elapsed} calendar days since start)</span>
+      </div>
+
+      <div className="bg-gray-900/40 rounded-xl px-4 py-2 text-xs text-gray-500 leading-relaxed">
+        ℹ️ Forecast = current balance − <span className="text-gray-300">operational burn</span> (smooth daily, from <span className="text-gray-300">daily</span>-type tags only) − <span className="text-gray-300">monthly fixed</span> (stepped on the 1st). One-off <span className="text-amber-400">fixed/invest</span> spending already came out of your balance and is not projected forward.
       </div>
 
       {loggedDays < 3 && (
@@ -197,7 +254,9 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
                   stroke="#6b7280" strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
                 <Line type="monotone" dataKey="actual" name="Actual"
                   stroke="#3b82f6" dot={false} strokeWidth={2} connectNulls={false} />
-                <Line type="monotone" dataKey="forecast" name="Forecast"
+                <Line type="monotone" dataKey="opForecast" name="Op only"
+                  stroke="#10b981" strokeDasharray="1 3" dot={false} strokeWidth={1.5} connectNulls={false} />
+                <Line type="monotone" dataKey="forecast" name="+ Fixed"
                   stroke="#f59e0b" strokeDasharray="2 2" dot={false} strokeWidth={2} connectNulls={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -258,10 +317,10 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
 // ── StatCard ──────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, tone }: {
   label: string; value: string; sub?: string
-  tone: 'neutral' | 'green' | 'red' | 'emerald'
+  tone: 'neutral' | 'green' | 'red' | 'emerald' | 'amber'
 }) {
   const cls = tone === 'green' ? 'text-green-400' : tone === 'red' ? 'text-red-400'
-    : tone === 'emerald' ? 'text-emerald-400' : 'text-white'
+    : tone === 'emerald' ? 'text-emerald-400' : tone === 'amber' ? 'text-amber-400' : 'text-white'
   return (
     <div className="bg-gray-900 rounded-2xl p-4">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -280,6 +339,7 @@ function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
   const [bal,       setBal]       = useState(String(config.start_balance_krw))
   const [startDate, setStartDate] = useState(config.start_date)
   const [target,    setTarget]    = useState(String(config.daily_target_krw))
+  const [monthlyFx, setMonthlyFx] = useState(String(config.monthly_fixed_krw ?? 0))
   const [pivot,     setPivot]     = useState(config.pivot_date || '')
   const [cop,       setCop]       = useState(String(copPerKrw))
   // Balance adjustment
@@ -300,6 +360,7 @@ function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
       start_balance_krw: newBal,
       start_date:        startDate,
       daily_target_krw:  parseInt(target) || 0,
+      monthly_fixed_krw: parseInt(monthlyFx) || 0,
       pivot_date:        pivot || null,
       cop_per_krw:       parseFloat(cop) || 0.42,
     })
@@ -341,6 +402,7 @@ function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
         {[
           { label: 'Start date',           val: startDate, set: setStartDate, type: 'date'   },
           { label: 'Daily target (KRW)',    val: target,    set: setTarget,    type: 'number' },
+          { label: '🏠 Monthly fixed cost est. (rent+insurance, KRW)', val: monthlyFx, set: setMonthlyFx, type: 'number' },
           { label: 'Pivot date',            val: pivot,     set: setPivot,     type: 'date'   },
           { label: '1 KRW = ? COP (rate)', val: cop,       set: setCop,       type: 'number' },
         ].map(({ label, val, set, type }) => (
