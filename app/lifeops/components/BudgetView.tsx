@@ -191,10 +191,10 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
         <StatCard label="Daily burn (effective)" value={`${fmt(Math.round(netBurn))}/d`}
           sub={`op ${fmt(Math.round(opBurn))} + fixed ${fmt(Math.round(fixedPerDay))}`}
           tone={netBurn <= config.daily_target_krw ? 'green' : 'red'} />
-        <StatCard label="☕ Operational" value={fmt(totalOp)}
-          sub={`avg ${fmt(Math.round(avgOp))}/logged day`} tone="neutral" />
-        <StatCard label="🏠🚀 Fixed + one-off" value={fmt(totalLump)}
-          sub="not extrapolated" tone="amber" />
+        <StatCard label="☕ Operational" value={`${fmt(Math.round(avgOp))}/d`}
+          sub={`total ${fmt(totalOp)} · avg of ${loggedDays}d`} tone="neutral" />
+        <StatCard label="🏠 Fixed /day" value={`${fmt(Math.round(fixedPerDay))}/d`}
+          sub={`monthly ${monthlyFixed > 0 ? fmt(monthlyFixed) : 'not set'} · one-off ${fmt(totalLump)}`} tone="amber" />
       </div>
 
       {/* Calculation basis — transparency */}
@@ -226,9 +226,9 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
                                 'bg-amber-900/20 border border-amber-800/40'}`}>
         <div className="flex items-center justify-between">
           <span>
-            {paceStatus === 'good' && `✅ ${fmt(Math.round(-pace))} under target/day`}
-            {paceStatus === 'warn' && '⚖️ Close to target'}
-            {paceStatus === 'bad'  && `⚠️ ${fmt(Math.round(pace))} over target/day`}
+            {paceStatus === 'good' && `✅ Operational ${fmt(Math.round(-pace))} under target/day`}
+            {paceStatus === 'warn' && '⚖️ Operational spending close to target'}
+            {paceStatus === 'bad'  && `⚠️ Operational ${fmt(Math.round(pace))} over target/day`}
           </span>
           {survivalDate && (
             <span className="text-gray-400 text-xs">
