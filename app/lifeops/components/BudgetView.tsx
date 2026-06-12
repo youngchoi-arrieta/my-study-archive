@@ -167,6 +167,20 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
     ? (v / 10000).toFixed(0) + '만'
     : (v * copPerKrw / 1000).toFixed(0) + 'k'
 
+  // Padded Y domain from all chart values so the slope is readable
+  const yDomain = useMemo<[number, number]>(() => {
+    const vals: number[] = []
+    chartData.forEach(d => {
+      ;[d.actual, d.forecast, d.opForecast, d.target].forEach(v => {
+        if (typeof v === 'number' && !isNaN(v)) vals.push(v)
+      })
+    })
+    if (vals.length === 0) return [0, 1]
+    const min = Math.min(...vals), max = Math.max(...vals)
+    const pad = Math.max((max - min) * 0.08, 1)
+    return [Math.max(0, min - pad), max + pad]
+  }, [chartData])
+
   return (
     <div className="space-y-4">
 
@@ -244,7 +258,8 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
               <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                 <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: 10 }} />
-                <YAxis stroke="#6b7280" style={{ fontSize: 10 }} tickFormatter={tickFmt} />
+                <YAxis stroke="#6b7280" style={{ fontSize: 10 }} tickFormatter={tickFmt}
+                  domain={yDomain} allowDataOverflow={false} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }}
                   formatter={(v) => typeof v === 'number' ? fmt(Math.round(v)) : '–'} />

@@ -518,6 +518,19 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
   const [openId, setOpenId] = useState<string | null>(null)
   if (logs.length === 0) return null
 
+  // category key → type
+  const typeOf = (key: string): 'daily' | 'fixed' | 'invest' => {
+    const catKey = key.split(':')[0]
+    return expenseCats.find(c => c.key === catKey)?.type ?? 'daily'
+  }
+  function splitExp(expMap: Record<string, number>) {
+    let op = 0, lump = 0
+    for (const [k, amt] of Object.entries(expMap)) {
+      if (typeOf(k) === 'daily') op += amt; else lump += amt
+    }
+    return { op, lump, total: op + lump }
+  }
+
   function entryLabel(key: string, cats: ExpenseCat[] | IncomeCat[]) {
     const [catKey, ...rest] = key.split(':')
     const catObj = cats.find(c => c.key === catKey)
@@ -528,16 +541,17 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
   return (
     <div className="bg-gray-900 rounded-2xl overflow-hidden">
       {/* header row */}
-      <div className="bg-gray-950 text-xs text-gray-500 grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2.5">
-        <span>Date</span>
-        <span className="text-right w-20">{t('expense', lang)}</span>
-        <span className="text-right w-20">{t('income', lang)}</span>
-        <span className="text-right w-10 hidden sm:block">kg</span>
+      <div className="bg-gray-950 text-xs text-gray-500 grid grid-cols-[auto_1fr_1fr_1fr_auto_auto] gap-2 px-4 py-2.5">
+        <span className="w-12">Date</span>
+        <span className="text-right">☕ Op</span>
+        <span className="text-right">🏠🚀 Fix</span>
+        <span className="text-right">Σ Total</span>
+        <span className="text-right w-8 hidden sm:block">kg</span>
         <span className="text-center w-6">😐</span>
       </div>
 
       {logs.map(l => {
-        const exp = sumKrw(l.expense_krw)
+        const { op, lump, total } = splitExp(l.expense_krw)
         const inc = sumKrw(l.income_krw || {})
         const isOpen = openId === l.id
         const hasDetail = Object.keys(l.expense_krw).length > 0
@@ -549,14 +563,18 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
             {/* summary row (click to expand) */}
             <button
               onClick={() => setOpenId(isOpen ? null : l.id)}
-              className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2.5 text-sm hover:bg-gray-800/40 transition text-left">
-              <span className="text-gray-400 tabular-nums flex items-center gap-1">
+              className="w-full grid grid-cols-[auto_1fr_1fr_1fr_auto_auto] gap-2 px-4 py-2.5 text-sm hover:bg-gray-800/40 transition text-left items-center">
+              <span className="text-gray-400 tabular-nums flex items-center gap-1 w-12">
                 <span className={`text-gray-600 transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
                 {l.log_date.slice(5)}
               </span>
-              <span className={`text-right w-20 tabular-nums ${exp > dailyTargetKrw ? 'text-red-400' : ''}`}>{fmt(exp)}</span>
-              <span className="text-right w-20 tabular-nums text-emerald-400">{inc > 0 ? `+${fmt(inc)}` : '–'}</span>
-              <span className="text-right w-10 text-gray-500 hidden sm:block">{l.weight_kg ?? '–'}</span>
+              <span className="text-right tabular-nums text-gray-200">{op > 0 ? fmt(op) : '–'}</span>
+              <span className="text-right tabular-nums text-amber-400/90">{lump > 0 ? fmt(lump) : '–'}</span>
+              <span className={`text-right tabular-nums font-semibold ${total > dailyTargetKrw ? 'text-red-400' : 'text-gray-100'}`}>
+                {total > 0 ? fmt(total) : '–'}
+                {inc > 0 && <span className="text-emerald-400 text-xs"> +{fmt(inc)}</span>}
+              </span>
+              <span className="text-right w-8 text-gray-500 hidden sm:block">{l.weight_kg ?? '–'}</span>
               <span className="text-center w-6 text-gray-500">{l.condition ?? '–'}</span>
             </button>
 
