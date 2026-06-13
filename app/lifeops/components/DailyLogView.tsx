@@ -2,8 +2,9 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
   DailyLog, BudgetConfig, ExpenseCat, IncomeCat,
-  DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS,
-  Lang, Currency, t, formatAmount, parseToKrw,
+  DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS, DEFAULT_ACTIVITY_CATS,
+  ActivityEntry, ActivityCat,
+  Lang, Currency, t, formatAmount, parseToKrw, currentStreak,
 } from '../types'
 import { quoteOfDay, promptOfDay } from '../quotes'
 
@@ -42,8 +43,12 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
   const recent   = useMemo(() => [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date)).slice(0, 14), [logs])
   const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)
 
-  const expenseCats = config.expense_cats ?? DEFAULT_EXPENSE_CATS
-  const incomeCats  = config.income_cats  ?? DEFAULT_INCOME_CATS
+  const expenseCats  = config.expense_cats  ?? DEFAULT_EXPENSE_CATS
+  const incomeCats   = config.income_cats   ?? DEFAULT_INCOME_CATS
+  const activityCats = config.activity_cats ?? DEFAULT_ACTIVITY_CATS
+
+  const actStreak = currentStreak(logs, 'activity')
+  const lisStreak = currentStreak(logs, 'listening')
 
   const [balanceOpen, setBalanceOpen] = useState(false)
 
@@ -57,6 +62,18 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
         <span className="text-xs text-gray-600 group-hover:text-gray-400">tap to adjust ✏️</span>
       </button>
 
+      {/* Habit streaks */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className={`rounded-2xl px-4 py-3 ${actStreak > 0 ? 'bg-orange-950/30 border border-orange-900/40' : 'bg-gray-900'}`}>
+          <p className="text-xs text-gray-500">🏃 {lang === 'en' ? 'Activity streak' : 'Racha actividad'}</p>
+          <p className="text-2xl font-bold">{actStreak > 0 ? `🔥 ${actStreak}` : '–'}<span className="text-sm text-gray-500 font-normal">{actStreak > 0 ? (lang==='en'?' days':' días') : ''}</span></p>
+        </div>
+        <div className={`rounded-2xl px-4 py-3 ${lisStreak > 0 ? 'bg-blue-950/30 border border-blue-900/40' : 'bg-gray-900'}`}>
+          <p className="text-xs text-gray-500">🎧 {lang === 'en' ? 'Listening streak' : 'Racha escucha'}</p>
+          <p className="text-2xl font-bold">{lisStreak > 0 ? `🔥 ${lisStreak}` : '–'}<span className="text-sm text-gray-500 font-normal">{lisStreak > 0 ? (lang==='en'?' days':' días') : ''}</span></p>
+        </div>
+      </div>
+
       {/* Quote of the day */}
       <div className="bg-gradient-to-br from-gray-900 to-gray-900/40 rounded-2xl px-5 py-4 border border-gray-800/50">
         <p className="text-sm text-gray-200 italic leading-relaxed">
@@ -66,13 +83,13 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
       </div>
 
       <TodayCard
-        log={todayLog} expenseCats={expenseCats} incomeCats={incomeCats}
+        log={todayLog} expenseCats={expenseCats} incomeCats={incomeCats} activityCats={activityCats}
         onUpsert={onUpsertToday} onUpdateConfig={onUpdateConfig}
         dailyTargetKrw={config.daily_target_krw}
         lang={lang} currency={currency} copPerKrw={copPerKrw} fmt={fmt}
       />
       <HistoryTable logs={recent} dailyTargetKrw={config.daily_target_krw}
-        fmt={fmt} lang={lang} expenseCats={expenseCats} incomeCats={incomeCats}
+        fmt={fmt} lang={lang} expenseCats={expenseCats} incomeCats={incomeCats} activityCats={activityCats}
         onUpdateLog={onUpdateLog} onDeleteLog={onDeleteLog} />
 
       {balanceOpen && (
@@ -161,10 +178,11 @@ function BalanceModal({ config, onSave, onClose }: {
 }
 
 // ── Today card ────────────────────────────────────────────────────────────────
-function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dailyTargetKrw, lang, currency, copPerKrw, fmt }: {
+function TodayCard({ log, expenseCats, incomeCats, activityCats, onUpsert, onUpdateConfig, dailyTargetKrw, lang, currency, copPerKrw, fmt }: {
   log: DailyLog | null
   expenseCats: ExpenseCat[]
   incomeCats: IncomeCat[]
+  activityCats: ActivityCat[]
   onUpsert: (p: Partial<DailyLog>) => Promise<void>
   onUpdateConfig: (p: Partial<BudgetConfig>) => Promise<void>
   dailyTargetKrw: number
@@ -184,6 +202,10 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
   const [condition,   setCondition]   = useState(log?.condition ?? 3)
   const [memo,        setMemo]        = useState(log?.memo ?? '')
   const [reflection,  setReflection]  = useState(log?.reflection ?? '')
+  const [activities,  setActivities]  = useState<ActivityEntry[]>(log?.activities ?? [])
+  const [lisMin,      setLisMin]      = useState(log?.listening_min != null ? String(log.listening_min) : '')
+  const [lisContent,  setLisContent]  = useState(log?.listening_content ?? '')
+  const [actMinInput, setActMinInput] = useState<Record<string, string>>({})
   const [saving,      setSaving]      = useState(false)
   const [editCats,    setEditCats]    = useState(false)
 
@@ -192,6 +214,9 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
       setCondition(log.condition ?? 3)
       setMemo(log.memo ?? '')
       setReflection(log.reflection ?? '')
+      setActivities(log.activities ?? [])
+      setLisMin(log.listening_min != null ? String(log.listening_min) : '')
+      setLisContent(log.listening_content ?? '')
       setWeightInput(log.weight_kg != null ? String(log.weight_kg) : '')
     }
   }, [log?.id])
@@ -222,13 +247,37 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
 
   async function saveMeta() {
     const w = parseFloat(weightInput)
+    const lm = parseInt(lisMin)
     await onUpsert({
       condition,
       memo: memo.trim() || null,
       reflection: reflection.trim() || null,
       weight_kg: isNaN(w) ? null : w,
+      listening_min: isNaN(lm) ? null : lm,
+      listening_content: lisContent.trim() || null,
     })
   }
+
+  async function toggleActivity(catKey: string) {
+    const exists = activities.find(a => a.type === catKey)
+    let next: ActivityEntry[]
+    if (exists) {
+      next = activities.filter(a => a.type !== catKey)
+    } else {
+      const min = parseInt(actMinInput[catKey] || '') || 0
+      next = [...activities, { type: catKey, minutes: min }]
+    }
+    setActivities(next)
+    await onUpsert({ activities: next.length ? next : null })
+  }
+
+  async function setActivityMinutes(catKey: string, minutes: number) {
+    const next = activities.map(a => a.type === catKey ? { ...a, minutes } : a)
+    setActivities(next)
+    await onUpsert({ activities: next })
+  }
+
+  const actLabel = (key: string) => activityCats.find(c => c.key === key)?.[lang] ?? key
 
   const typeColor = (type: string) =>
     type === 'fixed'  ? 'border-purple-700 text-purple-300 bg-purple-900/20' :
@@ -345,6 +394,55 @@ function TodayCard({ log, expenseCats, incomeCats, onUpsert, onUpdateConfig, dai
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── 신체활동 (required daily habit) ── */}
+      <div className="border-t border-gray-800 pt-4">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">
+          🏃 {lang === 'en' ? 'Physical activity' : 'Actividad física'}
+          {activities.length === 0 && <span className="text-red-400 ml-2">• {lang === 'en' ? 'not done yet' : 'pendiente'}</span>}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {activityCats.map(c => {
+            const active = activities.find(a => a.type === c.key)
+            return (
+              <div key={c.key} className="flex items-center">
+                <button onClick={() => toggleActivity(c.key)}
+                  className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                    active ? 'border-orange-600 text-orange-200 bg-orange-900/30 ring-1 ring-orange-700/50'
+                           : 'border-gray-700 text-gray-400 bg-gray-800/60 hover:brightness-125'}`}>
+                  {active ? '✓ ' : ''}{c[lang]}
+                </button>
+                {active && (
+                  <input type="number" inputMode="numeric"
+                    className="bg-gray-800 rounded-lg px-2 py-1 text-xs w-14 ml-1"
+                    placeholder="min" value={active.minutes || ''}
+                    onChange={e => setActivityMinutes(c.key, parseInt(e.target.value) || 0)} />
+                )}
+              </div>
+            )
+          })}
+          <ActivityCatEditor cats={activityCats} lang={lang}
+            onSave={cats => onUpdateConfig({ activity_cats: cats })} />
+        </div>
+      </div>
+
+      {/* ── 일본어 청해 (required daily habit) ── */}
+      <div className="border-t border-gray-800 pt-4">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">
+          🎧 {lang === 'en' ? 'JP Listening' : 'Escucha JP'}
+          {!(parseInt(lisMin) > 0) && <span className="text-red-400 ml-2">• {lang === 'en' ? 'not done yet' : 'pendiente'}</span>}
+        </p>
+        <div className="flex gap-2">
+          <input type="number" inputMode="numeric"
+            className="bg-gray-800 rounded-lg px-3 py-2 text-sm w-20"
+            placeholder="min" value={lisMin}
+            onChange={e => setLisMin(e.target.value)} onBlur={saveMeta} />
+          <input type="text"
+            className="bg-gray-800 rounded-lg px-3 py-2 text-sm flex-1 min-w-0"
+            placeholder={lang === 'en' ? 'content (e.g. シャドテン, anime…)' : 'contenido…'}
+            value={lisContent} onChange={e => setLisContent(e.target.value)} onBlur={saveMeta} />
+        </div>
       </div>
 
       {/* ── META ── */}
@@ -508,10 +606,65 @@ function IncCatEditorInline({ incomeCats, lang, onSave }: {
   )
 }
 
+// ── Activity category editor (inline ✏️) ──────────────────────────────────────
+function ActivityCatEditor({ cats, lang, onSave }: {
+  cats: ActivityCat[]; lang: Lang; onSave: (cats: ActivityCat[]) => Promise<void>
+}) {
+  const [open, setOpen]     = useState(false)
+  const [list, setList]     = useState<ActivityCat[]>(cats)
+  const [newLabel, setNew]  = useState('')
+  const [saving, setSaving] = useState(false)
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="text-xs text-gray-600 hover:text-gray-400 px-2 py-1.5 rounded-full border border-gray-700 transition">
+      ✏️
+    </button>
+  )
+
+  function addCat() {
+    const label = newLabel.trim(); if (!label) return
+    const key = label.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now()
+    setList(prev => [...prev, { key, en: label, es: label }]); setNew('')
+  }
+
+  async function save() {
+    setSaving(true); await onSave(list); setSaving(false); setOpen(false)
+  }
+
+  return (
+    <div className="w-full bg-gray-800 rounded-xl p-3 space-y-2 mt-1">
+      <div className="flex flex-wrap gap-1.5">
+        {list.map(c => (
+          <span key={c.key} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-orange-900/30 text-orange-300">
+            {c[lang]}
+            <button onClick={() => setList(prev => prev.filter(x => x.key !== c.key))}
+              className="text-gray-500 hover:text-red-400">×</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input type="text" className="bg-gray-700 rounded-lg px-3 py-1.5 text-sm flex-1"
+          placeholder={lang === 'en' ? 'New activity (e.g. 🚴 Cycle)' : 'Nueva actividad'} value={newLabel}
+          onChange={e => setNew(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addCat()} />
+        <button onClick={addCat} className="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg text-sm">＋</button>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => setOpen(false)} className="flex-1 bg-gray-700 py-1.5 rounded-lg text-xs">Cancel</button>
+        <button onClick={save} disabled={saving}
+          className="flex-1 bg-blue-600 hover:bg-blue-500 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
+          {saving ? '…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── History table ─────────────────────────────────────────────────────────────
-function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats, onUpdateLog, onDeleteLog }: {
+function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats, activityCats, onUpdateLog, onDeleteLog }: {
   logs: DailyLog[]; dailyTargetKrw: number; fmt: (n: number) => string; lang: Lang
-  expenseCats: ExpenseCat[]; incomeCats: IncomeCat[]
+  expenseCats: ExpenseCat[]; incomeCats: IncomeCat[]; activityCats: ActivityCat[]
   onUpdateLog: (id: string, patch: Partial<DailyLog>) => Promise<void>
   onDeleteLog: (id: string) => Promise<void>
 }) {
@@ -615,6 +768,22 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+                {/* activity + listening (read-only summary) */}
+                {(l.activities && l.activities.length > 0) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {l.activities.map(a => (
+                      <span key={a.type} className="bg-orange-900/30 text-orange-200 text-xs px-2.5 py-1 rounded-full">
+                        {activityCats.find(c => c.key === a.type)?.[lang] ?? a.type}
+                        {a.minutes > 0 ? ` · ${a.minutes}m` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {l.listening_min != null && l.listening_min > 0 && (
+                  <div className="text-xs text-blue-300">
+                    🎧 {l.listening_min}m{l.listening_content ? ` · ${l.listening_content}` : ''}
                   </div>
                 )}
                 {/* meta + memo + reflection — inline editable */}

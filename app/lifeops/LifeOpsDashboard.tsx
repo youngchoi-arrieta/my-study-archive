@@ -97,6 +97,9 @@ export default function LifeOpsDashboard() {
         condition:   patch.condition   ?? null,
         memo:        patch.memo        ?? null,
         reflection:  patch.reflection  ?? null,
+        activities:  patch.activities  ?? null,
+        listening_min: patch.listening_min ?? null,
+        listening_content: patch.listening_content ?? null,
       })
     }
     await fetchAll()
@@ -231,6 +234,7 @@ export default function LifeOpsDashboard() {
             <button onClick={() => updateConfig({
               id: 1, start_balance_krw: 0, start_date: today,
               daily_target_krw: 30000, monthly_fixed_krw: 0, pivot_date: null,
+              activity_cats: null,
               cop_per_krw: 0.42, updated_at: new Date().toISOString(),
             })} className="bg-blue-600 hover:bg-blue-500 px-5 py-2 rounded-lg text-sm">
               Initialize
