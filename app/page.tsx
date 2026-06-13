@@ -122,6 +122,19 @@ export default function Home() {
           />
         </div>
 
+        {/* 심화 연구 */}
+        <p className="text-xs text-gray-700 mb-2 ml-1">🔬 심화 연구 (이해도 추적)</p>
+        <div className="grid grid-cols-1 gap-3 mb-6">
+          <ExamCard
+            href="/dashboard/research"
+            emoji="🔬"
+            org="電験 1·2종 / 기술고시"
+            title="심화 연구"
+            desc="논술·심화 기출 · 솔루션 노트 · 미착수/연구중/이해완료"
+            badge="준비 중"
+          />
+        </div>
+
         {/* 한국 — 취득 완료 */}
         <p className="text-xs text-gray-700 mb-2 ml-1">🇰🇷 한국 (취득 완료)</p>
         <div className="grid grid-cols-2 gap-3">
