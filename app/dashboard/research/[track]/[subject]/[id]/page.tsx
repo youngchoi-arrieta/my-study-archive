@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import {
   TRACK_MAP,
+  getSubject,
   STATUS_META,
   STATUS_ORDER,
   type ResearchStatus,
@@ -31,8 +32,10 @@ function toPreviewUrl(url: string): string | null {
 export default function ResearchExamPage() {
   const params = useParams()
   const trackSlug = params.track as string
+  const subjectSlug = params.subject as string
   const examId = params.id as string
   const track = TRACK_MAP.get(trackSlug)
+  const subject = track ? getSubject(track, subjectSlug) : undefined
   const exam = track?.exams.find(e => e.id === examId)
   const accent = track?.accent ?? '#3b82f6'
 
@@ -64,7 +67,7 @@ export default function ResearchExamPage() {
     const { data: rows } = await supabase
       .from('research_sessions')
       .select('drive_url, answer_drive_url')
-      .eq('track', trackSlug).eq('exam_id', examId)
+      .eq('track', trackSlug).eq('subject', subjectSlug).eq('exam_id', examId)
       .order('created_at', { ascending: false }).limit(1)
     const sess = rows?.[0] ?? null
     if (sess) {
@@ -78,7 +81,7 @@ export default function ResearchExamPage() {
     const { data: probs } = await supabase
       .from('research_problems')
       .select('id, title, status, memo, sort_order')
-      .eq('track', trackSlug).eq('exam_id', examId)
+      .eq('track', trackSlug).eq('subject', subjectSlug).eq('exam_id', examId)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true })
     if (probs && probs.length > 0) {
@@ -97,10 +100,10 @@ export default function ResearchExamPage() {
   // ── PDF 세션 upsert ──────────────────────────────────────────────
   const upsertSession = useCallback(async (patch: { drive_url?: string | null; answer_drive_url?: string | null }) => {
     await supabase.from('research_sessions').upsert(
-      { track: trackSlug, exam_id: examId, ...patch, updated_at: new Date().toISOString() },
-      { onConflict: 'track,exam_id' }
+      { track: trackSlug, subject: subjectSlug, exam_id: examId, ...patch, updated_at: new Date().toISOString() },
+      { onConflict: 'track,subject,exam_id' }
     )
-  }, [trackSlug, examId])
+  }, [trackSlug, subjectSlug, examId])
 
   const handleUrlLoad = useCallback(async () => {
     const url = urlInput.trim()
@@ -120,7 +123,7 @@ export default function ResearchExamPage() {
     if (!title) return
     const { data, error } = await supabase
       .from('research_problems')
-      .insert({ track: trackSlug, exam_id: examId, title, sort_order: problems.length })
+      .insert({ track: trackSlug, subject: subjectSlug, exam_id: examId, title, sort_order: problems.length })
       .select('id, title, status, memo, sort_order')
       .single()
     if (!error && data) {
@@ -130,7 +133,7 @@ export default function ResearchExamPage() {
     }
     setNewTitle('')
     setAdding(false)
-  }, [newTitle, trackSlug, examId, problems.length])
+  }, [newTitle, trackSlug, subjectSlug, examId, problems.length])
 
   // ── 문제 삭제 ────────────────────────────────────────────────────
   const handleDeleteProblem = useCallback(async (id: string) => {
@@ -172,7 +175,7 @@ export default function ResearchExamPage() {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  if (!track || !exam) {
+  if (!track || !subject || !exam) {
     return (
       <main className="min-h-screen bg-[#050d1a] text-white flex items-center justify-center">
         <div className="text-center">
@@ -194,9 +197,9 @@ export default function ResearchExamPage() {
 
       {/* ── 헤더 ─────────────────────────────────────────────────── */}
       <div className="shrink-0 bg-[#0a1628] border-b border-white/5 px-3 py-2 flex items-center gap-3">
-        <Link href={`/dashboard/research/${trackSlug}`} className="text-gray-500 hover:text-white text-xs transition">← {track.name}</Link>
+        <Link href={`/dashboard/research/${trackSlug}/${subjectSlug}`} className="text-gray-500 hover:text-white text-xs transition">← {subject?.name ?? track.name}</Link>
         <span className="text-sm font-bold text-white">{exam.label}</span>
-        <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>{track.name}</span>
+        <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>{subject.name}</span>
         <div className="ml-auto flex items-center gap-2 text-[11px]">
           {STATUS_ORDER.map(st => (
             <span key={st} className="flex items-center gap-1">

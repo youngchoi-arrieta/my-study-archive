@@ -11,54 +11,38 @@ import {
   type ResearchStatus,
 } from '@/lib/constants-research'
 
-type SessionRow = { exam_id: string; drive_url: string | null; answer_drive_url: string | null }
-type ProblemRow = { exam_id: string; status: ResearchStatus }
+type ProblemRow = { subject: string; status: ResearchStatus }
 
-export default function TrackExamList() {
+export default function TrackSubjectList() {
   const params = useParams()
   const router = useRouter()
   const trackSlug = params.track as string
   const track = TRACK_MAP.get(trackSlug)
 
-  const [sessions, setSessions] = useState<SessionRow[]>([])
   const [problems, setProblems] = useState<ProblemRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: sess }, { data: probs }] = await Promise.all([
-      supabase.from('research_sessions').select('exam_id, drive_url, answer_drive_url').eq('track', trackSlug),
-      supabase.from('research_problems').select('exam_id, status').eq('track', trackSlug),
-    ])
-    setSessions((sess || []) as SessionRow[])
-    setProblems((probs || []) as ProblemRow[])
+    const { data } = await supabase
+      .from('research_problems')
+      .select('subject, status')
+      .eq('track', trackSlug)
+    setProblems((data || []) as ProblemRow[])
     setLoading(false)
   }, [trackSlug])
 
   useEffect(() => { load() }, [load])
 
-  const sessionMap = useMemo(() => {
-    const m = new Map<string, SessionRow>()
-    sessions.forEach(s => m.set(s.exam_id, s))
-    return m
-  }, [sessions])
-
-  // 회차별 문제 상태 카운트
-  const examStats = useMemo(() => {
+  // 과목별 상태 카운트
+  const subjectStats = useMemo(() => {
     const m = new Map<string, Record<ResearchStatus, number>>()
     problems.forEach(p => {
-      if (!m.has(p.exam_id)) m.set(p.exam_id, { untouched: 0, studying: 0, understood: 0 })
-      const rec = m.get(p.exam_id)!
+      if (!m.has(p.subject)) m.set(p.subject, { untouched: 0, studying: 0, understood: 0 })
+      const rec = m.get(p.subject)!
       rec[p.status] = (rec[p.status] ?? 0) + 1
     })
     return m
-  }, [problems])
-
-  // 전체 상태 합계
-  const totalCounts = useMemo(() => {
-    const c: Record<ResearchStatus, number> = { untouched: 0, studying: 0, understood: 0 }
-    problems.forEach(p => { c[p.status] = (c[p.status] ?? 0) + 1 })
-    return c
   }, [problems])
 
   if (!track) {
@@ -80,54 +64,40 @@ export default function TrackExamList() {
           <span className="text-2xl">{track.emoji}</span>
           <h1 className="text-2xl font-bold tracking-tight">{track.name}</h1>
         </div>
-        <p className="text-gray-600 text-sm mb-5">{track.org} · {track.desc}</p>
-
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {STATUS_ORDER.map(st => (
-            <div key={st} className="bg-[#0a1628] rounded-2xl p-3 text-center border border-white/5">
-              <p className="text-[10px] text-gray-600 mb-1">{STATUS_META[st].ko}</p>
-              <p className="text-xl font-black" style={{ color: STATUS_META[st].accent }}>{totalCounts[st]}</p>
-            </div>
-          ))}
-        </div>
+        <p className="text-gray-600 text-sm mb-6">{track.org} · 과목을 선택하세요</p>
 
         {loading ? (
           <p className="text-gray-600 text-sm">불러오는 중...</p>
         ) : (
-          <div className="space-y-1.5">
-            {track.exams.map(exam => {
-              const s = sessionMap.get(exam.id)
-              const hasPdf = !!s?.drive_url
-              const stats = examStats.get(exam.id)
-              const probTotal = stats ? stats.untouched + stats.studying + stats.understood : 0
+          <div className="space-y-2">
+            {track.subjects.map(subject => {
+              const stats = subjectStats.get(subject.slug)
+              const total = stats ? stats.untouched + stats.studying + stats.understood : 0
               const done = stats?.understood ?? 0
+              const studying = stats?.studying ?? 0
 
               return (
-                <button key={exam.id} onClick={() => router.push(`/dashboard/research/${trackSlug}/${exam.id}`)}
-                  className="w-full flex items-center gap-3 bg-[#0a1628] hover:bg-[#0f1f35] rounded-2xl px-4 py-3 transition border border-white/5 hover:border-white/15 text-left group">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white group-hover:text-blue-300 transition">{exam.label}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {probTotal > 0 ? (
-                        <span className="text-[10px] text-gray-500">문제 {probTotal} · <span className="text-emerald-400">이해 {done}</span></span>
+                <button key={subject.slug}
+                  onClick={() => router.push(`/dashboard/research/${trackSlug}/${subject.slug}`)}
+                  className="w-full text-left bg-[#0a1628] hover:bg-[#0f1f35] rounded-2xl p-4 transition border border-white/5 hover:border-white/15 group">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-base font-bold text-white group-hover:text-blue-300 transition" style={{ color: undefined }}>{subject.name}</p>
+                      {total > 0 ? (
+                        <p className="text-[11px] text-gray-500 mt-0.5">문제 {total} · <span className="text-emerald-400">이해 {done}</span>{studying > 0 && <span className="text-yellow-400"> · 연구중 {studying}</span>}</p>
                       ) : (
-                        <span className="text-[10px] text-gray-700">문제 없음</span>
+                        <p className="text-[11px] text-gray-700 mt-0.5">아직 등록된 문제 없음</p>
                       )}
-                      {hasPdf && <span className="text-[10px] text-gray-600">PDF ✓</span>}
                     </div>
+                    {/* 미니 진행 바 */}
+                    {total > 0 && (
+                      <div className="w-24 h-2 bg-gray-800 rounded-full overflow-hidden flex shrink-0">
+                        <div className="h-full" style={{ width: `${(done / total) * 100}%`, backgroundColor: STATUS_META.understood.accent }} />
+                        <div className="h-full" style={{ width: `${(studying / total) * 100}%`, backgroundColor: STATUS_META.studying.accent }} />
+                      </div>
+                    )}
+                    <span className="text-gray-700 text-xs group-hover:text-gray-500 transition shrink-0">→</span>
                   </div>
-                  {/* 미니 상태 점들 */}
-                  {stats && probTotal > 0 && (
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      {STATUS_ORDER.map(st => stats[st] > 0 && (
-                        <span key={st} className="flex items-center gap-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_META[st].dot }} />
-                          <span className="text-[9px] text-gray-500">{stats[st]}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <span className="text-gray-700 text-xs group-hover:text-gray-500 transition shrink-0">→</span>
                 </button>
               )
             })}

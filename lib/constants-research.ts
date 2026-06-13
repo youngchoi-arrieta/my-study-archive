@@ -1,4 +1,4 @@
-// 심화 연구 섹션 - 트랙 정의
+// 심화 연구 섹션 - 트랙/과목 정의
 // 덴켄 1종/2종 1차·2차 + 한국 기술고시
 
 export type ResearchStatus = 'untouched' | 'studying' | 'understood'
@@ -11,90 +11,106 @@ export const STATUS_META: Record<ResearchStatus, { ko: string; color: string; ac
 
 export const STATUS_ORDER: ResearchStatus[] = ['untouched', 'studying', 'understood']
 
+export type ResearchSubject = {
+  slug: string
+  name: string
+}
+
 export type ResearchExam = {
   id: string
   label: string
 }
 
 export type ResearchTrack = {
-  slug: string          // URL용
-  name: string          // 표시명
+  slug: string
+  name: string
   emoji: string
   org: string
-  accent: string        // hex
+  accent: string
   desc: string
+  subjects: ResearchSubject[]
   exams: ResearchExam[]
 }
 
 // ── 회차 생성 헬퍼 ──────────────────────────────────────────────
-// 덴켄: 2차는 연 1회. 1차는 2023~ 연 2회지만 논술 연구용은 회차만 단순 표기
 function reiwaExams(startYear: number, endYear: number, prefix: string): ResearchExam[] {
   const out: ResearchExam[] = []
   for (let y = startYear; y >= endYear; y--) {
-    const r = y - 2018  // 令和 = 西暦 - 2018
+    const r = y - 2018
     const era = r >= 1 ? `令和${r === 1 ? '元' : r}年度` : `平成${y - 1988}年度`
     out.push({ id: `${prefix}_${y}`, label: `${y}년도 (${era})` })
   }
   return out
 }
 
-// 한국 기술고시: 연도별
 function gosiExams(startYear: number, endYear: number): ResearchExam[] {
   const out: ResearchExam[] = []
-  for (let y = startYear; y >= endYear; y--) {
-    out.push({ id: `gosi_${y}`, label: `${y}년도` })
-  }
+  for (let y = startYear; y >= endYear; y--) out.push({ id: `gosi_${y}`, label: `${y}년도` })
   return out
 }
 
+// ── 과목 세트 ──────────────────────────────────────────────────
+const DENKEN_1JI: ResearchSubject[] = [
+  { slug: 'riron',  name: '理論' },
+  { slug: 'denryoku', name: '電力' },
+  { slug: 'kikai',  name: '機械' },
+  { slug: 'houki',  name: '法規' },
+]
+
+const DENKEN_2JI: ResearchSubject[] = [
+  { slug: 'denryoku-kanri', name: '電力·管理' },
+  { slug: 'kikai-seigyo',   name: '機械·制御' },
+]
+
+const GOSI_SUBJECTS: ResearchSubject[] = [
+  { slug: 'jagi',      name: '전기자기학' },
+  { slug: 'hoero',     name: '회로이론' },
+  { slug: 'gigi',      name: '전기기기' },
+  { slug: 'jadong',    name: '자동제어' },
+  { slug: 'jeonryeok', name: '전력전자' },
+  { slug: 'gyetong',   name: '전력계통공학' },
+]
+
 export const RESEARCH_TRACKS: ResearchTrack[] = [
   {
-    slug: 'denken2-1ji',
-    name: '電験二種 一次',
-    emoji: '📘',
-    org: '일본 경제산업성',
-    accent: '#0369a1',
+    slug: 'denken2-1ji', name: '電験二種 一次', emoji: '📘',
+    org: '일본 경제산업성', accent: '#0369a1',
     desc: '理論·電力·機械·法規 (객관식)',
+    subjects: DENKEN_1JI,
     exams: reiwaExams(2025, 2014, 'd2_1ji'),
   },
   {
-    slug: 'denken2-2ji',
-    name: '電験二種 二次',
-    emoji: '📕',
-    org: '일본 경제산업성',
-    accent: '#be123c',
+    slug: 'denken2-2ji', name: '電験二種 二次', emoji: '📕',
+    org: '일본 경제산업성', accent: '#be123c',
     desc: '電力·管理 / 機械·制御 (기술식 논술)',
+    subjects: DENKEN_2JI,
     exams: reiwaExams(2025, 2014, 'd2_2ji'),
   },
   {
-    slug: 'denken1-1ji',
-    name: '電験一種 一次',
-    emoji: '📗',
-    org: '일본 경제산업성',
-    accent: '#047857',
+    slug: 'denken1-1ji', name: '電験一種 一次', emoji: '📗',
+    org: '일본 경제산업성', accent: '#047857',
     desc: '理論·電力·機械·法規 (객관식)',
+    subjects: DENKEN_1JI,
     exams: reiwaExams(2025, 2014, 'd1_1ji'),
   },
   {
-    slug: 'denken1-2ji',
-    name: '電験一種 二次',
-    emoji: '📙',
-    org: '일본 경제산업성',
-    accent: '#c2410c',
+    slug: 'denken1-2ji', name: '電験一種 二次', emoji: '📙',
+    org: '일본 경제산업성', accent: '#c2410c',
     desc: '電力·管理 / 機械·制御 (기술식 논술)',
+    subjects: DENKEN_2JI,
     exams: reiwaExams(2025, 2014, 'd1_2ji'),
   },
   {
-    slug: 'gosi-jeongi',
-    name: '기술고시 전기직',
-    emoji: '🎓',
-    org: '인사혁신처 5급 공채',
-    accent: '#7c3aed',
-    desc: '전기자기학·회로이론·전기기기·자동제어·전력전자 (논술)',
+    slug: 'gosi-jeongi', name: '기술고시 전기직', emoji: '🎓',
+    org: '인사혁신처 5급 공채', accent: '#7c3aed',
+    desc: '전기자기학·회로이론·전기기기·자동제어·전력전자·전력계통공학 (논술)',
+    subjects: GOSI_SUBJECTS,
     exams: gosiExams(2025, 2010),
   },
 ]
 
-export const TRACK_MAP = new Map<string, ResearchTrack>(
-  RESEARCH_TRACKS.map(t => [t.slug, t])
-)
+export const TRACK_MAP = new Map<string, ResearchTrack>(RESEARCH_TRACKS.map(t => [t.slug, t]))
+
+export function getSubject(track: ResearchTrack, subjectSlug: string): ResearchSubject | undefined {
+  return track.subjects.find(s => s.slug === subjectSlug)
+}
