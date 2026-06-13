@@ -12,14 +12,12 @@ import {
   type ResearchStatus,
 } from '@/lib/constants-research'
 
-type Session = {
+type Problem = {
   id: string
-  track: string
-  exam_id: string
+  title: string
   status: ResearchStatus
-  drive_url: string | null
-  answer_drive_url: string | null
-  memo: string | null
+  memo: string
+  sort_order: number
 }
 
 function toPreviewUrl(url: string): string | null {
@@ -36,90 +34,128 @@ export default function ResearchExamPage() {
   const examId = params.id as string
   const track = TRACK_MAP.get(trackSlug)
   const exam = track?.exams.find(e => e.id === examId)
+  const accent = track?.accent ?? '#3b82f6'
 
-  const [session, setSession] = useState<Session | null>(null)
-  const [status, setStatus] = useState<ResearchStatus>('untouched')
-  const [memo, setMemo] = useState('')
+  // PDF 세션
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
   const [pdfTab, setPdfTab] = useState<'question' | 'answer'>('question')
   const [urlInput, setUrlInput] = useState('')
   const [answerUrl, setAnswerUrl] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // 문제 리스트
+  const [problems, setProblems] = useState<Problem[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+
   const [panelWidth, setPanelWidth] = useState(() =>
-    typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.42) : 520
+    typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.44) : 560
   )
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
-  const dragStartW = useRef(520)
-  const [memoLoaded, setMemoLoaded] = useState(false)
-
-  const accent = track?.accent ?? '#3b82f6'
+  const dragStartW = useRef(560)
 
   // ── 로드 ─────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
+    // 세션 (PDF)
     const { data: rows } = await supabase
       .from('research_sessions')
-      .select('id, track, exam_id, status, drive_url, answer_drive_url, memo')
-      .eq('track', trackSlug)
-      .eq('exam_id', examId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .select('drive_url, answer_drive_url')
+      .eq('track', trackSlug).eq('exam_id', examId)
+      .order('created_at', { ascending: false }).limit(1)
     const sess = rows?.[0] ?? null
     if (sess) {
-      setSession(sess as Session)
-      setStatus((sess.status as ResearchStatus) ?? 'untouched')
-      setMemo(sess.memo ?? '')
       setUrlInput(sess.drive_url ?? '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
       setAnswerUrl(sess.answer_drive_url ?? '')
       if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
     }
-    setMemoLoaded(true)
+
+    // 문제들
+    const { data: probs } = await supabase
+      .from('research_problems')
+      .select('id, title, status, memo, sort_order')
+      .eq('track', trackSlug).eq('exam_id', examId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+    if (probs && probs.length > 0) {
+      const mapped = probs.map(p => ({
+        id: p.id, title: p.title, status: (p.status as ResearchStatus) ?? 'untouched',
+        memo: p.memo ?? '', sort_order: p.sort_order ?? 0,
+      }))
+      setProblems(mapped)
+      setActiveId(mapped[0].id)
+    }
+    setLoaded(true)
   }, [trackSlug, examId])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── 세션 upsert ──────────────────────────────────────────────────
-  const upsertSession = useCallback(async (patch: Partial<Session>) => {
+  // ── PDF 세션 upsert ──────────────────────────────────────────────
+  const upsertSession = useCallback(async (patch: { drive_url?: string | null; answer_drive_url?: string | null }) => {
     await supabase.from('research_sessions').upsert(
-      {
-        track: trackSlug,
-        exam_id: examId,
-        ...patch,
-        updated_at: new Date().toISOString(),
-      },
+      { track: trackSlug, exam_id: examId, ...patch, updated_at: new Date().toISOString() },
       { onConflict: 'track,exam_id' }
     )
   }, [trackSlug, examId])
 
-  // ── 상태 변경 ────────────────────────────────────────────────────
-  const handleStatusChange = useCallback((next: ResearchStatus) => {
-    setStatus(next)
-    upsertSession({ status: next })
-  }, [upsertSession])
-
-  // ── 메모 저장 (blur 시) ──────────────────────────────────────────
-  const handleMemoBlur = useCallback(() => {
-    upsertSession({ memo: memo || null })
-  }, [memo, upsertSession])
-
-  // ── PDF URL ────────────────────────────────────────────────────
   const handleUrlLoad = useCallback(async () => {
     const url = urlInput.trim()
     setPreviewUrl(url ? toPreviewUrl(url) : null)
-    setSaving(true)
-    await upsertSession({ drive_url: url || null })
-    setSaving(false)
+    setSaving(true); await upsertSession({ drive_url: url || null }); setSaving(false)
   }, [urlInput, upsertSession])
 
   const handleAnswerUrlLoad = useCallback(async () => {
     const url = answerUrl.trim()
     setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
-    setSaving(true)
-    await upsertSession({ answer_drive_url: url || null })
-    setSaving(false)
+    setSaving(true); await upsertSession({ answer_drive_url: url || null }); setSaving(false)
   }, [answerUrl, upsertSession])
+
+  // ── 문제 추가 ────────────────────────────────────────────────────
+  const handleAddProblem = useCallback(async () => {
+    const title = newTitle.trim()
+    if (!title) return
+    const { data, error } = await supabase
+      .from('research_problems')
+      .insert({ track: trackSlug, exam_id: examId, title, sort_order: problems.length })
+      .select('id, title, status, memo, sort_order')
+      .single()
+    if (!error && data) {
+      const p: Problem = { id: data.id, title: data.title, status: 'untouched', memo: '', sort_order: data.sort_order ?? problems.length }
+      setProblems(prev => [...prev, p])
+      setActiveId(p.id)
+    }
+    setNewTitle('')
+    setAdding(false)
+  }, [newTitle, trackSlug, examId, problems.length])
+
+  // ── 문제 삭제 ────────────────────────────────────────────────────
+  const handleDeleteProblem = useCallback(async (id: string) => {
+    await supabase.from('research_problems').delete().eq('id', id)
+    setProblems(prev => {
+      const next = prev.filter(p => p.id !== id)
+      if (activeId === id) setActiveId(next[0]?.id ?? null)
+      return next
+    })
+  }, [activeId])
+
+  // ── 상태 변경 ────────────────────────────────────────────────────
+  const handleStatusChange = useCallback(async (id: string, status: ResearchStatus) => {
+    setProblems(prev => prev.map(p => p.id === id ? { ...p, status } : p))
+    await supabase.from('research_problems').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+  }, [])
+
+  // ── 메모 변경 (로컬) + 저장 (blur) ───────────────────────────────
+  const handleMemoChange = useCallback((id: string, memo: string) => {
+    setProblems(prev => prev.map(p => p.id === id ? { ...p, memo } : p))
+  }, [])
+  const handleMemoBlur = useCallback(async (id: string) => {
+    const p = problems.find(x => x.id === id)
+    if (p) await supabase.from('research_problems').update({ memo: p.memo || null, updated_at: new Date().toISOString() }).eq('id', id)
+  }, [problems])
 
   // ── 드래그 ─────────────────────────────────────────────────────
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -129,7 +165,7 @@ export default function ResearchExamPage() {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isDragging.current) return
-      setPanelWidth(Math.min(Math.round(window.innerWidth * 0.75), Math.max(280, dragStartW.current - (e.clientX - dragStartX.current))))
+      setPanelWidth(Math.min(Math.round(window.innerWidth * 0.75), Math.max(300, dragStartW.current - (e.clientX - dragStartX.current))))
     }
     const onUp = () => { isDragging.current = false }
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
@@ -147,34 +183,31 @@ export default function ResearchExamPage() {
     )
   }
 
+  const activeProblem = problems.find(p => p.id === activeId) ?? null
+
+  // 상태 카운트
+  const counts: Record<ResearchStatus, number> = { untouched: 0, studying: 0, understood: 0 }
+  problems.forEach(p => { counts[p.status] = (counts[p.status] ?? 0) + 1 })
+
   return (
     <main className="min-h-screen bg-[#050d1a] text-white flex flex-col" style={{ height: '100dvh' }}>
 
-      {/* ── 헤더 + 상태 토글 ─────────────────────────────────────── */}
+      {/* ── 헤더 ─────────────────────────────────────────────────── */}
       <div className="shrink-0 bg-[#0a1628] border-b border-white/5 px-3 py-2 flex items-center gap-3">
         <Link href={`/dashboard/research/${trackSlug}`} className="text-gray-500 hover:text-white text-xs transition">← {track.name}</Link>
         <span className="text-sm font-bold text-white">{exam.label}</span>
         <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>{track.name}</span>
-
-        {/* 상태 토글 */}
-        <div className="ml-auto flex items-center gap-1 bg-[#0f1c2e] rounded-lg p-0.5">
+        <div className="ml-auto flex items-center gap-2 text-[11px]">
           {STATUS_ORDER.map(st => (
-            <button
-              key={st}
-              onClick={() => handleStatusChange(st)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition ${
-                status === st ? 'text-white' : 'text-gray-500 hover:text-gray-300'
-              }`}
-              style={status === st ? { backgroundColor: STATUS_META[st].accent } : {}}
-            >
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: status === st ? '#fff' : STATUS_META[st].dot }} />
-              {STATUS_META[st].ko}
-            </button>
+            <span key={st} className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_META[st].dot }} />
+              <span className="text-gray-500">{counts[st]}</span>
+            </span>
           ))}
         </div>
       </div>
 
-      {/* ── 바디: PDF + 솔루션 에디터 ──────────────────────────────── */}
+      {/* ── 바디 ─────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
 
         {/* PDF 뷰어 */}
@@ -216,24 +249,77 @@ export default function ResearchExamPage() {
         {/* 드래그 핸들 */}
         <div onMouseDown={handleDragStart} className="w-1 shrink-0 bg-white/5 hover:bg-blue-500/60 cursor-col-resize transition-colors" />
 
-        {/* 솔루션 에디터 패널 */}
-        <div className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5" style={{ width: panelWidth, minWidth: 280 }}>
-          <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-            <span className="text-sm font-bold text-white">나의 솔루션 · 연구 노트</span>
-            <span className="ml-auto text-xs font-bold" style={{ color: STATUS_META[status].accent }}>
-              {STATUS_META[status].ko}
-            </span>
+        {/* 오른쪽: 문제 리스트 + 솔루션 */}
+        <div className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5" style={{ width: panelWidth, minWidth: 300 }}>
+
+          {/* 문제 탭 리스트 */}
+          <div className="border-b border-white/5 px-3 py-2 shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {problems.map(p => (
+                <button key={p.id} onClick={() => setActiveId(p.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    activeId === p.id ? 'bg-[#1a2e47] text-white ring-1 ring-blue-500/40' : 'bg-[#0f1c2e] text-gray-400 hover:text-white'
+                  }`}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_META[p.status].dot }} />
+                  {p.title}
+                </button>
+              ))}
+              {/* 추가 버튼 / 입력 */}
+              {adding ? (
+                <div className="flex items-center gap-1">
+                  <input autoFocus value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddProblem(); if (e.key === 'Escape') { setAdding(false); setNewTitle('') } }}
+                    placeholder="문제 이름 (예: 전력·관리 문1)"
+                    className="bg-[#0f1c2e] rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:ring-1 focus:ring-blue-500/60 w-44" />
+                  <button onClick={handleAddProblem} className="text-[11px] px-2 py-1 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold">추가</button>
+                  <button onClick={() => { setAdding(false); setNewTitle('') }} className="text-[11px] text-gray-500 hover:text-white px-1">✕</button>
+                </div>
+              ) : (
+                <button onClick={() => setAdding(true)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-gray-500 hover:text-white bg-[#0f1c2e] transition">
+                  + 문제 추가
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex-1 p-3 flex flex-col min-h-0">
-            {memoLoaded && (
-              <DenkenMemoEditor
-                content={memo}
-                onChange={setMemo}
-                onBlur={handleMemoBlur}
-                placeholder="풀이 과정, 핵심 개념, 막힌 부분, 참고 페이지 등 — 수식(Σ)·이미지 삽입 가능"
-              />
-            )}
-          </div>
+
+          {/* 선택된 문제: 상태 + 솔루션 */}
+          {activeProblem ? (
+            <>
+              <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-2 shrink-0">
+                <span className="text-sm font-bold text-white truncate">{activeProblem.title}</span>
+                {/* 상태 토글 */}
+                <div className="ml-auto flex items-center gap-0.5 bg-[#0f1c2e] rounded-lg p-0.5 shrink-0">
+                  {STATUS_ORDER.map(st => (
+                    <button key={st} onClick={() => handleStatusChange(activeProblem.id, st)}
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${activeProblem.status === st ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                      style={activeProblem.status === st ? { backgroundColor: STATUS_META[st].accent } : {}}>
+                      {STATUS_META[st].ko}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => handleDeleteProblem(activeProblem.id)}
+                  className="text-[11px] text-gray-600 hover:text-red-400 transition shrink-0" title="문제 삭제">🗑</button>
+              </div>
+              <div className="flex-1 p-3 flex flex-col min-h-0">
+                <DenkenMemoEditor
+                  key={activeProblem.id}
+                  content={activeProblem.memo}
+                  onChange={(val) => handleMemoChange(activeProblem.id, val)}
+                  onBlur={() => handleMemoBlur(activeProblem.id)}
+                  placeholder="풀이 과정, 핵심 개념, 막힌 부분, 참고 페이지 등 — 수식(Σ)·이미지 삽입 가능"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-700">
+              <div className="text-4xl opacity-30">📝</div>
+              <p className="text-sm text-gray-600">{loaded ? '문제를 추가해서 솔루션을 작성하세요' : '불러오는 중...'}</p>
+              {loaded && !adding && (
+                <button onClick={() => setAdding(true)} className="text-xs px-3 py-1.5 rounded-lg bg-[#1e3048] hover:bg-[#253d5c] text-blue-400 transition">+ 첫 문제 추가</button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </main>
