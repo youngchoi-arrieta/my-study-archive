@@ -69,6 +69,7 @@ const GOSI_SUBJECTS: ResearchSubject[] = [
   { slug: 'jadong',    name: '자동제어' },
   { slug: 'jeonryeok', name: '전력전자' },
   { slug: 'gyetong',   name: '전력계통공학' },
+  { slug: 'jeonja',    name: '전자회로' },
 ]
 
 export const RESEARCH_TRACKS: ResearchTrack[] = [
@@ -103,7 +104,7 @@ export const RESEARCH_TRACKS: ResearchTrack[] = [
   {
     slug: 'gosi-jeongi', name: '기술고시 전기직', emoji: '🎓',
     org: '인사혁신처 5급 공채', accent: '#7c3aed',
-    desc: '전기자기학·회로이론·전기기기·자동제어·전력전자·전력계통공학 (논술)',
+    desc: '전기자기학·회로이론·전기기기·자동제어·전력전자·전력계통공학·전자회로 (논술)',
     subjects: GOSI_SUBJECTS,
     exams: gosiExams(2025, 2010),
   },
