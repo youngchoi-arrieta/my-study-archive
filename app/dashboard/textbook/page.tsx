@@ -40,7 +40,7 @@ export default function TextbookHub() {
   return (
     <main className="min-h-screen bg-[#050d1a] text-white p-5 md:p-8">
       <div className="max-w-3xl mx-auto">
-        <Link href="/" className="text-gray-500 hover:text-white text-xs transition">← 홈</Link>
+        <Link href="/dashboard/denken" className="text-gray-500 hover:text-white text-xs transition">← 電験三種</Link>
         <div className="flex items-center gap-3 mb-1 mt-2">
           <span className="text-2xl">📚</span>
           <h1 className="text-2xl font-bold tracking-tight">N제 교재</h1>

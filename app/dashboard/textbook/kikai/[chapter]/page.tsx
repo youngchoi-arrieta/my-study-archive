@@ -87,7 +87,8 @@ export default function ChapterProblemGrid() {
   const cycleStatus = useCallback((q: number) => {
     setProblems(prev => {
       const next = new Map(prev)
-      const p = next.get(q)!
+      const p = next.get(q)
+      if (!p) return prev
       const idx = TB_STATUS_CYCLE.indexOf(p.status)
       const newStatus = TB_STATUS_CYCLE[(idx + 1) % TB_STATUS_CYCLE.length]
       const updated = { ...p, status: newStatus }
@@ -101,7 +102,7 @@ export default function ChapterProblemGrid() {
   const setTopic = useCallback((q: number, topic: string) => {
     setProblems(prev => {
       const next = new Map(prev)
-      next.set(q, { ...next.get(q)!, topic })
+      const cur = next.get(q); if (!cur) return prev; next.set(q, { ...cur, topic })
       return next
     })
   }, [])
@@ -114,7 +115,7 @@ export default function ChapterProblemGrid() {
   const setMemo = useCallback((q: number, memo: string) => {
     setProblems(prev => {
       const next = new Map(prev)
-      next.set(q, { ...next.get(q)!, memo })
+      const cur = next.get(q); if (!cur) return prev; next.set(q, { ...cur, memo })
       return next
     })
   }, [])
@@ -181,7 +182,8 @@ export default function ChapterProblemGrid() {
         <div className="flex-1 min-w-0 overflow-y-auto p-4">
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(52px, 1fr))' }}>
             {qNums.map(q => {
-              const p = problems.get(q)!
+              const p = problems.get(q)
+              if (!p) return null
               const meta = TB_STATUS_META[p.status]
               const isActive = activeQ === q
               return (
@@ -223,7 +225,7 @@ export default function ChapterProblemGrid() {
                         onClick={() => {
                           setProblems(prev => {
                             const next = new Map(prev)
-                            const updated = { ...next.get(activeProblem.q_num)!, status: st }
+                            const cur = next.get(activeProblem.q_num); if (!cur) return prev; const updated = { ...cur, status: st }
                             next.set(activeProblem.q_num, updated)
                             saveProblem(updated)
                             return next

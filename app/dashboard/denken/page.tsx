@@ -319,6 +319,17 @@ export default function DenkenHub() {
             일본 경제산업성 · CBT 전 과목 등록 완료 · 理論 · 電力 · 機械 · 法規
           </p>
 
+          {/* N제 교재 진입 배너 */}
+          <Link href="/dashboard/textbook"
+            className="flex items-center gap-3 bg-violet-900/20 hover:bg-violet-900/35 border border-violet-500/20 rounded-2xl px-4 py-3 mb-5 transition group">
+            <span className="text-xl">📚</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-violet-300">N제 교재</p>
+              <p className="text-[11px] text-gray-500">기출과 별개 · 교재 문제별 상태 · 핵심 토픽 · 정리 노트</p>
+            </div>
+            <span className="text-violet-500 text-sm group-hover:translate-x-0.5 transition">→</span>
+          </Link>
+
           {/* 탭 */}
           <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">
             {([
