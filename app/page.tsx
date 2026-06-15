@@ -135,6 +135,19 @@ export default function Home() {
           />
         </div>
 
+        {/* N제 교재 */}
+        <p className="text-xs text-gray-700 mb-2 ml-1">📚 N제 교재 (문제별 정리)</p>
+        <div className="grid grid-cols-1 gap-3 mb-6">
+          <ExamCard
+            href="/dashboard/textbook"
+            emoji="📚"
+            org="電験三種 N제"
+            title="N제 교재"
+            desc="교재 문제별 상태 · 핵심 토픽 · 정리 노트"
+            badge="준비 중"
+          />
+        </div>
+
         {/* 한국 — 취득 완료 */}
         <p className="text-xs text-gray-700 mb-2 ml-1">🇰🇷 한국 (취득 완료)</p>
         <div className="grid grid-cols-2 gap-3">
