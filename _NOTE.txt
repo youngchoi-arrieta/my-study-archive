@@ -1,0 +1,17 @@
+[이번 변경]
+1. N제 단원 페이지: 단원 사이드바 + 큰 타일(번호·상태·토픽) + 노트 3분할
+2. 문제 유형 태깅(빈칸채우기/계산/정오판별/기타) → N제 + 덴켄3종 기출 양쪽
+3. 홈에서 N제 카드 제거 (덴켄3종 허브 안 배너로만 진입)
+
+[SQL 실행]
+- textbook_migration.sql      (textbook_problems 테이블, 이미 했으면 생략)
+- textbook_ptype_migration.sql (ptype 컬럼 2개 추가) ← 이번에 필수
+
+[파일 복사]
+- lib/constants-textbook.ts
+- app/page.tsx                                       (N제 카드 없는 버전)
+- app/dashboard/denken/page.tsx                      (N제 배너)
+- app/dashboard/denken/kikai/[id]/page.tsx           (기출 유형태깅)
+- app/dashboard/textbook/page.tsx
+- app/dashboard/textbook/kikai/page.tsx
+- app/dashboard/textbook/kikai/[chapter]/page.tsx    (3분할 + 유형태깅)

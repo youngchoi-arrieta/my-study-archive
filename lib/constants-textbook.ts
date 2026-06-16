@@ -66,3 +66,15 @@ export function chapterQNums(ch: TextbookChapter): number[] {
   for (let i = ch.start; i <= ch.end; i++) out.push(i)
   return out
 }
+
+// ── 문제 유형 (빈칸채우기/계산/정오판별/기타) ──────────────────────
+export type ProblemType = 'fill' | 'calc' | 'truefalse' | 'etc'
+
+export const PROBLEM_TYPE_META: Record<ProblemType, { ko: string; short: string; accent: string }> = {
+  fill:      { ko: '빈칸채우기', short: '빈칸', accent: '#0891b2' },
+  calc:      { ko: '계산',       short: '계산', accent: '#7c3aed' },
+  truefalse: { ko: '정오판별',   short: '정오', accent: '#c2410c' },
+  etc:       { ko: '기타',       short: '기타', accent: '#6b7280' },
+}
+
+export const PROBLEM_TYPE_ORDER: ProblemType[] = ['fill', 'calc', 'truefalse', 'etc']

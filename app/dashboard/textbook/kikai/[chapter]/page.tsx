@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
@@ -12,7 +12,10 @@ import {
   TB_STATUS_META,
   TB_STATUS_CYCLE,
   TB_STATUS_ORDER,
+  PROBLEM_TYPE_META,
+  PROBLEM_TYPE_ORDER,
   type TextbookStatus,
+  type ProblemType,
 } from '@/lib/constants-textbook'
 
 const SUBJECT_SLUG = 'kikai'
@@ -20,12 +23,14 @@ const SUBJECT_SLUG = 'kikai'
 type Problem = {
   q_num: number
   status: TextbookStatus
+  ptype: ProblemType | null
   topic: string
   memo: string
 }
 
 export default function ChapterProblemGrid() {
   const params = useParams()
+  const router = useRouter()
   const chapterSlug = params.chapter as string
   const subject = TB_SUBJECT_MAP.get(SUBJECT_SLUG)!
   const chapter = getChapter(subject, chapterSlug)
@@ -33,33 +38,33 @@ export default function ChapterProblemGrid() {
   const [problems, setProblems] = useState<Map<number, Problem>>(new Map())
   const [activeQ, setActiveQ] = useState<number | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [allStats, setAllStats] = useState<Map<string, Record<TextbookStatus, number>>>(new Map())
   const [panelWidth, setPanelWidth] = useState(() =>
-    typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.4) : 500
+    typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.34) : 440
   )
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
-  const dragStartW = useRef(500)
+  const dragStartW = useRef(440)
 
   const qNums = chapter ? chapterQNums(chapter) : []
 
-  // ── 로드 ─────────────────────────────────────────────────────────
+  // ── 현재 단원 로드 ──────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!chapter) return
     const { data } = await supabase
       .from('textbook_problems')
-      .select('q_num, status, topic, memo')
+      .select('q_num, status, ptype, topic, memo')
       .eq('subject', SUBJECT_SLUG)
       .eq('chapter', chapterSlug)
     const m = new Map<number, Problem>()
-    // 기본값 채우기
     for (let q = chapter.start; q <= chapter.end; q++) {
-      m.set(q, { q_num: q, status: 'untouched', topic: '', memo: '' })
+      m.set(q, { q_num: q, status: 'untouched', ptype: null, topic: '', memo: '' })
     }
-    // DB 값 덮어쓰기
     ;(data || []).forEach(d => {
       m.set(d.q_num, {
         q_num: d.q_num,
         status: (d.status as TextbookStatus) ?? 'untouched',
+        ptype: (d.ptype as ProblemType) ?? null,
         topic: d.topic ?? '',
         memo: d.memo ?? '',
       })
@@ -71,19 +76,36 @@ export default function ChapterProblemGrid() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // ── 전체 단원 통계 (사이드바 진행률용) ───────────────────────────
+  const loadAllStats = useCallback(async () => {
+    const { data } = await supabase
+      .from('textbook_problems')
+      .select('chapter, status')
+      .eq('subject', SUBJECT_SLUG)
+    const m = new Map<string, Record<TextbookStatus, number>>()
+    ;(data || []).forEach(d => {
+      if (!m.has(d.chapter)) m.set(d.chapter, { untouched: 0, correct: 0, wrong: 0, unsure: 0 })
+      const rec = m.get(d.chapter)!
+      const st = (d.status as TextbookStatus) ?? 'untouched'
+      rec[st] = (rec[st] ?? 0) + 1
+    })
+    setAllStats(m)
+  }, [])
+
+  useEffect(() => { loadAllStats() }, [loadAllStats, problems])
+
   // ── 저장 ─────────────────────────────────────────────────────────
   const saveProblem = useCallback(async (p: Problem) => {
     await supabase.from('textbook_problems').upsert(
       {
         subject: SUBJECT_SLUG, chapter: chapterSlug, q_num: p.q_num,
-        status: p.status, topic: p.topic || null, memo: p.memo || null,
+        status: p.status, ptype: p.ptype, topic: p.topic || null, memo: p.memo || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'subject,chapter,q_num' }
     )
   }, [chapterSlug])
 
-  // ── 상태 토글 ────────────────────────────────────────────────────
   const cycleStatus = useCallback((q: number) => {
     setProblems(prev => {
       const next = new Map(prev)
@@ -98,11 +120,36 @@ export default function ChapterProblemGrid() {
     })
   }, [saveProblem])
 
-  // ── 토픽 변경 ────────────────────────────────────────────────────
+  const setStatusDirect = useCallback((q: number, st: TextbookStatus) => {
+    setProblems(prev => {
+      const next = new Map(prev)
+      const cur = next.get(q)
+      if (!cur) return prev
+      const updated = { ...cur, status: st }
+      next.set(q, updated)
+      saveProblem(updated)
+      return next
+    })
+  }, [saveProblem])
+
+  const setPtype = useCallback((q: number, ptype: ProblemType) => {
+    setProblems(prev => {
+      const next = new Map(prev)
+      const cur = next.get(q)
+      if (!cur) return prev
+      const updated = { ...cur, ptype: cur.ptype === ptype ? null : ptype }
+      next.set(q, updated)
+      saveProblem(updated)
+      return next
+    })
+  }, [saveProblem])
+
   const setTopic = useCallback((q: number, topic: string) => {
     setProblems(prev => {
       const next = new Map(prev)
-      const cur = next.get(q); if (!cur) return prev; next.set(q, { ...cur, topic })
+      const cur = next.get(q)
+      if (!cur) return prev
+      next.set(q, { ...cur, topic })
       return next
     })
   }, [])
@@ -111,11 +158,12 @@ export default function ChapterProblemGrid() {
     if (p) saveProblem(p)
   }, [problems, saveProblem])
 
-  // ── 메모 변경 ────────────────────────────────────────────────────
   const setMemo = useCallback((q: number, memo: string) => {
     setProblems(prev => {
       const next = new Map(prev)
-      const cur = next.get(q); if (!cur) return prev; next.set(q, { ...cur, memo })
+      const cur = next.get(q)
+      if (!cur) return prev
+      next.set(q, { ...cur, memo })
       return next
     })
   }, [])
@@ -132,7 +180,7 @@ export default function ChapterProblemGrid() {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isDragging.current) return
-      setPanelWidth(Math.min(Math.round(window.innerWidth * 0.7), Math.max(280, dragStartW.current - (e.clientX - dragStartX.current))))
+      setPanelWidth(Math.min(Math.round(window.innerWidth * 0.6), Math.max(280, dragStartW.current - (e.clientX - dragStartX.current))))
     }
     const onUp = () => { isDragging.current = false }
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
@@ -150,7 +198,6 @@ export default function ChapterProblemGrid() {
     )
   }
 
-  // 상태 카운트
   const counts: Record<TextbookStatus, number> = { untouched: 0, correct: 0, wrong: 0, unsure: 0 }
   qNums.forEach(q => { const p = problems.get(q); if (p) counts[p.status]++ })
 
@@ -175,12 +222,38 @@ export default function ChapterProblemGrid() {
         </div>
       </div>
 
-      {/* ── 바디 ─────────────────────────────────────────────────── */}
+      {/* ── 바디: 사이드바 + 그리드 + 노트 ─────────────────────────── */}
       <div className="flex flex-1 min-h-0">
 
-        {/* 문제 그리드 */}
+        {/* 단원 사이드바 */}
+        <div className="w-40 shrink-0 bg-[#080f1e] border-r border-white/5 overflow-y-auto py-2">
+          {subject.chapters.map(ch => {
+            const chQ = ch.end - ch.start + 1
+            const st = allStats.get(ch.slug) ?? { untouched: 0, correct: 0, wrong: 0, unsure: 0 }
+            const solved = st.correct + st.wrong + st.unsure
+            const isActive = ch.slug === chapterSlug
+            return (
+              <button key={ch.slug}
+                onClick={() => router.push(`/dashboard/textbook/kikai/${ch.slug}`)}
+                className={`w-full text-left px-3 py-2.5 transition ${isActive ? 'bg-[#0f1f35]' : 'hover:bg-[#0c1729]'}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ch.accent }} />
+                  <span className={`text-[12px] font-bold truncate ${isActive ? 'text-white' : 'text-gray-400'}`}>{ch.name}</span>
+                </div>
+                <div className="h-1 bg-gray-800 rounded-full overflow-hidden flex ml-3.5">
+                  <div className="h-full" style={{ width: `${(st.correct / chQ) * 100}%`, backgroundColor: TB_STATUS_META.correct.accent }} />
+                  <div className="h-full" style={{ width: `${(st.wrong / chQ) * 100}%`, backgroundColor: TB_STATUS_META.wrong.accent }} />
+                  <div className="h-full" style={{ width: `${(st.unsure / chQ) * 100}%`, backgroundColor: TB_STATUS_META.unsure.accent }} />
+                </div>
+                <p className="text-[9px] text-gray-600 ml-3.5 mt-1">{solved}/{chQ}</p>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* 문제 타일 그리드 */}
         <div className="flex-1 min-w-0 overflow-y-auto p-4">
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(52px, 1fr))' }}>
+          <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
             {qNums.map(q => {
               const p = problems.get(q)
               if (!p) return null
@@ -191,21 +264,35 @@ export default function ChapterProblemGrid() {
                   key={q}
                   onClick={() => setActiveQ(q)}
                   onDoubleClick={() => cycleStatus(q)}
-                  className={`relative aspect-square rounded-xl flex flex-col items-center justify-center transition ${
-                    isActive ? 'ring-2 ring-blue-400' : ''
+                  className={`relative h-24 rounded-2xl p-3 flex flex-col text-left transition ${
+                    isActive ? 'ring-2 ring-blue-400' : 'hover:brightness-125'
                   }`}
-                  style={{ backgroundColor: p.status === 'untouched' ? '#0f1c2e' : meta.accent + '33' }}
+                  style={{ backgroundColor: p.status === 'untouched' ? '#0f1c2e' : meta.accent + '22' }}
                   title="클릭: 선택 / 더블클릭: 상태 변경"
                 >
-                  <span className="text-sm font-bold" style={{ color: p.status === 'untouched' ? '#6b7280' : meta.accent }}>{q}</span>
-                  <span className="text-xs font-black" style={{ color: meta.accent }}>{meta.mark}</span>
-                  {p.memo && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                  {p.topic && <span className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-gray-500" />}
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-lg font-black" style={{ color: p.status === 'untouched' ? '#9ca3af' : meta.accent }}>{q}</span>
+                    <span className="text-base font-black" style={{ color: meta.accent }}>{meta.mark}</span>
+                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: meta.accent + '33', color: meta.accent }}>{meta.ko}</span>
+                  </div>
+                  {p.ptype && (
+                    <span className="absolute bottom-2 left-3 text-[9px] font-bold px-1.5 py-0.5 rounded"
+                      style={{ backgroundColor: PROBLEM_TYPE_META[p.ptype].accent + '33', color: PROBLEM_TYPE_META[p.ptype].accent }}>
+                      {PROBLEM_TYPE_META[p.ptype].short}
+                    </span>
+                  )}
+                  {p.topic ? (
+                    <p className="text-[11px] text-gray-300 leading-tight line-clamp-2">{p.topic}</p>
+                  ) : (
+                    <p className="text-[11px] text-gray-700 italic">토픽 미입력</p>
+                  )}
+                  {p.memo && <span className="absolute bottom-2 right-2 text-[9px] text-blue-400">📝</span>}
                 </button>
               )
             })}
           </div>
-          <p className="text-[11px] text-gray-700 mt-4">💡 칸 클릭 = 선택 · 더블클릭 = 상태 변경 (미착수→맞음→틀림→모르겠음)</p>
+          <p className="text-[11px] text-gray-700 mt-4">💡 타일 클릭 = 선택 · 더블클릭 = 상태 변경 (미착수→맞음→틀림→모르겠음)</p>
         </div>
 
         {/* 드래그 핸들 */}
@@ -215,22 +302,13 @@ export default function ChapterProblemGrid() {
         <div className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5" style={{ width: panelWidth, minWidth: 280 }}>
           {activeProblem ? (
             <>
-              {/* 헤더: 문제번호 + 상태 토글 */}
               <div className="px-4 py-3 border-b border-white/5">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-lg font-black text-white">{activeProblem.q_num}번</span>
                   <div className="ml-auto flex items-center gap-0.5 bg-[#0f1c2e] rounded-lg p-0.5">
                     {TB_STATUS_CYCLE.map(st => (
                       <button key={st}
-                        onClick={() => {
-                          setProblems(prev => {
-                            const next = new Map(prev)
-                            const cur = next.get(activeProblem.q_num); if (!cur) return prev; const updated = { ...cur, status: st }
-                            next.set(activeProblem.q_num, updated)
-                            saveProblem(updated)
-                            return next
-                          })
-                        }}
+                        onClick={() => setStatusDirect(activeProblem.q_num, st)}
                         className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${activeProblem.status === st ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
                         style={activeProblem.status === st ? { backgroundColor: TB_STATUS_META[st].accent } : {}}>
                         {TB_STATUS_META[st].ko}
@@ -238,7 +316,17 @@ export default function ChapterProblemGrid() {
                     ))}
                   </div>
                 </div>
-                {/* 핵심 토픽 (한 줄) */}
+                {/* 유형 태그 */}
+                <div className="flex items-center gap-1 mb-2">
+                  <span className="text-[10px] text-gray-600 mr-1">유형</span>
+                  {PROBLEM_TYPE_ORDER.map(pt => (
+                    <button key={pt} onClick={() => setPtype(activeProblem.q_num, pt)}
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${activeProblem.ptype === pt ? 'text-white' : 'text-gray-500 hover:text-gray-300 bg-[#0f1c2e]'}`}
+                      style={activeProblem.ptype === pt ? { backgroundColor: PROBLEM_TYPE_META[pt].accent } : {}}>
+                      {PROBLEM_TYPE_META[pt].ko}
+                    </button>
+                  ))}
+                </div>
                 <input
                   value={activeProblem.topic}
                   onChange={e => setTopic(activeProblem.q_num, e.target.value)}
@@ -247,8 +335,6 @@ export default function ChapterProblemGrid() {
                   className="w-full bg-[#0f1c2e] rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/60 placeholder-gray-700"
                 />
               </div>
-
-              {/* 정리 메모 에디터 */}
               <div className="flex-1 p-3 flex flex-col min-h-0">
                 <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">정리 메모 — 왜 틀렸나 · 일본어 어휘/문형</p>
                 {loaded && (

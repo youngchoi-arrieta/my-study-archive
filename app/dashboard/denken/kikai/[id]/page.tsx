@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { PROBLEM_TYPE_META, PROBLEM_TYPE_ORDER, type ProblemType } from '@/lib/constants-textbook'
 import {
   KIKAI_EXAMS,
   KIKAI_TAGS,
@@ -21,6 +22,7 @@ type Answer = {
   q_num: number
   result: Result
   tag_id: number | null
+  ptype: ProblemType | null
   memo: string
 }
 
@@ -195,6 +197,12 @@ function ScoreCell({
             <span className="text-[9px] text-gray-700 hover:text-gray-500 transition">태그</span>
           )}
         </button>
+        {answer.ptype && (
+          <span className="absolute -top-1 -right-1 text-[8px] font-bold px-1 rounded"
+            style={{ backgroundColor: PROBLEM_TYPE_META[answer.ptype].accent, color: '#fff' }}>
+            {PROBLEM_TYPE_META[answer.ptype].short}
+          </span>
+        )}
         {tagOpen && (
           <TagPalette
             selected={answer.tag_id}
@@ -221,6 +229,7 @@ export default function KikaiExamPage() {
       q_num: i + 1,
       result: null,
       tag_id: null,
+      ptype: null,
       memo: '',
     }))
   )
@@ -264,7 +273,7 @@ export default function KikaiExamPage() {
 
       const { data: ans } = await supabase
         .from('denken_kikai_answers')
-        .select('q_num, result, tag_id, memo')
+        .select('q_num, result, tag_id, ptype, memo')
         .eq('exam_id', examId)
 
       if (ans && ans.length > 0) {
@@ -275,6 +284,7 @@ export default function KikaiExamPage() {
             ...a,
             result: (found.result as Result) ?? null,
             tag_id: found.tag_id ?? null,
+            ptype: (found.ptype as ProblemType) ?? null,
             memo: found.memo ?? '',
           }
         }))
@@ -315,6 +325,7 @@ export default function KikaiExamPage() {
         q_num: a.q_num,
         result: a.result,
         tag_id: a.tag_id,
+        ptype: a.ptype,
         memo: a.memo || null,
         updated_at: new Date().toISOString(),
       },
@@ -348,6 +359,15 @@ export default function KikaiExamPage() {
       })
       return updated
     })
+  }, [saveAnswer])
+
+  const handlePtypeChange = useCallback((qNum: number, ptype: ProblemType) => {
+    setAnswers(prev => prev.map(a => {
+      if (a.q_num !== qNum) return a
+      const newA = { ...a, ptype: a.ptype === ptype ? null : ptype }
+      saveAnswer(newA)
+      return newA
+    }))
   }, [saveAnswer])
 
   // ── 메모 변경 (로컬만, blur 시 저장) ─────────────────────────
@@ -653,6 +673,18 @@ export default function KikaiExamPage() {
               {activeAnswer?.result === 'correct' ? '○ 정답' :
                activeAnswer?.result === 'wrong' ? '✕ 오답' : '미채점'}
             </span>
+          </div>
+
+          {/* 유형 태그 */}
+          <div className="px-4 py-2 border-b border-white/5 flex items-center gap-1">
+            <span className="text-[10px] text-gray-600 mr-1">유형</span>
+            {PROBLEM_TYPE_ORDER.map(pt => (
+              <button key={pt} onClick={() => handlePtypeChange(activeQ, pt)}
+                className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${activeAnswer?.ptype === pt ? 'text-white' : 'text-gray-500 hover:text-gray-300 bg-[#0f1c2e]'}`}
+                style={activeAnswer?.ptype === pt ? { backgroundColor: PROBLEM_TYPE_META[pt].accent } : {}}>
+                {PROBLEM_TYPE_META[pt].ko}
+              </button>
+            ))}
           </div>
 
           {/* 메모 입력 */}
