@@ -1,60 +1,55 @@
 'use client'
 import { useEffect, useState } from 'react'
 import {
-  DailyLog, Lang,
-  STUDY_BLOCKS, STUDY_TOTAL_MIN, studyStreak,
+  DailyLog, BudgetConfig, Lang,
+  StudyBlockCfg, DEFAULT_STUDY_BLOCKS, studyStreak,
 } from '../types'
 
 interface Props {
   logs: DailyLog[]
   todayLog: DailyLog | null
-  today: string                      // YYYY-MM-DD (UTC, same as DailyLogView)
+  blocks: StudyBlockCfg[]            // config.study_blocks_cfg ?? DEFAULT_STUDY_BLOCKS
   onUpsertToday: (patch: Partial<DailyLog>) => Promise<void>
+  onUpdateConfig: (patch: Partial<BudgetConfig>) => Promise<void>
   lang: Lang
 }
 
-// last n dates ending at `today`, matching the app's UTC date keys
-function lastNDates(today: string, n: number): string[] {
-  const out: string[] = []
-  const base = new Date(today + 'T00:00:00Z')
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(base)
-    d.setUTCDate(base.getUTCDate() - i)
-    out.push(d.toISOString().slice(0, 10))
-  }
-  return out
-}
-
-export default function StudyBlocksView({ logs, todayLog, today, onUpsertToday, lang }: Props) {
-  const [blocks, setBlocks] = useState<Record<string, boolean>>(todayLog?.study_blocks ?? {})
+export default function StudyBlocksView({ logs, todayLog, blocks, onUpsertToday, onUpdateConfig, lang }: Props) {
+  const [done, setDone] = useState<Record<string, boolean>>(todayLog?.study_blocks ?? {})
   const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<StudyBlockCfg[]>(blocks)
 
-  // resync when the day rolls over or props refresh
-  useEffect(() => {
-    setBlocks(todayLog?.study_blocks ?? {})
-  }, [todayLog])
+  // resync completion when the day rolls over / props refresh
+  useEffect(() => { setDone(todayLog?.study_blocks ?? {}) }, [todayLog])
+  // resync draft when config changes
+  useEffect(() => { setDraft(blocks) }, [blocks])
 
   const toggle = async (key: string) => {
-    const next = { ...blocks, [key]: !blocks[key] }
-    setBlocks(next)                  // optimistic
+    if (editing) return
+    const next = { ...done, [key]: !done[key] }
+    setDone(next)                              // optimistic
     setSaving(true)
-    try {
-      await onUpsertToday({ study_blocks: next })
-    } finally {
-      setSaving(false)
-    }
+    try { await onUpsertToday({ study_blocks: next }) }
+    finally { setSaving(false) }
   }
 
-  const doneCount = STUDY_BLOCKS.filter(b => blocks[b.key]).length
-  const doneMin   = STUDY_BLOCKS.filter(b => blocks[b.key]).reduce((s, b) => s + b.minutes, 0)
-  const pct       = Math.round((doneMin / STUDY_TOTAL_MIN) * 100)
-  const streak    = studyStreak(logs)
-  const week      = lastNDates(today, 7)
+  const saveConfig = async () => {
+    const cleaned = draft.map(b => ({
+      ...b,
+      label: b.label.trim() || b.key,
+      minutes: Math.max(0, Math.round(b.minutes) || 0),
+    }))
+    setEditing(false)
+    await onUpdateConfig({ study_blocks_cfg: cleaned })
+  }
 
-  const byDate = new Map(logs.map(l => [l.log_date, l.study_blocks ?? {}]))
-  const countDone = (sb: Record<string, boolean>) => STUDY_BLOCKS.filter(b => sb[b.key]).length
-
-  const allDone = doneCount === STUDY_BLOCKS.length
+  const totalMin  = blocks.reduce((s, b) => s + b.minutes, 0)
+  const doneCount = blocks.filter(b => done[b.key]).length
+  const doneMin   = blocks.filter(b => done[b.key]).reduce((s, b) => s + b.minutes, 0)
+  const pct       = totalMin > 0 ? Math.round((doneMin / totalMin) * 100) : 0
+  const streak    = studyStreak(logs, blocks)
+  const allDone   = blocks.length > 0 && doneCount === blocks.length
 
   return (
     <div className="bg-gray-900 rounded-2xl p-5 space-y-4">
@@ -65,78 +60,111 @@ export default function StudyBlocksView({ logs, todayLog, today, onUpsertToday, 
             {lang === 'en' ? 'Fixed routine' : 'Rutina fija'}
           </p>
           <p className="text-xs text-gray-500 mt-0.5">
-            {lang === 'en' ? 'Non-negotiable 4 h, like a workout' : '4 h innegociables, como entrenar'}
+            {lang === 'en' ? 'Non-negotiable, like a workout' : 'Innegociable, como entrenar'}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold tabular-nums">
-            {doneCount}<span className="text-base font-normal text-gray-500">/{STUDY_BLOCKS.length}</span>
-          </p>
-          {streak > 0 && <p className="text-xs font-medium text-amber-400">🔥 {streak}{lang === 'en' ? ' days' : ' días'}</p>}
-        </div>
-      </div>
-
-      {/* progress bar */}
-      <div>
-        <div className="flex justify-between text-xs text-gray-500">
-          <span>{doneMin} min</span>
-          <span>{STUDY_TOTAL_MIN} min</span>
-        </div>
-        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-800">
-          <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-
-      {/* block toggles */}
-      <div className="space-y-2.5">
-        {STUDY_BLOCKS.map(b => {
-          const done = !!blocks[b.key]
-          return (
-            <button
-              key={b.key}
-              type="button"
-              disabled={saving}
-              onClick={() => toggle(b.key)}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition disabled:opacity-60 ${
-                done ? `${b.accent} text-white` : 'bg-gray-800 hover:bg-gray-700 text-gray-100'
-              }`}
-            >
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${
-                done ? 'bg-white/20' : 'bg-gray-900 text-gray-400'
-              }`}>
-                {done ? '✓' : `${b.minutes}'`}
-              </span>
-              <span className="min-w-0 flex-1 font-medium">{b[lang]}</span>
-              <span className={`shrink-0 text-sm tabular-nums ${done ? 'text-white/80' : 'text-gray-500'}`}>
-                {b.minutes} min
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* 7-day strip */}
-      <div className="flex items-center justify-between gap-1.5">
-        {week.map(d => {
-          const c = countDone(byDate.get(d) ?? {})
-          const isToday = d === today
-          const color = c >= STUDY_BLOCKS.length ? 'bg-blue-600' : c > 0 ? 'bg-blue-600/40' : 'bg-gray-800'
-          return (
-            <div key={d} className="flex flex-1 flex-col items-center gap-1" title={`${d} · ${c}/${STUDY_BLOCKS.length}`}>
-              <div className={`h-6 w-full rounded-md ${color} ${isToday ? 'ring-2 ring-blue-400/60' : ''}`} />
-              <span className="text-[10px] text-gray-600">{Number(d.slice(8, 10))}</span>
+        <div className="flex items-center gap-3">
+          {!editing && (
+            <div className="text-right">
+              <p className="text-2xl font-bold tabular-nums leading-none">
+                {doneCount}<span className="text-base font-normal text-gray-500">/{blocks.length}</span>
+              </p>
+              {streak > 0 && <p className="text-xs font-medium text-amber-400 mt-0.5">🔥 {streak}{lang === 'en' ? ' days' : ' días'}</p>}
             </div>
-          )
-        })}
+          )}
+          <button
+            type="button"
+            onClick={() => (editing ? setEditing(false) : setEditing(true))}
+            className="text-xs text-gray-500 hover:text-gray-300 transition"
+            title={lang === 'en' ? 'Edit names' : 'Editar nombres'}
+          >
+            {editing ? '✕' : '✏️'}
+          </button>
+        </div>
       </div>
 
-      <p className="text-xs text-gray-500 border-t border-gray-800 pt-3">
-        {allDone
-          ? (lang === 'en' ? 'Done. The rest of the day is yours — movement, rest, leisure.'
-                           : 'Listo. El resto del día es tuyo — movimiento, descanso, ocio.')
-          : (lang === 'en' ? 'Only these 4 h are fixed. The rest stays open.'
-                           : 'Solo estas 4 h son fijas. El resto queda libre.')}
-      </p>
+      {/* progress bar (hidden while editing) */}
+      {!editing && (
+        <div>
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>{doneMin} min</span>
+            <span>{totalMin} min</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-800">
+            <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* rows */}
+      {editing ? (
+        <div className="space-y-2.5">
+          {draft.map((b, i) => (
+            <div key={b.key} className="flex items-center gap-2 bg-gray-800 rounded-xl px-3 py-2">
+              <input
+                value={b.label}
+                onChange={e => setDraft(d => d.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                placeholder={lang === 'en' ? 'Routine name' : 'Nombre'}
+                className="min-w-0 flex-1 bg-transparent text-gray-100 font-medium outline-none placeholder:text-gray-600"
+              />
+              <input
+                type="number" inputMode="numeric" min={0}
+                value={b.minutes}
+                onChange={e => setDraft(d => d.map((x, j) => j === i ? { ...x, minutes: Number(e.target.value) } : x))}
+                className="w-16 bg-gray-900 rounded-lg px-2 py-1 text-right text-sm tabular-nums text-gray-200 outline-none"
+              />
+              <span className="text-xs text-gray-500">min</span>
+            </div>
+          ))}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={() => { setDraft(blocks); setEditing(false) }}
+              className="flex-1 py-2 rounded-lg bg-gray-800 text-sm">
+              {lang === 'en' ? 'Cancel' : 'Cancelar'}
+            </button>
+            <button type="button" onClick={saveConfig}
+              className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold">
+              {lang === 'en' ? 'Save' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {blocks.map(b => {
+            const isDone = !!done[b.key]
+            return (
+              <button
+                key={b.key}
+                type="button"
+                disabled={saving}
+                onClick={() => toggle(b.key)}
+                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition disabled:opacity-60 ${
+                  isDone ? `${b.accent} text-white` : 'bg-gray-800 hover:bg-gray-700 text-gray-100'
+                }`}
+              >
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${
+                  isDone ? 'bg-white/20' : 'bg-gray-900 text-gray-400'
+                }`}>
+                  {isDone ? '✓' : `${b.minutes}'`}
+                </span>
+                <span className="min-w-0 flex-1 font-medium truncate">{b.label}</span>
+                <span className={`shrink-0 text-sm tabular-nums ${isDone ? 'text-white/80' : 'text-gray-500'}`}>
+                  {b.minutes} min
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {!editing && (
+        <p className="text-xs text-gray-500 border-t border-gray-800 pt-3">
+          {allDone
+            ? (lang === 'en' ? 'Done. The rest of the day is yours — not tracked.'
+                             : 'Listo. El resto del día es tuyo — sin registrar.')
+            : (lang === 'en' ? 'Only these are fixed. The rest of the day is not tracked.'
+                             : 'Solo esto es fijo. El resto del día no se registra.')}
+        </p>
+      )}
     </div>
   )
 }

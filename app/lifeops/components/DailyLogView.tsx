@@ -5,6 +5,7 @@ import {
   DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS, DEFAULT_ACTIVITY_CATS,
   ActivityEntry, ActivityCat,
   Lang, Currency, t, formatAmount, parseToKrw, currentStreak,
+  DEFAULT_STUDY_BLOCKS,
 } from '../types'
 import { quoteOfDay, promptOfDay } from '../quotes'
 import StudyBlocksView from './StudyBlocksView'
@@ -77,8 +78,10 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
 
       {/* Daily fixed study blocks */}
       <StudyBlocksView
-        logs={logs} todayLog={todayLog} today={today}
-        onUpsertToday={onUpsertToday} lang={lang}
+        logs={logs} todayLog={todayLog}
+        blocks={config.study_blocks_cfg ?? DEFAULT_STUDY_BLOCKS}
+        onUpsertToday={onUpsertToday} onUpdateConfig={onUpdateConfig}
+        lang={lang}
       />
 
       {/* Quote of the day */}

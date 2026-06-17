@@ -57,6 +57,7 @@ export interface BudgetConfig {
   expense_cats: ExpenseCat[] | null
   income_cats: IncomeCat[] | null
   activity_cats: ActivityCat[] | null
+  study_blocks_cfg: StudyBlockCfg[] | null
 }
 
 export interface ActivityCat {
@@ -177,29 +178,29 @@ export function currentStreak(
   return streak
 }
 
-// ── Daily fixed study blocks (운동처럼 무조건 고정하는 4시간) ───────────────────
-export interface StudyBlock {
+// ── Daily fixed study blocks (운동처럼 무조건 고정하는 3개 루틴) ────────────────
+// 라벨·시간은 사용자가 자유롭게 편집 → budget_config.study_blocks_cfg 에 저장.
+// 완료 여부(boolean)는 daily_logs.study_blocks 에 key 기준으로 저장.
+export interface StudyBlockCfg {
   key: string
-  en: string
-  es: string
+  label: string
   minutes: number
   accent: string   // tailwind bg class for the "done" state
 }
 
-export const STUDY_BLOCKS: StudyBlock[] = [
-  { key: 'denken',   en: '電験三種 drills',    es: 'Práctica Denken',   minutes: 90, accent: 'bg-blue-600'    },
-  { key: 'jisseki',  en: 'Electrician practical', es: 'Práctica eléctrica', minutes: 90, accent: 'bg-emerald-600' },
-  { key: 'japanese', en: 'Japanese reading',   es: 'Lectura japonés',   minutes: 60, accent: 'bg-amber-500'   },
+export const DEFAULT_STUDY_BLOCKS: StudyBlockCfg[] = [
+  { key: 'b1', label: '電験三種 문풀',   minutes: 90, accent: 'bg-blue-600'    },
+  { key: 'b2', label: '전기공사사 실기', minutes: 90, accent: 'bg-emerald-600' },
+  { key: 'b3', label: '일본어 독해',     minutes: 60, accent: 'bg-amber-500'   },
 ]
-
-export const STUDY_TOTAL_MIN = STUDY_BLOCKS.reduce((s, b) => s + b.minutes, 0) // 240
 
 // Consecutive days (ending today or yesterday) where ALL fixed blocks are done.
 export function studyStreak(
-  logs: { log_date: string; study_blocks?: Record<string, boolean> | null }[]
+  logs: { log_date: string; study_blocks?: Record<string, boolean> | null }[],
+  blocks: StudyBlockCfg[]
 ): number {
   const allDone = (sb?: Record<string, boolean> | null) =>
-    !!sb && STUDY_BLOCKS.every(b => sb[b.key])
+    !!sb && blocks.length > 0 && blocks.every(b => sb[b.key])
   const did = new Set<string>()
   logs.forEach(l => { if (allDone(l.study_blocks)) did.add(l.log_date) })
   if (did.size === 0) return 0
