@@ -100,6 +100,7 @@ export default function LifeOpsDashboard() {
         activities:  patch.activities  ?? null,
         listening_min: patch.listening_min ?? null,
         listening_content: patch.listening_content ?? null,
+        study_blocks: patch.study_blocks ?? null,
       })
     }
     await fetchAll()

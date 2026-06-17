@@ -24,6 +24,7 @@ export interface DailyLog {
   listening_min: number | null          // 일본어 청해 시간(분)
   listening_content: string | null      // 청해 콘텐츠
   study_minutes?: Record<string, number>
+  study_blocks?: Record<string, boolean> | null   // 하루 고정 루틴: { denken, jisseki, japanese }
 }
 
 export interface ActivityEntry {
@@ -164,6 +165,48 @@ export function currentStreak(
   function iso(d: Date) { return d.toISOString().slice(0,10) }
 
   let cursor = new Date(todayD)
+  if (!did.has(iso(cursor))) {
+    cursor.setDate(cursor.getDate() - 1)
+    if (!did.has(iso(cursor))) return 0
+  }
+  let streak = 0
+  while (did.has(iso(cursor))) {
+    streak++
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return streak
+}
+
+// ── Daily fixed study blocks (운동처럼 무조건 고정하는 4시간) ───────────────────
+export interface StudyBlock {
+  key: string
+  en: string
+  es: string
+  minutes: number
+  accent: string   // tailwind bg class for the "done" state
+}
+
+export const STUDY_BLOCKS: StudyBlock[] = [
+  { key: 'denken',   en: '電験三種 drills',    es: 'Práctica Denken',   minutes: 90, accent: 'bg-blue-600'    },
+  { key: 'jisseki',  en: 'Electrician practical', es: 'Práctica eléctrica', minutes: 90, accent: 'bg-emerald-600' },
+  { key: 'japanese', en: 'Japanese reading',   es: 'Lectura japonés',   minutes: 60, accent: 'bg-amber-500'   },
+]
+
+export const STUDY_TOTAL_MIN = STUDY_BLOCKS.reduce((s, b) => s + b.minutes, 0) // 240
+
+// Consecutive days (ending today or yesterday) where ALL fixed blocks are done.
+export function studyStreak(
+  logs: { log_date: string; study_blocks?: Record<string, boolean> | null }[]
+): number {
+  const allDone = (sb?: Record<string, boolean> | null) =>
+    !!sb && STUDY_BLOCKS.every(b => sb[b.key])
+  const did = new Set<string>()
+  logs.forEach(l => { if (allDone(l.study_blocks)) did.add(l.log_date) })
+  if (did.size === 0) return 0
+
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const todayD = new Date(); todayD.setHours(0, 0, 0, 0)
+  const cursor = new Date(todayD)
   if (!did.has(iso(cursor))) {
     cursor.setDate(cursor.getDate() - 1)
     if (!did.has(iso(cursor))) return 0

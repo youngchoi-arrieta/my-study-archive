@@ -7,6 +7,7 @@ import {
   Lang, Currency, t, formatAmount, parseToKrw, currentStreak,
 } from '../types'
 import { quoteOfDay, promptOfDay } from '../quotes'
+import StudyBlocksView from './StudyBlocksView'
 
 interface Props {
   logs: DailyLog[]
@@ -73,6 +74,12 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
           <p className="text-2xl font-bold">{lisStreak > 0 ? `🔥 ${lisStreak}` : '–'}<span className="text-sm text-gray-500 font-normal">{lisStreak > 0 ? (lang==='en'?' days':' días') : ''}</span></p>
         </div>
       </div>
+
+      {/* Daily fixed study blocks */}
+      <StudyBlocksView
+        logs={logs} todayLog={todayLog} today={today}
+        onUpsertToday={onUpsertToday} lang={lang}
+      />
 
       {/* Quote of the day */}
       <div className="bg-gradient-to-br from-gray-900 to-gray-900/40 rounded-2xl px-5 py-4 border border-gray-800/50">
