@@ -5,10 +5,9 @@ import {
   DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS, DEFAULT_ACTIVITY_CATS,
   ActivityEntry, ActivityCat,
   Lang, Currency, t, formatAmount, parseToKrw, currentStreak,
-  DEFAULT_STUDY_BLOCKS,
+  DEFAULT_STUDY_BLOCKS, StudyBlockCfg,
 } from '../types'
 import { quoteOfDay, promptOfDay } from '../quotes'
-import StudyBlocksView from './StudyBlocksView'
 
 interface Props {
   logs: DailyLog[]
@@ -48,6 +47,7 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
   const expenseCats  = config.expense_cats  ?? DEFAULT_EXPENSE_CATS
   const incomeCats   = config.income_cats   ?? DEFAULT_INCOME_CATS
   const activityCats = config.activity_cats ?? DEFAULT_ACTIVITY_CATS
+  const studyBlocks  = config.study_blocks_cfg ?? DEFAULT_STUDY_BLOCKS
 
   const actStreak = currentStreak(logs, 'activity')
   const lisStreak = currentStreak(logs, 'listening')
@@ -76,14 +76,6 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
         </div>
       </div>
 
-      {/* Daily fixed study blocks */}
-      <StudyBlocksView
-        logs={logs} todayLog={todayLog}
-        blocks={config.study_blocks_cfg ?? DEFAULT_STUDY_BLOCKS}
-        onUpsertToday={onUpsertToday} onUpdateConfig={onUpdateConfig}
-        lang={lang}
-      />
-
       {/* Quote of the day */}
       <div className="bg-gradient-to-br from-gray-900 to-gray-900/40 rounded-2xl px-5 py-4 border border-gray-800/50">
         <p className="text-sm text-gray-200 italic leading-relaxed">
@@ -94,12 +86,14 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
 
       <TodayCard
         log={todayLog} expenseCats={expenseCats} incomeCats={incomeCats} activityCats={activityCats}
+        studyBlocks={studyBlocks}
         onUpsert={onUpsertToday} onUpdateConfig={onUpdateConfig}
         dailyTargetKrw={config.daily_target_krw}
         lang={lang} currency={currency} copPerKrw={copPerKrw} fmt={fmt}
       />
       <HistoryTable logs={recent} dailyTargetKrw={config.daily_target_krw}
         fmt={fmt} lang={lang} expenseCats={expenseCats} incomeCats={incomeCats} activityCats={activityCats}
+        studyBlocks={studyBlocks}
         onUpdateLog={onUpdateLog} onDeleteLog={onDeleteLog} />
 
       {balanceOpen && (
@@ -188,11 +182,12 @@ function BalanceModal({ config, onSave, onClose }: {
 }
 
 // ── Today card ────────────────────────────────────────────────────────────────
-function TodayCard({ log, expenseCats, incomeCats, activityCats, onUpsert, onUpdateConfig, dailyTargetKrw, lang, currency, copPerKrw, fmt }: {
+function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, onUpsert, onUpdateConfig, dailyTargetKrw, lang, currency, copPerKrw, fmt }: {
   log: DailyLog | null
   expenseCats: ExpenseCat[]
   incomeCats: IncomeCat[]
   activityCats: ActivityCat[]
+  studyBlocks: StudyBlockCfg[]
   onUpsert: (p: Partial<DailyLog>) => Promise<void>
   onUpdateConfig: (p: Partial<BudgetConfig>) => Promise<void>
   dailyTargetKrw: number
@@ -213,6 +208,7 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, onUpsert, onUpd
   const [memo,        setMemo]        = useState(log?.memo ?? '')
   const [reflection,  setReflection]  = useState(log?.reflection ?? '')
   const [activities,  setActivities]  = useState<ActivityEntry[]>(log?.activities ?? [])
+  const [routine,     setRoutine]     = useState<Record<string, boolean>>(log?.study_blocks ?? {})
   const [lisMin,      setLisMin]      = useState(log?.listening_min != null ? String(log.listening_min) : '')
   const [lisContent,  setLisContent]  = useState(log?.listening_content ?? '')
   const [actMinInput, setActMinInput] = useState<Record<string, string>>({})
@@ -225,6 +221,7 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, onUpsert, onUpd
       setMemo(log.memo ?? '')
       setReflection(log.reflection ?? '')
       setActivities(log.activities ?? [])
+      setRoutine(log.study_blocks ?? {})
       setLisMin(log.listening_min != null ? String(log.listening_min) : '')
       setLisContent(log.listening_content ?? '')
       setWeightInput(log.weight_kg != null ? String(log.weight_kg) : '')
@@ -286,6 +283,13 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, onUpsert, onUpd
     setActivities(next)
     await onUpsert({ activities: next })
   }
+
+  async function toggleRoutine(key: string) {
+    const next = { ...routine, [key]: !routine[key] }
+    setRoutine(next)
+    await onUpsert({ study_blocks: next })
+  }
+  const routineDone = studyBlocks.filter(b => routine[b.key]).length
 
   const actLabel = (key: string) => activityCats.find(c => c.key === key)?.[lang] ?? key
 
@@ -404,6 +408,31 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, onUpsert, onUpd
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── 고정 루틴 (fixed routine — recorded per day) ── */}
+      <div className="border-t border-gray-800 pt-4">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">
+          📚 {lang === 'en' ? 'Fixed routine' : 'Rutina fija'}
+          {routineDone < studyBlocks.length
+            ? <span className="text-red-400 ml-2">• {routineDone}/{studyBlocks.length}</span>
+            : studyBlocks.length > 0 && <span className="text-emerald-400 ml-2">• ✓ {lang === 'en' ? 'all done' : 'completo'}</span>}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {studyBlocks.map(b => {
+            const active = !!routine[b.key]
+            return (
+              <button key={b.key} onClick={() => toggleRoutine(b.key)}
+                className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                  active ? 'border-blue-600 text-blue-100 bg-blue-900/30 ring-1 ring-blue-700/50'
+                         : 'border-gray-700 text-gray-400 bg-gray-800/60 hover:brightness-125'}`}>
+                {active ? '✓ ' : ''}{b.label}<span className="opacity-50"> · {b.minutes}m</span>
+              </button>
+            )
+          })}
+          <StudyBlockEditor blocks={studyBlocks} lang={lang}
+            onSave={bs => onUpdateConfig({ study_blocks_cfg: bs })} />
+        </div>
       </div>
 
       {/* ── 신체활동 (required daily habit) ── */}
@@ -671,10 +700,61 @@ function ActivityCatEditor({ cats, lang, onSave }: {
   )
 }
 
+// ── Fixed-routine name/time editor (exactly 3 blocks, no add/remove) ──────────
+function StudyBlockEditor({ blocks, lang, onSave }: {
+  blocks: StudyBlockCfg[]; lang: Lang; onSave: (blocks: StudyBlockCfg[]) => Promise<void>
+}) {
+  const [open, setOpen]     = useState(false)
+  const [list, setList]     = useState<StudyBlockCfg[]>(blocks)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { setList(blocks) }, [blocks])
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="text-xs text-gray-600 hover:text-gray-400 px-2 py-1.5 rounded-full border border-gray-700 transition">
+      ✏️
+    </button>
+  )
+
+  async function save() {
+    const cleaned = list.map(b => ({
+      ...b,
+      label: b.label.trim() || b.key,
+      minutes: Math.max(0, Math.round(Number(b.minutes)) || 0),
+    }))
+    setSaving(true); await onSave(cleaned); setSaving(false); setOpen(false)
+  }
+
+  return (
+    <div className="w-full bg-gray-800 rounded-xl p-3 space-y-2 mt-1">
+      {list.map((b, i) => (
+        <div key={b.key} className="flex items-center gap-2">
+          <input type="text" className="bg-gray-700 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-0"
+            placeholder={lang === 'en' ? 'Routine name' : 'Nombre'} value={b.label}
+            onChange={e => setList(prev => prev.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
+          <input type="number" inputMode="numeric" min={0}
+            className="bg-gray-700 rounded-lg px-2 py-1.5 text-sm w-16 text-right tabular-nums" value={b.minutes}
+            onChange={e => setList(prev => prev.map((x, j) => j === i ? { ...x, minutes: Number(e.target.value) } : x))} />
+          <span className="text-xs text-gray-500">min</span>
+        </div>
+      ))}
+      <div className="flex gap-2 pt-1">
+        <button onClick={() => { setList(blocks); setOpen(false) }} className="flex-1 bg-gray-700 py-1.5 rounded-lg text-xs">Cancel</button>
+        <button onClick={save} disabled={saving}
+          className="flex-1 bg-blue-600 hover:bg-blue-500 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
+          {saving ? '…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── History table ─────────────────────────────────────────────────────────────
-function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats, activityCats, onUpdateLog, onDeleteLog }: {
+function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats, activityCats, studyBlocks, onUpdateLog, onDeleteLog }: {
   logs: DailyLog[]; dailyTargetKrw: number; fmt: (n: number) => string; lang: Lang
   expenseCats: ExpenseCat[]; incomeCats: IncomeCat[]; activityCats: ActivityCat[]
+  studyBlocks: StudyBlockCfg[]
   onUpdateLog: (id: string, patch: Partial<DailyLog>) => Promise<void>
   onDeleteLog: (id: string) => Promise<void>
 }) {
@@ -787,6 +867,16 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
                       <span key={a.type} className="bg-orange-900/30 text-orange-200 text-xs px-2.5 py-1 rounded-full">
                         {activityCats.find(c => c.key === a.type)?.[lang] ?? a.type}
                         {a.minutes > 0 ? ` · ${a.minutes}m` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* fixed routine (read-only summary) */}
+                {l.study_blocks && studyBlocks.some(b => l.study_blocks?.[b.key]) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {studyBlocks.filter(b => l.study_blocks?.[b.key]).map(b => (
+                      <span key={b.key} className="bg-blue-900/30 text-blue-200 text-xs px-2.5 py-1 rounded-full">
+                        ✓ {b.label}
                       </span>
                     ))}
                   </div>

@@ -194,28 +194,3 @@ export const DEFAULT_STUDY_BLOCKS: StudyBlockCfg[] = [
   { key: 'b3', label: '일본어 독해',     minutes: 60, accent: 'bg-amber-500'   },
 ]
 
-// Consecutive days (ending today or yesterday) where ALL fixed blocks are done.
-export function studyStreak(
-  logs: { log_date: string; study_blocks?: Record<string, boolean> | null }[],
-  blocks: StudyBlockCfg[]
-): number {
-  const allDone = (sb?: Record<string, boolean> | null) =>
-    !!sb && blocks.length > 0 && blocks.every(b => sb[b.key])
-  const did = new Set<string>()
-  logs.forEach(l => { if (allDone(l.study_blocks)) did.add(l.log_date) })
-  if (did.size === 0) return 0
-
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  const todayD = new Date(); todayD.setHours(0, 0, 0, 0)
-  const cursor = new Date(todayD)
-  if (!did.has(iso(cursor))) {
-    cursor.setDate(cursor.getDate() - 1)
-    if (!did.has(iso(cursor))) return 0
-  }
-  let streak = 0
-  while (did.has(iso(cursor))) {
-    streak++
-    cursor.setDate(cursor.getDate() - 1)
-  }
-  return streak
-}
