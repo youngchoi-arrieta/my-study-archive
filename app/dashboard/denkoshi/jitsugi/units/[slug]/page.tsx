@@ -271,18 +271,18 @@ export default function UnitDetailPage() {
                 <span className="text-gray-700">·</span>
                 <span>사진 위 <span className="text-gray-400">−/＋</span> 크기조절</span>
               </div>
-              <div className="flex flex-wrap gap-2 p-2 bg-black">
+              <div className="grid grid-cols-2 gap-2 p-2 bg-black">
                 {cur.images.map((im, i) => (
                   <div key={i} className="relative group bg-gray-950 rounded-lg overflow-hidden flex items-center justify-center"
-                    style={{ flexGrow: im.w, flexBasis: 0, minWidth: 150 }}>
-                    <img src={im.src} alt="" className="w-full object-contain max-h-[55vh]" draggable={false} />
+                    style={{ gridColumn: im.w >= 2 ? '1 / -1' : 'auto' }}>
+                    <img src={im.src} alt="" className="w-full object-contain max-h-[70vh]" draggable={false} />
                     <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
-                      <button onClick={() => setImageWidth(idx, i, Math.max(1, im.w - 1))} className={ibtn} title="작게">−</button>
-                      <button onClick={() => setImageWidth(idx, i, Math.min(6, im.w + 1))} className={ibtn} title="크게">＋</button>
+                      <button onClick={() => setImageWidth(idx, i, im.w >= 2 ? 1 : 2)} className={ibtn}
+                        title={im.w >= 2 ? '2열로' : '한 행 크게'}>{im.w >= 2 ? '−' : '＋'}</button>
                       {cur.images.length > 1 && (
                         <>
-                          <button onClick={() => moveImage(idx, i, -1)} disabled={i === 0} className={ibtn} title="왼쪽">◀</button>
-                          <button onClick={() => moveImage(idx, i, 1)} disabled={i === cur.images.length - 1} className={ibtn} title="오른쪽">▶</button>
+                          <button onClick={() => moveImage(idx, i, -1)} disabled={i === 0} className={ibtn} title="앞으로">◀</button>
+                          <button onClick={() => moveImage(idx, i, 1)} disabled={i === cur.images.length - 1} className={ibtn} title="뒤로">▶</button>
                         </>
                       )}
                       <button onClick={() => removeImage(idx, i)} className={`${ibtn} hover:bg-red-600`} title="이미지 삭제">✕</button>
