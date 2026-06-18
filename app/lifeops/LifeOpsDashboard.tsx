@@ -12,7 +12,12 @@ const BudgetView = dynamic(() => import('./components/BudgetView'), {
   loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} />,
 })
 
-type Tab = 'log' | 'budget' | 'milestones'
+const FamiliaRoadmap = dynamic(() => import('../familia/FamiliaRoadmap'), {
+  ssr: false,
+  loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} />,
+})
+
+type Tab = 'log' | 'budget' | 'milestones' | 'roadmap'
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
 function daysUntil(d: string) {
@@ -142,6 +147,7 @@ export default function LifeOpsDashboard() {
     { key: 'log',        label: t('log', lang)        },
     { key: 'budget',     label: t('budget', lang)     },
     { key: 'milestones', label: t('milestones', lang) },
+    { key: 'roadmap',    label: lang === 'en' ? '🗺️ Roadmap' : '🗺️ Plan' },
   ]
 
   return (
@@ -229,7 +235,11 @@ export default function LifeOpsDashboard() {
             onDelete={deleteMilestone} onToggleDone={toggleDone} />
         )}
 
-        {!loading && !config && tab !== 'milestones' && (
+        {!loading && tab === 'roadmap' && (
+          <FamiliaRoadmap embedded lang={lang} />
+        )}
+
+        {!loading && !config && tab !== 'milestones' && tab !== 'roadmap' && (
           <div className="text-center py-20">
             <p className="text-gray-500 mb-4 text-sm">No budget config yet.</p>
             <button onClick={() => updateConfig({

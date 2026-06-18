@@ -447,3 +447,35 @@
 }
 
 .muted { color: var(--muted); }
+
+/* ─── Hub page ───────────────────────────────────────────── */
+.hubGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+@media (max-width: 640px) {
+  .hubGrid { grid-template-columns: 1fr; }
+}
+.hubCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  justify-content: center;
+  min-height: 190px;
+  padding: 2rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: #faf5ee;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.hubCard:hover {
+  background: var(--surface-hover);
+  transform: translateY(-2px);
+}
+.hubEmoji { font-size: 2.6rem; line-height: 1; }
+.hubTitle { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+.hubSub   { font-size: 0.85rem; color: var(--text-dim); }
+.hubHint  { margin-top: 1.5rem; font-size: 0.75rem; color: var(--muted); text-align: center; }

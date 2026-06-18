@@ -436,8 +436,9 @@ function CoreAgreement({ items, lang, onToggle, onDelete, onUpdate, onAdd }: {
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 
-export default function FamiliaRoadmap() {
-  const [lang, setLang]           = useState<Lang>('en')
+export default function FamiliaRoadmap({ embedded = false, lang: langProp }: { embedded?: boolean; lang?: Lang } = {}) {
+  const [langState, setLang]      = useState<Lang>('en')
+  const lang = langProp ?? langState
   const [items, setItems]         = useState<Item[]>([])
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [loading, setLoading]     = useState(true)
@@ -516,17 +517,18 @@ export default function FamiliaRoadmap() {
   // ── Render ───────────────────────────────────────────────
   if (loading) {
     return (
-      <div className={styles.loading}>
+      <div className={styles.loading} style={embedded ? { height: '12rem', background: 'transparent' } : undefined}>
         <span>loading familia…</span>
       </div>
     )
   }
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} style={embedded ? { minHeight: 'auto', background: 'transparent', padding: 0 } : undefined}>
       <div className={styles.inner}>
 
         {/* ── Header ─────────────────────────────────────── */}
+        {!embedded && (
         <header className={styles.header}>
           <div>
             <h1 className={styles.title}>❤️ Familia Choi · Arrieta</h1>
@@ -552,6 +554,7 @@ export default function FamiliaRoadmap() {
             </button>
           </div>
         </header>
+        )}
 
         {/* ── Goals + Financial ──────────────────────────── */}
         <div className={styles.metaRow}>
