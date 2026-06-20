@@ -22,6 +22,7 @@ interface Props {
 }
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
+const nowMs = () => Date.now()   // 핸들러/이펙트에서 시각 취득(렌더 순수성 룰 우회)
 function sumKrw(e: Record<string, number>) { return Object.values(e).reduce((a, b) => a + b, 0) }
 
 export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConfig, onUpdateLog, onDeleteLog, lang, currency, copPerKrw }: Props) {
@@ -209,6 +210,11 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
   const [reflection,  setReflection]  = useState(log?.reflection ?? '')
   const [activities,  setActivities]  = useState<ActivityEntry[]>(log?.activities ?? [])
   const [routine,     setRoutine]     = useState<Record<string, boolean>>(log?.study_blocks ?? {})
+  const [routineMin,  setRoutineMin]  = useState<Record<string, number>>(log?.study_minutes ?? {})
+  // 타이머: 돌고 있는 항목 key + 시작 시각(ms). 한 번에 하나만.
+  const [timerKey,    setTimerKey]    = useState<string | null>(null)
+  const [timerStart,  setTimerStart]  = useState<number>(0)
+  const [nowTick,     setNowTick]     = useState<number>(0)   // 1초마다 갱신용
   const [lisMin,      setLisMin]      = useState(log?.listening_min != null ? String(log.listening_min) : '')
   const [lisContent,  setLisContent]  = useState(log?.listening_content ?? '')
   const [actMinInput, setActMinInput] = useState<Record<string, string>>({})
@@ -222,6 +228,7 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
       setReflection(log.reflection ?? '')
       setActivities(log.activities ?? [])
       setRoutine(log.study_blocks ?? {})
+      setRoutineMin(log.study_minutes ?? {})
       setLisMin(log.listening_min != null ? String(log.listening_min) : '')
       setLisContent(log.listening_content ?? '')
       setWeightInput(log.weight_kg != null ? String(log.weight_kg) : '')
@@ -284,10 +291,66 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
     await onUpsert({ activities: next })
   }
 
-  async function toggleRoutine(key: string) {
+  // 타이머 1초 틱 (돌고 있을 때만). 시작 즉시 한 번 갱신.
+  useEffect(() => {
+    if (timerKey == null) return
+    setNowTick(nowMs())
+    const t = setInterval(() => setNowTick(nowMs()), 1000)
+    return () => clearInterval(t)
+  }, [timerKey])
+
+  // 경과 초 → 분(올림). 누적에 더해 저장하고 완료 ✓ 처리.
+  async function commitTimer(key: string, startMs: number) {
+    const secs = Math.max(0, Math.round((nowMs() - startMs) / 1000))
+    // 30초 이상이면 최소 1분으로 인정(짧은 세션 유실 방지)
+    const addMin = secs >= 30 ? Math.max(1, Math.round(secs / 60)) : 0
+    if (addMin <= 0) return
+    const nextMin = { ...routineMin, [key]: (routineMin[key] || 0) + addMin }
+    const nextDone = { ...routine, [key]: true }
+    setRoutineMin(nextMin); setRoutine(nextDone)
+    await onUpsert({ study_minutes: nextMin, study_blocks: nextDone })
+  }
+
+  // 항목 타이머 시작/정지. 다른 항목이 돌고 있으면 먼저 정지·저장(한 번에 하나).
+  async function toggleTimer(key: string) {
+    if (timerKey === key) {
+      // 정지
+      const startMs = timerStart
+      setTimerKey(null)
+      await commitTimer(key, startMs)
+    } else {
+      if (timerKey != null) await commitTimer(timerKey, timerStart)
+      setTimerKey(key)
+      setTimerStart(nowMs())
+    }
+  }
+
+  // 완료 체크만 토글(시간 없이). 해제 시 누적분은 보존.
+  async function toggleRoutineDone(key: string) {
     const next = { ...routine, [key]: !routine[key] }
     setRoutine(next)
     await onUpsert({ study_blocks: next })
+  }
+
+  // 수동 분 입력(이미 한 것). 누적에 더함 + 완료 ✓.
+  async function addRoutineMinutes(key: string, addMin: number) {
+    if (!Number.isFinite(addMin) || addMin === 0) return
+    const cur = routineMin[key] || 0
+    const nextVal = Math.max(0, cur + addMin)
+    const nextMin = { ...routineMin, [key]: nextVal }
+    const nextDone = { ...routine, [key]: nextVal > 0 ? true : routine[key] }
+    setRoutineMin(nextMin); setRoutine(nextDone)
+    await onUpsert({ study_minutes: nextMin, study_blocks: nextDone })
+  }
+
+  // 화면 표시용 누적 분(돌고 있는 항목은 실시간 가산). 렌더 중 Date.now() 직접 호출 금지 → nowTick 사용.
+  const liveMinutes = (key: string) => {
+    const base = routineMin[key] || 0
+    if (timerKey === key && timerStart > 0) {
+      const ref = nowTick > timerStart ? nowTick : timerStart
+      return base + Math.round((ref - timerStart) / 1000 / 60)
+    }
+    return base
   }
   const routineDone = studyBlocks.filter(b => routine[b.key]).length
 
@@ -418,20 +481,59 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
             ? <span className="text-red-400 ml-2">• {routineDone}/{studyBlocks.length}</span>
             : studyBlocks.length > 0 && <span className="text-emerald-400 ml-2">• ✓ {lang === 'en' ? 'all done' : 'completo'}</span>}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2">
           {studyBlocks.map(b => {
             const active = !!routine[b.key]
+            const running = timerKey === b.key
+            const mins = liveMinutes(b.key)
+            const target = b.minutes
+            const reached = mins >= target && target > 0
             return (
-              <button key={b.key} onClick={() => toggleRoutine(b.key)}
-                className={`text-sm px-3 py-1.5 rounded-full border transition ${
-                  active ? 'border-blue-600 text-blue-100 bg-blue-900/30 ring-1 ring-blue-700/50'
-                         : 'border-gray-700 text-gray-400 bg-gray-800/60 hover:brightness-125'}`}>
-                {active ? '✓ ' : ''}{b.label}<span className="opacity-50"> · {b.minutes}m</span>
-              </button>
+              <div key={b.key}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition ${
+                  running ? 'border-blue-500 bg-blue-900/30 ring-1 ring-blue-600/50'
+                  : active ? 'border-emerald-700/60 bg-emerald-900/15'
+                           : 'border-gray-700 bg-gray-800/60'}`}>
+                {/* 시작/정지 */}
+                <button onClick={() => toggleTimer(b.key)}
+                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm transition ${
+                    running ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                            : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
+                  title={running ? (lang === 'en' ? 'Stop' : 'Parar') : (lang === 'en' ? 'Start' : 'Iniciar')}>
+                  {running ? '⏸' : '▶'}
+                </button>
+
+                {/* 라벨 + 완료 체크 */}
+                <button onClick={() => toggleRoutineDone(b.key)}
+                  className="flex-1 text-left text-sm"
+                  title={lang === 'en' ? 'Toggle done' : 'Marcar'}>
+                  <span className={active ? 'text-emerald-300' : 'text-gray-300'}>
+                    {active ? '✓ ' : ''}{b.label}
+                  </span>
+                </button>
+
+                {/* 누적 시간 / 목표 */}
+                <span className={`text-sm tabular-nums shrink-0 ${
+                  running ? 'text-blue-200' : reached ? 'text-emerald-400' : 'text-gray-400'}`}>
+                  {mins}<span className="opacity-50"> / {target}m</span>
+                </span>
+
+                {/* 수동 +／− */}
+                <div className="flex gap-0.5 shrink-0">
+                  <button onClick={() => addRoutineMinutes(b.key, 10)}
+                    className="w-7 h-7 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs text-gray-200"
+                    title="+10m">＋</button>
+                  <button onClick={() => addRoutineMinutes(b.key, -10)}
+                    className="w-7 h-7 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs text-gray-200"
+                    title="-10m">－</button>
+                </div>
+              </div>
             )
           })}
-          <StudyBlockEditor blocks={studyBlocks} lang={lang}
-            onSave={bs => onUpdateConfig({ study_blocks_cfg: bs })} />
+          <div>
+            <StudyBlockEditor blocks={studyBlocks} lang={lang}
+              onSave={bs => onUpdateConfig({ study_blocks_cfg: bs })} />
+          </div>
         </div>
       </div>
 
@@ -872,13 +974,17 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
                   </div>
                 )}
                 {/* fixed routine (read-only summary) */}
-                {l.study_blocks && studyBlocks.some(b => l.study_blocks?.[b.key]) && (
+                {((l.study_blocks && studyBlocks.some(b => l.study_blocks?.[b.key])) ||
+                  (l.study_minutes && studyBlocks.some(b => (l.study_minutes?.[b.key] ?? 0) > 0))) && (
                   <div className="flex flex-wrap gap-1.5">
-                    {studyBlocks.filter(b => l.study_blocks?.[b.key]).map(b => (
-                      <span key={b.key} className="bg-blue-900/30 text-blue-200 text-xs px-2.5 py-1 rounded-full">
-                        ✓ {b.label}
-                      </span>
-                    ))}
+                    {studyBlocks.filter(b => l.study_blocks?.[b.key] || (l.study_minutes?.[b.key] ?? 0) > 0).map(b => {
+                      const m = l.study_minutes?.[b.key] ?? 0
+                      return (
+                        <span key={b.key} className="bg-blue-900/30 text-blue-200 text-xs px-2.5 py-1 rounded-full">
+                          {l.study_blocks?.[b.key] ? '✓ ' : ''}{b.label}{m > 0 ? ` · ${m}m` : ''}
+                        </span>
+                      )
+                    })}
                   </div>
                 )}
                 {l.listening_min != null && l.listening_min > 0 && (
