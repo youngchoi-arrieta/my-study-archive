@@ -21,27 +21,27 @@ interface Props {
   copPerKrw: number
 }
 
-function todayStr() { return new Date().toISOString().slice(0, 10) }
+function todayStr() {
+  // 한국시간(KST, UTC+9) 기준 YYYY-MM-DD
+  const kst = new Date(Date.now() + 9 * 3600 * 1000)
+  return kst.toISOString().slice(0, 10)
+}
 const nowMs = () => Date.now()   // 핸들러/이펙트에서 시각 취득(렌더 순수성 룰 우회)
 function sumKrw(e: Record<string, number>) { return Object.values(e).reduce((a, b) => a + b, 0) }
+// 날짜 가감 (YYYY-MM-DD, UTC 정오 기준이라 DST/타임존 영향 없음)
+function shiftDate(dateStr: string, days: number) {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
 
 export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConfig, onUpdateLog, onDeleteLog, lang, currency, copPerKrw }: Props) {
-  const [today, setToday] = useState(todayStr())
+  const today = todayStr()
+  // 보고 있는 날짜(기본 = 오늘). 화살표/달력으로 이동.
+  const [selectedDate, setSelectedDate] = useState(today)
+  const isToday = selectedDate === today
 
-  // 자정에 today 갱신
-  useEffect(() => {
-    function msUntilMidnight() {
-      const now = new Date()
-      const midnight = new Date(now)
-      midnight.setHours(24, 0, 0, 0)
-      return midnight.getTime() - now.getTime()
-    }
-    const timeout = setTimeout(() => {
-      setToday(todayStr())
-    }, msUntilMidnight() + 500)
-    return () => clearTimeout(timeout)
-  }, [today])  // today가 바뀔 때마다 다음 자정 타이머 재설정
-  const todayLog = useMemo(() => logs.find(l => l.log_date === today) || null, [logs, today])
+  const selectedLog = useMemo(() => logs.find(l => l.log_date === selectedDate) || null, [logs, selectedDate])
   const recent   = useMemo(() => [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date)).slice(0, 14), [logs])
   const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)
 
@@ -80,13 +80,19 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
       {/* Quote of the day */}
       <div className="bg-gradient-to-br from-gray-900 to-gray-900/40 rounded-2xl px-5 py-4 border border-gray-800/50">
         <p className="text-sm text-gray-200 italic leading-relaxed">
-          "{quoteOfDay(today)[lang]}"
+          &quot;{quoteOfDay(selectedDate)[lang]}&quot;
         </p>
-        <p className="text-xs text-gray-500 mt-2">— {quoteOfDay(today).who}</p>
+        <p className="text-xs text-gray-500 mt-2">— {quoteOfDay(selectedDate).who}</p>
       </div>
 
+      {/* 날짜 네비게이션 */}
+      <DateNav selectedDate={selectedDate} today={today} lang={lang}
+        onChange={setSelectedDate} />
+
       <TodayCard
-        log={todayLog} expenseCats={expenseCats} incomeCats={incomeCats} activityCats={activityCats}
+        key={selectedDate}
+        log={selectedLog} dateStr={selectedDate} isToday={isToday}
+        expenseCats={expenseCats} incomeCats={incomeCats} activityCats={activityCats}
         studyBlocks={studyBlocks}
         onUpsert={onUpsertToday} onUpdateConfig={onUpdateConfig}
         dailyTargetKrw={config.daily_target_krw}
@@ -183,19 +189,23 @@ function BalanceModal({ config, onSave, onClose }: {
 }
 
 // ── Today card ────────────────────────────────────────────────────────────────
-function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, onUpsert, onUpdateConfig, dailyTargetKrw, lang, currency, copPerKrw, fmt }: {
+function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCats, studyBlocks, onUpsert: onUpsertRaw, onUpdateConfig, dailyTargetKrw, lang, currency, copPerKrw, fmt }: {
   log: DailyLog | null
+  dateStr: string
+  isToday: boolean
   expenseCats: ExpenseCat[]
   incomeCats: IncomeCat[]
   activityCats: ActivityCat[]
   studyBlocks: StudyBlockCfg[]
-  onUpsert: (p: Partial<DailyLog>) => Promise<void>
+  onUpsert: (p: Partial<DailyLog>, dateStr?: string) => Promise<void>
   onUpdateConfig: (p: Partial<BudgetConfig>) => Promise<void>
   dailyTargetKrw: number
   lang: Lang; currency: Currency; copPerKrw: number
   fmt: (n: number) => string
 }) {
-  const today   = todayStr()
+  // 모든 저장은 보고 있는 날짜로 (과거 날짜 편집 지원)
+  const onUpsert = (p: Partial<DailyLog>) => onUpsertRaw(p, dateStr)
+  const today   = dateStr
   const expense = log?.expense_krw || {}
   const income  = log?.income_krw  || {}
 
@@ -312,7 +322,9 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
   }
 
   // 항목 타이머 시작/정지. 다른 항목이 돌고 있으면 먼저 정지·저장(한 번에 하나).
+  // 타이머는 '오늘'만 가능(과거 날짜는 수동 입력으로만 편집).
   async function toggleTimer(key: string) {
+    if (!isToday) return
     if (timerKey === key) {
       // 정지
       const startMs = timerStart
@@ -376,7 +388,7 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
     <div className="bg-gray-900 rounded-2xl p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-lg">Today <span className="text-gray-500 text-sm font-normal">{today}</span></h3>
+        <h3 className="font-bold text-lg">{isToday ? 'Today' : '📅'} <span className="text-gray-500 text-sm font-normal">{today}</span></h3>
         <div className="flex gap-3 text-sm">
           <span className={overBudget ? 'text-red-400' : 'text-green-400'}>{fmt(totalExp)}</span>
           {totalInc > 0 && <span className="text-emerald-400">+{fmt(totalInc)}</span>}
@@ -505,14 +517,21 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
                   running ? 'border-blue-500 bg-blue-900/30 ring-1 ring-blue-600/50'
                   : active ? 'border-emerald-700/60 bg-emerald-900/15'
                            : 'border-gray-700 bg-gray-800/60'}`}>
-                {/* 시작/정지 */}
-                <button onClick={() => toggleTimer(b.key)}
-                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm transition ${
-                    running ? 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse'
-                            : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
-                  title={running ? (lang === 'en' ? 'Stop' : 'Parar') : (lang === 'en' ? 'Start' : 'Iniciar')}>
-                  {running ? '⏸' : '▶'}
-                </button>
+                {/* 시작/정지 (오늘만 타이머 가능) */}
+                {isToday ? (
+                  <button onClick={() => toggleTimer(b.key)}
+                    className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm transition ${
+                      running ? 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse'
+                              : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
+                    title={running ? (lang === 'en' ? 'Stop' : 'Parar') : (lang === 'en' ? 'Start' : 'Iniciar')}>
+                    {running ? '⏸' : '▶'}
+                  </button>
+                ) : (
+                  <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm bg-gray-800 text-gray-600"
+                    title={lang === 'en' ? 'Timer only on today — use ＋/－' : '타이머는 오늘만 — ＋/－로 입력'}>
+                    🔒
+                  </span>
+                )}
 
                 {/* 라벨 + 완료 체크 (+ 도는 중엔 경과 MM:SS) */}
                 <button onClick={() => toggleRoutineDone(b.key)}
@@ -1103,6 +1122,51 @@ function HistoryMetaEditor({ log, lang, onSave }: {
         className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-3 py-1.5 rounded-lg transition">
         {saving ? 'Saving…' : '💾 Save changes'}
       </button>
+    </div>
+  )
+}
+
+// ── 날짜 네비게이션 (◀ 날짜 ▶ + 달력 + 오늘) ──────────────────────
+function DateNav({ selectedDate, today, lang, onChange }: {
+  selectedDate: string
+  today: string
+  lang: Lang
+  onChange: (d: string) => void
+}) {
+  const isToday = selectedDate === today
+  const atFuture = selectedDate >= today   // 오늘보다 미래로는 못 감
+  const weekday = (() => {
+    const d = new Date(selectedDate + 'T12:00:00Z')
+    const ko = ['일', '월', '화', '수', '목', '금', '토']
+    const en = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    return (lang === 'en' ? en : ko)[d.getUTCDay()]
+  })()
+
+  return (
+    <div className="flex items-center justify-center gap-2">
+      <button onClick={() => onChange(shiftDate(selectedDate, -1))}
+        className="w-9 h-9 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition"
+        title={lang === 'en' ? 'Previous day' : '이전 날'}>◀</button>
+
+      <label className="relative">
+        <span className="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-100 cursor-pointer inline-flex items-center gap-2 transition">
+          📅 {selectedDate} <span className="text-gray-500">({weekday})</span>
+        </span>
+        <input type="date" value={selectedDate} max={today}
+          onChange={e => { if (e.target.value) onChange(e.target.value) }}
+          className="absolute inset-0 opacity-0 cursor-pointer" />
+      </label>
+
+      <button onClick={() => onChange(shiftDate(selectedDate, 1))} disabled={atFuture}
+        className={`w-9 h-9 rounded-lg transition ${atFuture ? 'bg-gray-900 text-gray-700 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
+        title={lang === 'en' ? 'Next day' : '다음 날'}>▶</button>
+
+      {!isToday && (
+        <button onClick={() => onChange(today)}
+          className="px-3 h-9 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition">
+          {lang === 'en' ? 'Today' : '오늘'}
+        </button>
+      )}
     </div>
   )
 }
