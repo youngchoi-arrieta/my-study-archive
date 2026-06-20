@@ -352,6 +352,17 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
     }
     return base
   }
+  // 현재 도는 세션의 경과 초 (MM:SS 표시용)
+  const runningSecs = () => {
+    if (timerKey == null || timerStart <= 0) return 0
+    const ref = nowTick > timerStart ? nowTick : timerStart
+    return Math.max(0, Math.floor((ref - timerStart) / 1000))
+  }
+  const fmtMMSS = (secs: number) => {
+    const m = Math.floor(secs / 60)
+    const sObj = secs % 60
+    return `${m}:${String(sObj).padStart(2, '0')}`
+  }
   const routineDone = studyBlocks.filter(b => routine[b.key]).length
 
   const actLabel = (key: string) => activityCats.find(c => c.key === key)?.[lang] ?? key
@@ -497,19 +508,24 @@ function TodayCard({ log, expenseCats, incomeCats, activityCats, studyBlocks, on
                 {/* 시작/정지 */}
                 <button onClick={() => toggleTimer(b.key)}
                   className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm transition ${
-                    running ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                    running ? 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse'
                             : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
                   title={running ? (lang === 'en' ? 'Stop' : 'Parar') : (lang === 'en' ? 'Start' : 'Iniciar')}>
                   {running ? '⏸' : '▶'}
                 </button>
 
-                {/* 라벨 + 완료 체크 */}
+                {/* 라벨 + 완료 체크 (+ 도는 중엔 경과 MM:SS) */}
                 <button onClick={() => toggleRoutineDone(b.key)}
-                  className="flex-1 text-left text-sm"
+                  className="flex-1 text-left text-sm min-w-0"
                   title={lang === 'en' ? 'Toggle done' : 'Marcar'}>
-                  <span className={active ? 'text-emerald-300' : 'text-gray-300'}>
+                  <span className={`block truncate ${active ? 'text-emerald-300' : 'text-gray-300'}`}>
                     {active ? '✓ ' : ''}{b.label}
                   </span>
+                  {running && (
+                    <span className="block text-lg font-mono tabular-nums text-blue-300 leading-tight mt-0.5">
+                      ⏱ {fmtMMSS(runningSecs())}
+                    </span>
+                  )}
                 </button>
 
                 {/* 누적 시간 / 목표 */}
