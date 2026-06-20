@@ -12,7 +12,7 @@ interface Props {
   currency: Currency
 }
 
-type Period = 'week' | 'month' | 'd30' | 'all'
+type Period = 'week' | 'month' | 'all'
 
 function todayStr() {
   const kst = new Date(Date.now() + 9 * 3600 * 1000)
@@ -77,6 +77,7 @@ function ExpenseReport({ logs, config, lang, fmt, catType }: {
   catType: Map<string, 'daily' | 'fixed' | 'invest'>
 }) {
   const [period, setPeriod] = useState<Period>('month')
+  const [offset, setOffset] = useState(0)   // 0=현재, -1=직전, ... (week/month 단위)
   const [openCat, setOpenCat] = useState<string | null>(null)
   const cats = config.expense_cats ?? DEFAULT_EXPENSE_CATS
   const catLabel = (key: string) => {
@@ -85,19 +86,28 @@ function ExpenseReport({ logs, config, lang, fmt, catType }: {
   }
 
   const today = todayStr()
-  const periodStart = useMemo(() => {
-    if (period === 'all') return '0000-01-01'
+  // period+offset → [start, end] 범위
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    if (period === 'all') return { rangeStart: '0000-01-01', rangeEnd: today }
     if (period === 'week') {
       const d = new Date(today + 'T00:00:00')
-      const dow = (d.getDay() + 6) % 7
-      return addDays(today, -dow)
+      const dow = (d.getDay() + 6) % 7   // 월=0
+      const thisMon = addDays(today, -dow)
+      const start = addDays(thisMon, offset * 7)
+      const end = addDays(start, 6)
+      return { rangeStart: start, rangeEnd: end > today && offset === 0 ? today : end }
     }
-    if (period === 'month') return today.slice(0, 8) + '01'
-    return addDays(today, -29)
-  }, [period, today])
+    // month: offset 만큼 달 이동
+    const base = new Date(today + 'T00:00:00')
+    const mDate = new Date(base.getFullYear(), base.getMonth() + offset, 1)
+    const start = `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, '0')}-01`
+    const last = new Date(mDate.getFullYear(), mDate.getMonth() + 1, 0)
+    const end = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`
+    return { rangeStart: start, rangeEnd: end > today && offset === 0 ? today : end }
+  }, [period, offset, today])
 
   const report = useMemo(() => {
-    const inRange = logs.filter(l => l.log_date >= periodStart && l.log_date <= today)
+    const inRange = logs.filter(l => l.log_date >= rangeStart && l.log_date <= rangeEnd)
     const byCat = new Map<string, number>()
     const byTag = new Map<string, Map<string, number>>()  // cat → (tag → amt)
     let totalOp = 0, totalLump = 0
@@ -125,8 +135,8 @@ function ExpenseReport({ logs, config, lang, fmt, catType }: {
           .map(([tag, a]) => ({ tag, amt: a })).sort((x, y) => y.amt - x.amt),
       }))
       .sort((a, b) => b.amt - a.amt)
-    const actualStart = period === 'all' ? (inRange.length ? inRange.reduce((m, l) => l.log_date < m ? l.log_date : m, inRange[0].log_date) : today) : periodStart
-    const spanDays = Math.max(1, daysBetween(actualStart, today) + 1)
+    const actualStart = period === 'all' ? (inRange.length ? inRange.reduce((m, l) => l.log_date < m ? l.log_date : m, inRange[0].log_date) : today) : rangeStart
+    const spanDays = Math.max(1, daysBetween(actualStart, rangeEnd) + 1)
     const avgOp = totalOp / spanDays
     const target = config.daily_target_krw ?? 0
     let overDays = 0
@@ -137,33 +147,55 @@ function ExpenseReport({ logs, config, lang, fmt, catType }: {
       }
       if (op > target) overDays++
     }
-    return { rows, total, totalOp, totalLump, avgOp, target, overDays, loggedCount: loggedDates.size, actualStart, spanDays }
-  }, [logs, periodStart, today, catType, period, config.daily_target_krw, cats, lang])  // eslint-disable-line react-hooks/exhaustive-deps
+    return { rows, total, totalOp, totalLump, avgOp, target, overDays, loggedCount: loggedDates.size, actualStart, rangeEnd, spanDays }
+  }, [logs, rangeStart, rangeEnd, today, catType, period, config.daily_target_krw, cats, lang])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const periodBtns: { k: Period; label: string }[] = [
-    { k: 'week',  label: lang === 'en' ? 'Week'  : '이번주' },
-    { k: 'month', label: lang === 'en' ? 'Month' : '이번달' },
-    { k: 'd30',   label: '30d' },
+    { k: 'week',  label: lang === 'en' ? 'Week'  : '주' },
+    { k: 'month', label: lang === 'en' ? 'Month' : '월' },
     { k: 'all',   label: lang === 'en' ? 'All' : '전체' },
   ]
+  // 기간 라벨 (offset 반영)
+  const offsetLabel = period === 'week'
+    ? (offset === 0 ? (lang === 'en' ? 'This week' : '이번 주') : `${offset > 0 ? '+' : ''}${offset}${lang === 'en' ? 'w' : '주'}`)
+    : period === 'month'
+    ? (offset === 0 ? (lang === 'en' ? 'This month' : '이번 달') : report.actualStart.slice(0, 7))
+    : (lang === 'en' ? 'All time' : '전체')
 
   return (
     <div className="bg-gray-900 rounded-2xl p-5">
       <p className="font-bold mb-3">💸 {lang === 'en' ? 'Expense Report' : '소비 리포트'}</p>
 
       {/* 기간 토글 */}
-      <div className="flex gap-1.5 mb-1.5">
+      <div className="flex gap-1.5 mb-2">
         {periodBtns.map(b => (
-          <button key={b.k} onClick={() => setPeriod(b.k)}
+          <button key={b.k} onClick={() => { setPeriod(b.k); setOffset(0) }}
             className={`text-xs px-3 py-1.5 rounded-lg transition ${
               period === b.k ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
             {b.label}
           </button>
         ))}
       </div>
+
+      {/* ◀ 기간 ▶ 네비 (all 제외) */}
+      {period !== 'all' && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <button onClick={() => setOffset(o => o - 1)}
+            className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm transition">◀</button>
+          <span className="text-xs text-gray-300 min-w-[70px] text-center">{offsetLabel}</span>
+          <button onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0}
+            className={`w-7 h-7 rounded-lg text-sm transition ${offset >= 0 ? 'bg-gray-900 text-gray-700 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}>▶</button>
+          {offset !== 0 && (
+            <button onClick={() => setOffset(0)}
+              className="text-[11px] px-2 h-7 rounded-lg bg-blue-600/80 hover:bg-blue-500 text-white transition">
+              {lang === 'en' ? 'Now' : '현재'}
+            </button>
+          )}
+        </div>
+      )}
       {/* 집계 기간 명시 */}
       <p className="text-[11px] text-gray-500 mb-4">
-        📅 {report.actualStart} ~ {today} · {report.spanDays}{lang === 'en' ? ' days' : '일간'}
+        📅 {report.actualStart} ~ {report.rangeEnd} · {report.spanDays}{lang === 'en' ? ' days' : '일간'}
       </p>
 
       {/* 요약 */}
