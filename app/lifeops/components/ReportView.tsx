@@ -355,7 +355,9 @@ function StudyReport({ logs, config, lang }: {
       const done = l.study_blocks || {}
       let dayTotal = 0
       for (const b of blocks) {
-        const m = mins[b.key] || 0
+        const timed = mins[b.key] || 0
+        // 타이머 값 있으면 그대로, 없는데 ✓만 했으면 목표시간(b.minutes)으로 인정
+        const m = timed > 0 ? timed : (done[b.key] ? b.minutes : 0)
         if (m > 0) { perBlock.set(b.key, (perBlock.get(b.key) || 0) + m); dayTotal += m }
       }
       if (dayTotal > 0 || blocks.some(b => done[b.key])) studiedDates.add(l.log_date)
