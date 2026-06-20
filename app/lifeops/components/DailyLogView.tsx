@@ -4,10 +4,10 @@ import {
   DailyLog, BudgetConfig, ExpenseCat, IncomeCat,
   DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS, DEFAULT_ACTIVITY_CATS,
   ActivityEntry, ActivityCat,
-  Lang, Currency, t, formatAmount, parseToKrw, currentStreak,
+  Lang, Currency, t, formatAmount, parseToKrw,
   DEFAULT_STUDY_BLOCKS, StudyBlockCfg,
 } from '../types'
-import { quoteOfDay, promptOfDay } from '../quotes'
+import { quoteOfDay } from '../quotes'
 
 interface Props {
   logs: DailyLog[]
@@ -50,9 +50,6 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
   const activityCats = config.activity_cats ?? DEFAULT_ACTIVITY_CATS
   const studyBlocks  = config.study_blocks_cfg ?? DEFAULT_STUDY_BLOCKS
 
-  const actStreak = currentStreak(logs, 'activity')
-  const lisStreak = currentStreak(logs, 'listening')
-
   const [balanceOpen, setBalanceOpen] = useState(false)
 
   return (
@@ -64,18 +61,6 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
         <span className="text-xl font-bold">{fmt(config.start_balance_krw - logs.reduce((s,l)=>s+sumKrw(l.expense_krw),0) + logs.reduce((s,l)=>s+sumKrw(l.income_krw||{}),0))}</span>
         <span className="text-xs text-gray-600 group-hover:text-gray-400">tap to adjust ✏️</span>
       </button>
-
-      {/* Habit streaks */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className={`rounded-2xl px-4 py-3 ${actStreak > 0 ? 'bg-orange-950/30 border border-orange-900/40' : 'bg-gray-900'}`}>
-          <p className="text-xs text-gray-500">🏃 {lang === 'en' ? 'Activity streak' : 'Racha actividad'}</p>
-          <p className="text-2xl font-bold">{actStreak > 0 ? `🔥 ${actStreak}` : '–'}<span className="text-sm text-gray-500 font-normal">{actStreak > 0 ? (lang==='en'?' days':' días') : ''}</span></p>
-        </div>
-        <div className={`rounded-2xl px-4 py-3 ${lisStreak > 0 ? 'bg-blue-950/30 border border-blue-900/40' : 'bg-gray-900'}`}>
-          <p className="text-xs text-gray-500">🎧 {lang === 'en' ? 'Listening streak' : 'Racha escucha'}</p>
-          <p className="text-2xl font-bold">{lisStreak > 0 ? `🔥 ${lisStreak}` : '–'}<span className="text-sm text-gray-500 font-normal">{lisStreak > 0 ? (lang==='en'?' days':' días') : ''}</span></p>
-        </div>
-      </div>
 
       {/* Quote of the day */}
       <div className="bg-gradient-to-br from-gray-900 to-gray-900/40 rounded-2xl px-5 py-4 border border-gray-800/50">
@@ -217,7 +202,6 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
   const [weightInput, setWeightInput] = useState(log?.weight_kg != null ? String(log.weight_kg) : '')
   const [condition,   setCondition]   = useState(log?.condition ?? 3)
   const [memo,        setMemo]        = useState(log?.memo ?? '')
-  const [reflection,  setReflection]  = useState(log?.reflection ?? '')
   const [activities,  setActivities]  = useState<ActivityEntry[]>(log?.activities ?? [])
   const [routine,     setRoutine]     = useState<Record<string, boolean>>(log?.study_blocks ?? {})
   const [routineMin,  setRoutineMin]  = useState<Record<string, number>>(log?.study_minutes ?? {})
@@ -225,8 +209,6 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
   const [timerKey,    setTimerKey]    = useState<string | null>(null)
   const [timerStart,  setTimerStart]  = useState<number>(0)
   const [nowTick,     setNowTick]     = useState<number>(0)   // 1초마다 갱신용
-  const [lisMin,      setLisMin]      = useState(log?.listening_min != null ? String(log.listening_min) : '')
-  const [lisContent,  setLisContent]  = useState(log?.listening_content ?? '')
   const [actMinInput, setActMinInput] = useState<Record<string, string>>({})
   const [saving,      setSaving]      = useState(false)
   const [editCats,    setEditCats]    = useState(false)
@@ -235,12 +217,9 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
     if (log) {
       setCondition(log.condition ?? 3)
       setMemo(log.memo ?? '')
-      setReflection(log.reflection ?? '')
       setActivities(log.activities ?? [])
       setRoutine(log.study_blocks ?? {})
       setRoutineMin(log.study_minutes ?? {})
-      setLisMin(log.listening_min != null ? String(log.listening_min) : '')
-      setLisContent(log.listening_content ?? '')
       setWeightInput(log.weight_kg != null ? String(log.weight_kg) : '')
     }
   }, [log?.id])
@@ -271,14 +250,10 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
 
   async function saveMeta() {
     const w = parseFloat(weightInput)
-    const lm = parseInt(lisMin)
     await onUpsert({
       condition,
       memo: memo.trim() || null,
-      reflection: reflection.trim() || null,
       weight_kg: isNaN(w) ? null : w,
-      listening_min: isNaN(lm) ? null : lm,
-      listening_content: lisContent.trim() || null,
     })
   }
 
@@ -603,24 +578,6 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
         </div>
       </div>
 
-      {/* ── 일본어 청해 (required daily habit) ── */}
-      <div className="border-t border-gray-800 pt-4">
-        <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">
-          🎧 {lang === 'en' ? 'JP Listening' : 'Escucha JP'}
-          {!(parseInt(lisMin) > 0) && <span className="text-red-400 ml-2">• {lang === 'en' ? 'not done yet' : 'pendiente'}</span>}
-        </p>
-        <div className="flex gap-2">
-          <input type="number" inputMode="numeric"
-            className="bg-gray-800 rounded-lg px-3 py-2 text-sm w-20"
-            placeholder="min" value={lisMin}
-            onChange={e => setLisMin(e.target.value)} onBlur={saveMeta} />
-          <input type="text"
-            className="bg-gray-800 rounded-lg px-3 py-2 text-sm flex-1 min-w-0"
-            placeholder={lang === 'en' ? 'content (e.g. シャドテン, anime…)' : 'contenido…'}
-            value={lisContent} onChange={e => setLisContent(e.target.value)} onBlur={saveMeta} />
-        </div>
-      </div>
-
       {/* ── META ── */}
       <div className="border-t border-gray-800 pt-4 space-y-3">
         <div className="flex items-center gap-3">
@@ -645,17 +602,6 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
         <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm resize-none"
           rows={2} placeholder={t('memoPlaceholder', lang)}
           value={memo} onChange={e => setMemo(e.target.value)} onBlur={saveMeta} />
-
-        {/* Reflection prompt of the day */}
-        <div className="bg-gray-950/60 rounded-lg p-3 space-y-2 border border-gray-800/60">
-          <p className="text-xs text-purple-300/80 italic">
-            🪞 {promptOfDay(today)[lang]}
-          </p>
-          <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm resize-none"
-            rows={2}
-            placeholder={lang === 'en' ? 'A line of reflection…' : 'Una línea de reflexión…'}
-            value={reflection} onChange={e => setReflection(e.target.value)} onBlur={saveMeta} />
-        </div>
 
         <p className="text-xs text-gray-600">* auto-saved on blur</p>
       </div>
@@ -1022,12 +968,7 @@ function HistoryTable({ logs, dailyTargetKrw, fmt, lang, expenseCats, incomeCats
                     })}
                   </div>
                 )}
-                {l.listening_min != null && l.listening_min > 0 && (
-                  <div className="text-xs text-blue-300">
-                    🎧 {l.listening_min}m{l.listening_content ? ` · ${l.listening_content}` : ''}
-                  </div>
-                )}
-                {/* meta + memo + reflection — inline editable */}
+                {/* meta + memo — inline editable */}
                 <HistoryMetaEditor log={l} lang={lang} onSave={onUpdateLog} />
 
                 {!hasDetail && <p className="text-xs text-gray-600">No entries.</p>}
@@ -1111,12 +1052,6 @@ function HistoryMetaEditor({ log, lang, onSave }: {
         className="w-full bg-gray-800 rounded-lg px-3 py-2 text-xs resize-none"
         rows={2} placeholder="📝 memo…"
         value={memo} onChange={e => setMemo(e.target.value)} />
-
-      {/* reflection */}
-      <textarea
-        className="w-full bg-purple-950/30 border border-purple-900/30 rounded-lg px-3 py-2 text-xs resize-none text-purple-100 placeholder-purple-800"
-        rows={2} placeholder="🪞 reflection…"
-        value={reflection} onChange={e => setReflection(e.target.value)} />
 
       <button onClick={save} disabled={saving}
         className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 px-3 py-1.5 rounded-lg transition">
