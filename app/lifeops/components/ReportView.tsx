@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { DailyLog, BudgetConfig, Lang, Currency, formatAmount, DEFAULT_EXPENSE_CATS } from '../types'
+import { DailyLog, BudgetConfig, Lang, Currency, formatAmount, DEFAULT_EXPENSE_CATS, DEFAULT_STUDY_BLOCKS } from '../types'
 
 interface Props {
   logs: DailyLog[]
@@ -24,6 +24,66 @@ function addDays(d: string, n: number) {
 }
 function daysBetween(a: string, b: string) {
   return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
+}
+
+// period+offset → [start, end] (week/month/all 공용)
+function rangeFor(period: Period, offset: number, today: string): { start: string; end: string } {
+  if (period === 'all') return { start: '0000-01-01', end: today }
+  if (period === 'week') {
+    const d = new Date(today + 'T00:00:00')
+    const dow = (d.getDay() + 6) % 7
+    const thisMon = addDays(today, -dow)
+    const start = addDays(thisMon, offset * 7)
+    const end = addDays(start, 6)
+    return { start, end: end > today && offset === 0 ? today : end }
+  }
+  const base = new Date(today + 'T00:00:00')
+  const mDate = new Date(base.getFullYear(), base.getMonth() + offset, 1)
+  const start = `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, '0')}-01`
+  const last = new Date(mDate.getFullYear(), mDate.getMonth() + 1, 0)
+  const end = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`
+  return { start, end: end > today && offset === 0 ? today : end }
+}
+
+// 공용 기간 토글 + ◀▶ 네비
+function PeriodNav({ period, offset, setPeriod, setOffset, lang, rangeLabel }: {
+  period: Period; offset: number
+  setPeriod: (p: Period) => void; setOffset: (fn: (o: number) => number) => void
+  lang: Lang; rangeLabel: string
+}) {
+  const btns: { k: Period; label: string }[] = [
+    { k: 'week',  label: lang === 'en' ? 'Week'  : '주' },
+    { k: 'month', label: lang === 'en' ? 'Month' : '월' },
+    { k: 'all',   label: lang === 'en' ? 'All' : '전체' },
+  ]
+  return (
+    <>
+      <div className="flex gap-1.5 mb-2">
+        {btns.map(b => (
+          <button key={b.k} onClick={() => { setPeriod(b.k); setOffset(() => 0) }}
+            className={`text-xs px-3 py-1.5 rounded-lg transition ${
+              period === b.k ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+      {period !== 'all' && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <button onClick={() => setOffset(o => o - 1)}
+            className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm transition">◀</button>
+          <span className="text-xs text-gray-300 min-w-[70px] text-center">{rangeLabel}</span>
+          <button onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0}
+            className={`w-7 h-7 rounded-lg text-sm transition ${offset >= 0 ? 'bg-gray-900 text-gray-700 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}>▶</button>
+          {offset !== 0 && (
+            <button onClick={() => setOffset(() => 0)}
+              className="text-[11px] px-2 h-7 rounded-lg bg-blue-600/80 hover:bg-blue-500 text-white transition">
+              {lang === 'en' ? 'Now' : '현재'}
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  )
 }
 
 export default function ReportView({ logs, config, lang, currency }: Props) {
@@ -66,6 +126,7 @@ export default function ReportView({ logs, config, lang, currency }: Props) {
       )}
 
       <ExpenseReport logs={logs} config={config} lang={lang} fmt={fmt} catType={catType} />
+      <StudyReport logs={logs} config={config} lang={lang} />
     </div>
   )
 }
@@ -261,6 +322,128 @@ function ExpenseReport({ logs, config, lang, fmt, catType }: {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ── 공부/루틴 리포트 ────────────────────────────────────────────────
+function StudyReport({ logs, config, lang }: {
+  logs: DailyLog[]; config: BudgetConfig; lang: Lang
+}) {
+  const [period, setPeriod] = useState<Period>('week')
+  const [offset, setOffset] = useState(0)
+  const blocks = config.study_blocks_cfg ?? DEFAULT_STUDY_BLOCKS
+  const today = todayStr()
+  const { start, end } = useMemo(() => rangeFor(period, offset, today), [period, offset, today])
+
+  const fmtH = (min: number) => {
+    const h = Math.floor(min / 60), m = min % 60
+    return h > 0 ? `${h}h ${m}m` : `${m}m`
+  }
+
+  const data = useMemo(() => {
+    const inRange = logs.filter(l => l.log_date >= start && l.log_date <= end)
+    // 항목별 누적 분
+    const perBlock = new Map<string, number>()
+    // 요일별 합계(0=월…6=일)
+    const perDow = new Array(7).fill(0)
+    // streak: 하루라도 study_minutes>0 또는 study_blocks true면 "공부한 날"
+    const studiedDates = new Set<string>()
+    let grandTotal = 0
+    for (const l of inRange) {
+      const mins = l.study_minutes || {}
+      const done = l.study_blocks || {}
+      let dayTotal = 0
+      for (const b of blocks) {
+        const m = mins[b.key] || 0
+        if (m > 0) { perBlock.set(b.key, (perBlock.get(b.key) || 0) + m); dayTotal += m }
+      }
+      if (dayTotal > 0 || blocks.some(b => done[b.key])) studiedDates.add(l.log_date)
+      grandTotal += dayTotal
+      if (dayTotal > 0) {
+        const d = new Date(l.log_date + 'T00:00:00')
+        const dow = (d.getDay() + 6) % 7
+        perDow[dow] += dayTotal
+      }
+    }
+    // 현재 streak (오늘부터 거꾸로 연속 공부일)
+    let streak = 0
+    for (let i = 0; ; i++) {
+      const d = addDays(today, -i)
+      if (studiedDates.has(d)) streak++
+      else if (i === 0) continue   // 오늘 아직 안 했어도 어제부터 셈
+      else break
+      if (i > 400) break
+    }
+    const blockRows = blocks.map(b => {
+      const acc = perBlock.get(b.key) || 0
+      const spanDays = Math.max(1, daysBetween(period === 'all' && inRange.length ? inRange[0].log_date : start, end) + 1)
+      const goalTotal = b.minutes * spanDays
+      return { key: b.key, label: b.label, acc, goal: b.minutes, goalTotal, pct: goalTotal ? Math.min(100, acc / goalTotal * 100) : 0 }
+    })
+    return { blockRows, perDow, grandTotal, studiedCount: studiedDates.size, streak }
+  }, [logs, start, end, blocks, period, today])
+
+  const rangeLabel = period === 'week'
+    ? (offset === 0 ? (lang === 'en' ? 'This week' : '이번 주') : `${offset}${lang === 'en' ? 'w' : '주'}`)
+    : period === 'month'
+    ? (offset === 0 ? (lang === 'en' ? 'This month' : '이번 달') : start.slice(0, 7))
+    : (lang === 'en' ? 'All' : '전체')
+
+  const dowLabels = lang === 'en' ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : ['월', '화', '수', '목', '금', '토', '일']
+  const maxDow = Math.max(1, ...data.perDow)
+
+  return (
+    <div className="bg-gray-900 rounded-2xl p-5">
+      <p className="font-bold mb-3">📚 {lang === 'en' ? 'Study Report' : '공부 리포트'}</p>
+
+      <PeriodNav period={period} offset={offset} setPeriod={setPeriod} setOffset={setOffset} lang={lang} rangeLabel={rangeLabel} />
+      <p className="text-[11px] text-gray-500 mb-4">📅 {start} ~ {end}</p>
+
+      {/* 요약 */}
+      <div className="grid grid-cols-3 gap-2 mb-5">
+        <Mini label={lang === 'en' ? 'Total time' : '총 시간'} val={fmtH(data.grandTotal)} />
+        <Mini label={lang === 'en' ? 'Study days' : '공부일'} val={`${data.studiedCount}${lang === 'en' ? 'd' : '일'}`} />
+        <Mini label={lang === 'en' ? 'Streak' : '연속'} val={`${data.streak}${lang === 'en' ? 'd' : '일'}`}
+          tone={data.streak >= 3 ? 'green' : 'neutral'} />
+      </div>
+
+      {/* 항목별 누적 + 달성률 */}
+      <p className="text-xs text-gray-500 mb-2">{lang === 'en' ? 'By item (vs goal)' : '항목별 (목표 대비)'}</p>
+      <div className="space-y-2 mb-5">
+        {data.blockRows.map(r => (
+          <div key={r.key} className="flex items-center gap-2">
+            <span className="text-xs text-gray-300 w-28 truncate shrink-0">{r.label}</span>
+            <div className="flex-1 bg-gray-800 rounded-full h-4 overflow-hidden">
+              <div className={`h-full rounded-full flex items-center justify-end pr-1.5 ${r.pct >= 100 ? 'bg-emerald-600' : 'bg-blue-600'}`}
+                style={{ width: `${Math.max(r.pct, 4)}%` }}>
+                <span className="text-[9px] text-white/90">{r.pct.toFixed(0)}%</span>
+              </div>
+            </div>
+            <span className="text-xs text-gray-400 w-16 text-right tabular-nums shrink-0">{fmtH(r.acc)}</span>
+          </div>
+        ))}
+        {data.grandTotal === 0 && (
+          <p className="text-gray-600 text-sm">{lang === 'en' ? 'No study time logged in this period.' : '이 기간 기록된 공부 시간 없음.'}</p>
+        )}
+      </div>
+
+      {/* 요일별 패턴 */}
+      {data.grandTotal > 0 && (
+        <>
+          <p className="text-xs text-gray-500 mb-2">{lang === 'en' ? 'By weekday' : '요일별 집중'}</p>
+          <div className="flex items-end gap-1.5 h-24">
+            {data.perDow.map((v, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                <span className="text-[9px] text-gray-500 mb-0.5">{v > 0 ? fmtH(v) : ''}</span>
+                <div className="w-full rounded-t bg-indigo-500/80"
+                  style={{ height: `${(v / maxDow) * 100}%`, minHeight: v > 0 ? 4 : 0 }} />
+                <span className="text-[10px] text-gray-400 mt-1">{dowLabels[i]}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
