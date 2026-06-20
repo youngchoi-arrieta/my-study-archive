@@ -42,6 +42,7 @@ export default function JitsugiProblemPage() {
   const [manualMin, setManualMin] = useState('')
   const resultFileRef = useRef<HTMLInputElement | null>(null)
   const [imgBusy, setImgBusy] = useState(false)
+  const [photoIdx, setPhotoIdx] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -220,38 +221,6 @@ export default function JitsugiProblemPage() {
             </button>
           </div>
 
-          {/* ── 작업 결과 사진 ── */}
-          <div className="bg-gray-900 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold">📸 작업 결과 사진</p>
-                <p className="text-[11px] text-gray-500">완성한 작품을 찍어 올려두고 비교하세요</p>
-              </div>
-              <button onClick={() => resultFileRef.current?.click()} disabled={imgBusy}
-                className="text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition font-semibold">
-                {imgBusy ? '올리는 중…' : '+ 사진'}
-              </button>
-              <input ref={resultFileRef} type="file" accept="image/*" multiple className="hidden"
-                onChange={e => addResultImages(e.target.files)} />
-            </div>
-            {(problem?.result_images?.length ?? 0) === 0 ? (
-              <p className="text-gray-600 text-xs py-3 text-center">아직 사진이 없어요. [+ 사진]으로 작업물을 올려보세요.</p>
-            ) : (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {problem!.result_images!.map((src, i) => (
-                  <div key={i} className="relative group shrink-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt={`작업결과 ${i + 1}`}
-                      className="h-40 rounded-lg object-cover border border-gray-800" draggable={false} />
-                    <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">{i + 1}</span>
-                    <button onClick={() => removeResultImage(i)}
-                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-red-600 text-white text-xs opacity-0 group-hover:opacity-100 transition">✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* ── 타이머 + 채점 ── */}
           <div className="space-y-4">
             {/* 타이머 */}
@@ -405,6 +374,62 @@ export default function JitsugiProblemPage() {
               })}
             </div>
           </div>
+        </div>
+
+        {/* ── 작업 결과 사진 (슬라이드쇼) ── */}
+        <div className="mt-6 bg-gray-900 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold">📸 작업 결과 사진</p>
+            <button onClick={() => resultFileRef.current?.click()} disabled={imgBusy}
+              className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition font-semibold">
+              {imgBusy ? '올리는 중…' : '+ 사진 추가'}
+            </button>
+            <input ref={resultFileRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={e => addResultImages(e.target.files)} />
+          </div>
+
+          {(() => {
+            const imgs = problem?.result_images ?? []
+            if (imgs.length === 0) {
+              return <p className="text-gray-600 text-sm py-10 text-center">아직 사진이 없어요. 완성한 작품을 찍어 [+ 사진 추가]로 올려보세요.</p>
+            }
+            const i = Math.min(photoIdx, imgs.length - 1)
+            return (
+              <div>
+                {/* 큰 사진 */}
+                <div className="relative bg-gray-950 rounded-xl overflow-hidden flex items-center justify-center" style={{ minHeight: 280 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imgs[i]} alt={`작업결과 ${i + 1}`}
+                    className="w-full object-contain max-h-[70vh]" draggable={false} />
+                  <button onClick={() => removeResultImage(i)}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-red-600 text-white text-sm transition">✕</button>
+                  {imgs.length > 1 && (
+                    <>
+                      <button onClick={() => setPhotoIdx((i - 1 + imgs.length) % imgs.length)}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white text-lg transition">‹</button>
+                      <button onClick={() => setPhotoIdx((i + 1) % imgs.length)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white text-lg transition">›</button>
+                    </>
+                  )}
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">
+                    {i + 1} / {imgs.length}
+                  </span>
+                </div>
+                {/* 썸네일 */}
+                {imgs.length > 1 && (
+                  <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+                    {imgs.map((src, k) => (
+                      <button key={k} onClick={() => setPhotoIdx(k)}
+                        className={`shrink-0 rounded-lg overflow-hidden border-2 transition ${k === i ? 'border-blue-500' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt={`썸네일 ${k + 1}`} className="h-14 w-14 object-cover" draggable={false} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         {loading && <p className="text-gray-600 text-sm mt-4">불러오는 중…</p>}
