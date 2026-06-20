@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useParams } from "next/navigation"
 import { supabase } from '@/lib/supabase'
+import { compressToBase64 } from '@/lib/imageUtils'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts'
@@ -39,17 +40,19 @@ export default function JitsugiProblemPage() {
   const [openCats, setOpenCats] = useState<Set<string>>(new Set())
   const [notes, setNotes] = useState('')
   const [manualMin, setManualMin] = useState('')
+  const resultFileRef = useRef<HTMLInputElement | null>(null)
+  const [imgBusy, setImgBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: prob }, { data: atts }] = await Promise.all([
       supabase.from('denkoshi_jitsugi_problems')
-        .select('no, q_drive_url, a_drive_url, updated_at').eq('no', no).single(),
+        .select('no, q_drive_url, a_drive_url, result_images, updated_at').eq('no', no).single(),
       supabase.from('denkoshi_jitsugi_attempts')
         .select('id, problem_no, duration_sec, completed, passed_self, defect_codes, notes, created_at')
         .eq('problem_no', no).order('created_at', { ascending: true }),
     ])
-    setProblem((prob ?? { no, q_drive_url: null, a_drive_url: null }) as JitsugiProblem)
+    setProblem((prob ?? { no, q_drive_url: null, a_drive_url: null, result_images: [] }) as JitsugiProblem)
     setQUrl(prob?.q_drive_url ?? '')
     setAUrl(prob?.a_drive_url ?? '')
     setAttempts((atts ?? []) as JitsugiAttempt[])
@@ -71,6 +74,32 @@ export default function JitsugiProblemPage() {
     )
     setEditUrls(false)
     load()
+  }
+
+  // 작업 결과 사진: base64 압축 후 result_images 배열에 누적 저장
+  const persistResultImages = async (imgs: string[]) => {
+    await supabase.from('denkoshi_jitsugi_problems').upsert(
+      { no, result_images: imgs, updated_at: new Date().toISOString() },
+      { onConflict: 'no' }
+    )
+    setProblem(p => p ? { ...p, result_images: imgs } : p)
+  }
+  const addResultImages = async (files: FileList | null) => {
+    if (!files) return
+    setImgBusy(true)
+    const cur = problem?.result_images ?? []
+    const added: string[] = []
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) continue
+      added.push(await compressToBase64(file))
+    }
+    if (added.length) await persistResultImages([...cur, ...added])
+    if (resultFileRef.current) resultFileRef.current.value = ''
+    setImgBusy(false)
+  }
+  const removeResultImage = async (i: number) => {
+    const cur = problem?.result_images ?? []
+    await persistResultImages(cur.filter((_, k) => k !== i))
   }
 
   const toggleDefect = (code: string) =>
@@ -189,6 +218,38 @@ export default function JitsugiProblemPage() {
               className="text-sm px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 transition font-semibold">
               정답·복선도
             </button>
+          </div>
+
+          {/* ── 작업 결과 사진 ── */}
+          <div className="bg-gray-900 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold">📸 작업 결과 사진</p>
+                <p className="text-[11px] text-gray-500">완성한 작품을 찍어 올려두고 비교하세요</p>
+              </div>
+              <button onClick={() => resultFileRef.current?.click()} disabled={imgBusy}
+                className="text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition font-semibold">
+                {imgBusy ? '올리는 중…' : '+ 사진'}
+              </button>
+              <input ref={resultFileRef} type="file" accept="image/*" multiple className="hidden"
+                onChange={e => addResultImages(e.target.files)} />
+            </div>
+            {(problem?.result_images?.length ?? 0) === 0 ? (
+              <p className="text-gray-600 text-xs py-3 text-center">아직 사진이 없어요. [+ 사진]으로 작업물을 올려보세요.</p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {problem!.result_images!.map((src, i) => (
+                  <div key={i} className="relative group shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={`작업결과 ${i + 1}`}
+                      className="h-40 rounded-lg object-cover border border-gray-800" draggable={false} />
+                    <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">{i + 1}</span>
+                    <button onClick={() => removeResultImage(i)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-red-600 text-white text-xs opacity-0 group-hover:opacity-100 transition">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── 타이머 + 채점 ── */}

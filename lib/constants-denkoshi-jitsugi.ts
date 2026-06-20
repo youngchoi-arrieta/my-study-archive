@@ -182,6 +182,7 @@ export type JitsugiProblem = {
   no: number
   q_drive_url: string | null
   a_drive_url: string | null
+  result_images?: string[] | null
   updated_at?: string | null
 }
 
