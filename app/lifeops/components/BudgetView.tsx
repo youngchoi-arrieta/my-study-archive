@@ -325,6 +325,160 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
           onSave={async p => { await onUpdateConfig(p); setSettingsOpen(false) }}
           onClose={() => setSettingsOpen(false)} />
       )}
+
+      <ExpenseReport logs={logs} config={config} lang={lang} fmt={fmt} catType={catType} />
+    </div>
+  )
+}
+
+// ── 소비 리포트 (기간 토글 + 카테고리 비중 + 일평균/목표대비) ──────────
+type Period = 'week' | 'month' | 'd30' | 'all'
+
+function ExpenseReport({ logs, config, lang, fmt, catType }: {
+  logs: DailyLog[]
+  config: BudgetConfig
+  lang: Lang
+  fmt: (n: number) => string
+  catType: Map<string, 'daily' | 'fixed' | 'invest'>
+}) {
+  const [period, setPeriod] = useState<Period>('month')
+  const [open, setOpen] = useState(true)
+  const cats = config.expense_cats ?? DEFAULT_EXPENSE_CATS
+  const catLabel = (key: string) => {
+    const c = cats.find(c => c.key === key)
+    return c ? (lang === 'en' ? c.en : c.es) : key
+  }
+
+  const today = todayStr()
+  const periodStart = useMemo(() => {
+    if (period === 'all') return '0000-01-01'
+    if (period === 'week') {
+      // 이번 주(월요일 시작)
+      const d = new Date(today + 'T00:00:00')
+      const dow = (d.getDay() + 6) % 7   // 월=0
+      return addDays(today, -dow)
+    }
+    if (period === 'month') return today.slice(0, 8) + '01'
+    return addDays(today, -29)   // 최근 30일
+  }, [period, today])
+
+  const report = useMemo(() => {
+    const inRange = logs.filter(l => l.log_date >= periodStart && l.log_date <= today)
+    const byCat = new Map<string, number>()
+    let totalOp = 0, totalLump = 0
+    const loggedDates = new Set<string>()
+    for (const l of inRange) {
+      let dayHas = false
+      for (const [key, amt] of Object.entries(l.expense_krw || {})) {
+        const catKey = key.split(':')[0]
+        byCat.set(catKey, (byCat.get(catKey) || 0) + amt)
+        const type = catType.get(catKey) ?? 'daily'
+        if (type === 'daily') totalOp += amt; else totalLump += amt
+        dayHas = true
+      }
+      if (dayHas) loggedDates.add(l.log_date)
+    }
+    const total = totalOp + totalLump
+    const rows = Array.from(byCat.entries())
+      .map(([key, amt]) => ({ key, label: catLabel(key), amt, pct: total ? amt / total * 100 : 0 }))
+      .sort((a, b) => b.amt - a.amt)
+    // 기간 일수 (목표 대비용): periodStart~today
+    const spanDays = Math.max(1, daysBetween(period === 'all' ? (inRange[0]?.log_date ?? today) : periodStart, today) + 1)
+    const avgOp = totalOp / spanDays
+    const target = config.daily_target_krw ?? 0
+    // 운영비 기준 목표 초과/절약 일수
+    let overDays = 0, underDays = 0
+    for (const l of inRange) {
+      let op = 0
+      for (const [key, amt] of Object.entries(l.expense_krw || {})) {
+        if ((catType.get(key.split(':')[0]) ?? 'daily') === 'daily') op += amt
+      }
+      if (op > target) overDays++; else if (op > 0) underDays++
+    }
+    return { rows, total, totalOp, totalLump, avgOp, target, overDays, underDays, loggedCount: loggedDates.size, spanDays }
+  }, [logs, periodStart, today, catType, period, config.daily_target_krw])
+
+  const periodBtns: { k: Period; label: string }[] = [
+    { k: 'week',  label: lang === 'en' ? 'Week'  : '이번주' },
+    { k: 'month', label: lang === 'en' ? 'Month' : '이번달' },
+    { k: 'd30',   label: '30d' },
+    { k: 'all',   label: lang === 'en' ? 'All' : '전체' },
+  ]
+
+  return (
+    <div className="bg-gray-900 rounded-2xl p-5">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between mb-1">
+        <span className="font-bold">💸 {lang === 'en' ? 'Expense Report' : '소비 리포트'}</span>
+        <span className="text-gray-500 text-sm">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-5">
+          {/* 기간 토글 */}
+          <div className="flex gap-1.5">
+            {periodBtns.map(b => (
+              <button key={b.k} onClick={() => setPeriod(b.k)}
+                className={`text-xs px-3 py-1.5 rounded-lg transition ${
+                  period === b.k ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                {b.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 요약 숫자 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <Mini label={lang === 'en' ? 'Total' : '총지출'} val={fmt(report.total)} />
+            <Mini label={lang === 'en' ? 'Daily avg (op)' : '일평균(운영)'} val={fmt(Math.round(report.avgOp))}
+              tone={report.target > 0 ? (report.avgOp <= report.target ? 'green' : 'red') : 'neutral'} />
+            <Mini label={lang === 'en' ? 'Over target' : '목표초과일'} val={`${report.overDays}일`} tone="red" />
+            <Mini label={lang === 'en' ? 'Logged days' : '기록일수'} val={`${report.loggedCount}일`} />
+          </div>
+
+          {/* 운영비 vs 일시불 */}
+          {report.total > 0 && (
+            <div>
+              <div className="flex h-3 rounded-full overflow-hidden bg-gray-800">
+                <div style={{ width: `${report.total ? report.totalOp / report.total * 100 : 0}%` }} className="bg-sky-500" />
+                <div style={{ width: `${report.total ? report.totalLump / report.total * 100 : 0}%` }} className="bg-amber-500" />
+              </div>
+              <div className="flex justify-between text-[11px] text-gray-500 mt-1">
+                <span>🔵 {lang === 'en' ? 'Operating' : '운영비'} {fmt(report.totalOp)}</span>
+                <span>🟡 {lang === 'en' ? 'Lump (fixed/invest)' : '일시불(고정/투자)'} {fmt(report.totalLump)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 카테고리 비중 막대 */}
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">{lang === 'en' ? 'By category' : '카테고리별'}</p>
+            {report.rows.length === 0 && (
+              <p className="text-gray-600 text-sm">{lang === 'en' ? 'No expenses in this period.' : '이 기간 지출 없음.'}</p>
+            )}
+            {report.rows.map(r => (
+              <div key={r.key} className="flex items-center gap-2">
+                <span className="text-xs text-gray-300 w-24 truncate shrink-0">{r.label}</span>
+                <div className="flex-1 bg-gray-800 rounded-full h-4 overflow-hidden">
+                  <div className="h-full rounded-full bg-blue-600 flex items-center justify-end pr-1.5"
+                    style={{ width: `${Math.max(r.pct, 4)}%` }}>
+                    <span className="text-[9px] text-white/90">{r.pct.toFixed(0)}%</span>
+                  </div>
+                </div>
+                <span className="text-xs text-gray-400 w-20 text-right tabular-nums shrink-0">{fmt(r.amt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Mini({ label, val, tone = 'neutral' }: { label: string; val: string; tone?: 'neutral' | 'green' | 'red' }) {
+  const color = tone === 'green' ? 'text-green-400' : tone === 'red' ? 'text-red-400' : 'text-gray-100'
+  return (
+    <div className="bg-gray-800/50 rounded-xl p-3">
+      <p className="text-[11px] text-gray-500 mb-1">{label}</p>
+      <p className={`text-base font-bold tabular-nums ${color}`}>{val}</p>
     </div>
   )
 }
