@@ -32,6 +32,20 @@ export default function UnitDetailPage() {
 
   const [slides, setSlides] = useState<Slide[]>([])
   const [idx, setIdx] = useState(0)
+  // 연속 붙여넣기 시 최신 상태를 동기적으로 읽기 위한 ref (클로저/배칭 타이밍 버그 방지)
+  const slidesRef = useRef<Slide[]>([])
+  const idxRef = useRef(0)
+  const setSlidesSync = (updater: Slide[] | ((p: Slide[]) => Slide[])) => {
+    const next = typeof updater === 'function' ? (updater as (p: Slide[]) => Slide[])(slidesRef.current) : updater
+    slidesRef.current = next
+    setSlides(next)
+    return next
+  }
+  const setIdxSync = (v: number | ((p: number) => number)) => {
+    const next = typeof v === 'function' ? (v as (p: number) => number)(idxRef.current) : v
+    idxRef.current = next
+    setIdx(next)
+  }
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -50,8 +64,8 @@ export default function UnitDetailPage() {
     const rows: Slide[] = (data || []).map(r => ({
       id: r.id, unit_slug: r.unit_slug, caption: r.caption, order_num: r.order_num, images: normImages(r),
     }))
-    setSlides(rows)
-    setIdx(Math.max(0, rows.length - 1))   // 마지막 슬라이드부터 (없으면 빈 칸)
+    setSlidesSync(rows)
+    setIdxSync(Math.max(0, rows.length - 1))   // 마지막 슬라이드부터 (없으면 빈 칸)
     setLoading(false)
   }, [slug])
 
@@ -64,36 +78,38 @@ export default function UnitDetailPage() {
   // 빈 칸에 붙여넣기 → 새 슬라이드, 끝의 빈 칸으로 복귀(연속 붙여넣기)
   const newSlide = useCallback(async (src: string) => {
     setSaving(true)
-    const order = slides.length ? Math.max(...slides.map(s => s.order_num)) + 1 : 0
+    const cur = slidesRef.current
+    const order = cur.length ? Math.max(...cur.map(s => s.order_num)) + 1 : 0
     const images: SlideImage[] = [{ src, w: 1 }]
     const { data } = await supabase.from('denkoshi_unit_slides')
       .insert({ unit_slug: slug, images, src, caption: null, order_num: order })
       .select().single()
     if (data) {
       const slide: Slide = { id: data.id, unit_slug: data.unit_slug, caption: data.caption, order_num: data.order_num, images }
-      setSlides(prev => { const next = [...prev, slide]; setIdx(next.length); return next })
+      const next = setSlidesSync(prev => [...prev, slide])
+      setIdxSync(next.length)   // 끝의 빈 칸으로 복귀
     }
     setSaving(false)
-  }, [slides, slug])
+  }, [slug])
 
   // 실제 슬라이드 위에 붙여넣기 → 그 슬라이드에 사진 추가(비교용)
   const addImage = useCallback(async (slideIdx: number, src: string) => {
     setSaving(true)
-    let id = ''; let images: SlideImage[] = []
-    setSlides(prev => {
-      const sl = prev[slideIdx]; if (!sl) return prev
-      id = sl.id; images = [...sl.images, { src, w: 1 }]
-      return prev.map((s, i) => i === slideIdx ? { ...s, images } : s)
-    })
-    if (id) await persistImages(id, images)
+    const sl = slidesRef.current[slideIdx]
+    if (sl) {
+      const images = [...sl.images, { src, w: 1 }]
+      setSlidesSync(prev => prev.map((s, i) => i === slideIdx ? { ...s, images } : s))
+      await persistImages(sl.id, images)
+    }
     setSaving(false)
   }, [])
 
   // 붙여넣기 위치에 따라 분기
   const ingest = useCallback(async (src: string) => {
-    if (idx >= slides.length) await newSlide(src)
-    else await addImage(idx, src)
-  }, [idx, slides.length, newSlide, addImage])
+    // ref로 최신 상태를 읽어 분기 (연속 붙여넣기 시에도 올바른 슬라이드에 추가)
+    if (idxRef.current >= slidesRef.current.length) await newSlide(src)
+    else await addImage(idxRef.current, src)
+  }, [newSlide, addImage])
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return
@@ -134,7 +150,7 @@ export default function UnitDetailPage() {
   // ── 사진별 조작 ───────────────────────────────
   const setImageWidth = async (slideIdx: number, imgIdx: number, w: number) => {
     let id = ''; let images: SlideImage[] = []
-    setSlides(prev => {
+    setSlidesSync(prev => {
       const sl = prev[slideIdx]; if (!sl) return prev
       id = sl.id; images = sl.images.map((im, k) => k === imgIdx ? { ...im, w } : im)
       return prev.map((s, i) => i === slideIdx ? { ...s, images } : s)
@@ -145,7 +161,7 @@ export default function UnitDetailPage() {
   const moveImage = async (slideIdx: number, imgIdx: number, dir: -1 | 1) => {
     const j = imgIdx + dir
     let id = ''; let images: SlideImage[] = []; let ok = true
-    setSlides(prev => {
+    setSlidesSync(prev => {
       const sl = prev[slideIdx]; if (!sl) { ok = false; return prev }
       if (j < 0 || j >= sl.images.length) { ok = false; return prev }
       id = sl.id; images = [...sl.images]
@@ -160,22 +176,22 @@ export default function UnitDetailPage() {
     if (sl.images.length <= 1) {
       if (!confirm('이 슬라이드를 삭제할까요?')) return
       await supabase.from('denkoshi_unit_slides').delete().eq('id', sl.id)
-      setSlides(prev => { const next = prev.filter((_, i) => i !== slideIdx); setIdx(Math.min(slideIdx, next.length)); return next })
+      setSlidesSync(prev => { const next = prev.filter((_, i) => i !== slideIdx); setIdxSync(Math.min(slideIdx, next.length)); return next })
       return
     }
     const images = sl.images.filter((_, k) => k !== imgIdx)
     await persistImages(sl.id, images)
-    setSlides(prev => prev.map((s, i) => i === slideIdx ? { ...s, images } : s))
+    setSlidesSync(prev => prev.map((s, i) => i === slideIdx ? { ...s, images } : s))
   }
 
   // ── 캡션 / 슬라이드 조작 ──────────────────────
-  const editCaptionFor = (i: number) => { setIdx(i); setCaptionDraft(slides[i]?.caption || ''); setEditingCaption(true) }
+  const editCaptionFor = (i: number) => { setIdxSync(i); setCaptionDraft(slides[i]?.caption || ''); setEditingCaption(true) }
 
   const saveCaption = async () => {
     const cur = slides[idx]; if (!cur) { setEditingCaption(false); return }
     const cap = captionDraft.trim()
     await supabase.from('denkoshi_unit_slides').update({ caption: cap || null }).eq('id', cur.id)
-    setSlides(prev => prev.map((s, i) => i === idx ? { ...s, caption: cap || null } : s))
+    setSlidesSync(prev => prev.map((s, i) => i === idx ? { ...s, caption: cap || null } : s))
     setEditingCaption(false)
   }
 
@@ -187,15 +203,15 @@ export default function UnitDetailPage() {
       supabase.from('denkoshi_unit_slides').update({ order_num: b.order_num }).eq('id', a.id),
       supabase.from('denkoshi_unit_slides').update({ order_num: a.order_num }).eq('id', b.id),
     ])
-    setSlides(prev => { const next = [...prev]; next[idx] = { ...b, order_num: a.order_num }; next[j] = { ...a, order_num: b.order_num }; return next })
-    setIdx(j)
+    setSlidesSync(prev => { const next = [...prev]; next[idx] = { ...b, order_num: a.order_num }; next[j] = { ...a, order_num: b.order_num }; return next })
+    setIdxSync(j)
   }
 
   const delSlide = async () => {
     const cur = slides[idx]; if (!cur) return
     if (!confirm('이 슬라이드를 삭제할까요?')) return
     await supabase.from('denkoshi_unit_slides').delete().eq('id', cur.id)
-    setSlides(prev => { const next = prev.filter((_, i) => i !== idx); setIdx(Math.min(idx, next.length)); return next })
+    setSlidesSync(prev => { const next = prev.filter((_, i) => i !== idx); setIdxSync(Math.min(idx, next.length)); return next })
   }
 
   if (!unit) {
@@ -315,12 +331,12 @@ export default function UnitDetailPage() {
 
         {/* 네비게이션 */}
         <div className="flex items-center justify-center gap-4 my-3">
-          <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
+          <button onClick={() => setIdxSync(i => Math.max(0, i - 1))} disabled={idx === 0}
             className="w-9 h-9 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:opacity-30 transition text-lg leading-none">‹</button>
           <span className="text-sm text-gray-400 tabular-nums min-w-[64px] text-center">
             {onBlank ? <span className="text-blue-400">＋ 새 칸</span> : `${idx + 1} / ${total}`}
           </span>
-          <button onClick={() => setIdx(i => Math.min(total, i + 1))} disabled={idx >= total}
+          <button onClick={() => setIdxSync(i => Math.min(total, i + 1))} disabled={idx >= total}
             className="w-9 h-9 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:opacity-30 transition text-lg leading-none">›</button>
         </div>
 
@@ -336,13 +352,13 @@ export default function UnitDetailPage() {
         {/* 썸네일 + 빈 칸 */}
         <div className="flex gap-2 overflow-x-auto pt-4 border-t border-gray-800">
           {slides.map((s, i) => (
-            <button key={s.id} onClick={() => setIdx(i)}
+            <button key={s.id} onClick={() => setIdxSync(i)}
               className={`relative shrink-0 w-16 h-11 rounded overflow-hidden border ${i === idx ? 'border-blue-500' : 'border-gray-700'}`}>
               {s.images[0] && <img src={s.images[0].src} alt="" className="w-full h-full object-cover" draggable={false} />}
               {s.images.length > 1 && <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 rounded-tl">{s.images.length}</span>}
             </button>
           ))}
-          <button onClick={() => setIdx(total)}
+          <button onClick={() => setIdxSync(total)}
             className={`shrink-0 w-16 h-11 rounded border border-dashed flex items-center justify-center text-lg transition ${onBlank ? 'border-blue-500 text-blue-400' : 'border-gray-600 text-gray-500 hover:text-white hover:border-gray-400'}`}
             title="빈 칸 — 여기서 Ctrl+V로 새 슬라이드">＋</button>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={e => onFiles(e.target.files)} />
