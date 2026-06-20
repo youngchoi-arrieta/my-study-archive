@@ -95,6 +95,7 @@ export const T = {
   log:        { en: 'Log',          es: 'Registro'    },
   budget:     { en: 'Budget',       es: 'Presupuesto' },
   milestones: { en: 'Milestones',   es: 'Hitos'       },
+  report:     { en: '📊 Report',     es: '📊 Reporte'  },
   expense:    { en: 'Expenses',     es: 'Gastos'      },
   income:     { en: 'Income',       es: 'Ingresos'    },
   weight:     { en: 'Weight',       es: 'Peso'        },

@@ -11,15 +11,23 @@ const BudgetView = dynamic(() => import('./components/BudgetView'), {
   ssr: false,
   loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} />,
 })
+const ReportView = dynamic(() => import('./components/ReportView'), {
+  ssr: false,
+  loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} />,
+})
 
 const FamiliaRoadmap = dynamic(() => import('../familia/FamiliaRoadmap'), {
   ssr: false,
   loading: () => <div style={{ height: 200, background: '#111827', borderRadius: 12 }} />,
 })
 
-type Tab = 'log' | 'budget' | 'milestones' | 'roadmap'
+type Tab = 'log' | 'budget' | 'report' | 'milestones' | 'roadmap'
 
-function todayStr() { return new Date().toISOString().slice(0, 10) }
+function todayStr() {
+  // 한국시간(KST, UTC+9) 기준 YYYY-MM-DD
+  const kst = new Date(Date.now() + 9 * 3600 * 1000)
+  return kst.toISOString().slice(0, 10)
+}
 function daysUntil(d: string) {
   const now = new Date(); now.setHours(0,0,0,0)
   return Math.round((new Date(d + 'T00:00:00').getTime() - now.getTime()) / 86400000)
@@ -50,23 +58,6 @@ export default function LifeOpsDashboard() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // ── 자정 감지: 날짜가 바뀌면 fetchAll 재호출 ─────────────────────────────
-  useEffect(() => {
-    function msUntilMidnight() {
-      const now = new Date()
-      const midnight = new Date(now)
-      midnight.setHours(24, 0, 0, 0)
-      return midnight.getTime() - now.getTime()
-    }
-    // 자정 직후 한 번 fetchAll, 그 다음은 매 24시간마다
-    const timeout = setTimeout(() => {
-      fetchAll()
-      const interval = setInterval(fetchAll, 24 * 60 * 60 * 1000)
-      return () => clearInterval(interval)
-    }, msUntilMidnight() + 500)   // +500ms 여유
-    return () => clearTimeout(timeout)
-  }, [fetchAll])
-
   // ── Milestone handlers ───────────────────────────────────────────────────
   async function saveMilestone(patch: Partial<Milestone>, id?: string) {
     if (id) await supabase.from('milestones').update(patch).eq('id', id)
@@ -82,8 +73,8 @@ export default function LifeOpsDashboard() {
   }
 
   // ── Daily log upsert ─────────────────────────────────────────────────────
-  async function upsertToday(patch: Partial<DailyLog>) {
-    const today    = todayStr()
+  async function upsertToday(patch: Partial<DailyLog>, dateStr?: string) {
+    const today    = dateStr ?? todayStr()
     const existing = logs.find(l => l.log_date === today)
     if (existing) {
       const merged = {
@@ -147,6 +138,7 @@ export default function LifeOpsDashboard() {
   const TABS: { key: Tab; label: string }[] = [
     { key: 'log',        label: t('log', lang)        },
     { key: 'budget',     label: t('budget', lang)     },
+    { key: 'report',     label: t('report', lang)     },
     { key: 'milestones', label: t('milestones', lang) },
     { key: 'roadmap',    label: lang === 'en' ? '🗺️ Roadmap' : '🗺️ Plan' },
   ]
@@ -229,6 +221,10 @@ export default function LifeOpsDashboard() {
         {!loading && tab === 'budget' && config && (
           <BudgetView logs={logs} config={config} onUpdateConfig={updateConfig}
             lang={lang} currency={currency} />
+        )}
+
+        {!loading && tab === 'report' && config && (
+          <ReportView logs={logs} config={config} lang={lang} currency={currency} />
         )}
 
         {!loading && tab === 'milestones' && (
