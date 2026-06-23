@@ -124,11 +124,13 @@ export default function LifeOpsDashboard() {
   // ── Config update ────────────────────────────────────────────────────────
   async function updateConfig(patch: Partial<BudgetConfig>) {
     if (config) {
-      await supabase.from('budget_config').update(patch).eq('id', 1)
+      const { error } = await supabase.from('budget_config').update(patch).eq('id', 1)
+      if (error) { alert('설정 저장 실패: ' + error.message); return }
       setConfig(c => c ? { ...c, ...patch } : c)
     } else {
-      const { data } = await supabase.from('budget_config')
+      const { data, error } = await supabase.from('budget_config')
         .insert({ id: 1, ...patch }).select().single()
+      if (error) { alert('설정 저장 실패: ' + error.message); return }
       if (data) setConfig(data as BudgetConfig)
     }
   }

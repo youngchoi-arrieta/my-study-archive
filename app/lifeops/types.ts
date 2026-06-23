@@ -43,6 +43,10 @@ export interface IncomeCat {
   key: string
   en: string
   es: string
+  // recurring: 매번 들어오는 돈(과외 등) → 예측선 기울기에 반영
+  // oneoff:    일회성(생활비 지원 등) → 잔고만 올리고 예측선엔 반영 안 함
+  // 미지정(기존 데이터)은 recurring으로 간주 (하위호환)
+  type?: 'recurring' | 'oneoff'
 }
 
 export interface BudgetConfig {
@@ -83,9 +87,10 @@ export const DEFAULT_EXPENSE_CATS: ExpenseCat[] = [
   { key: 'other',   en: '· Other',      es: '· Otro',         type: 'daily'  },
 ]
 export const DEFAULT_INCOME_CATS: IncomeCat[] = [
-  { key: 'tutoring', en: '📚 Tutoring', es: '📚 Tutoría'       },
-  { key: 'transfer', en: '💸 Transfer', es: '💸 Transferencia'  },
-  { key: 'other',    en: '· Other',     es: '· Otro'            },
+  { key: 'tutoring', en: '📚 Tutoring', es: '📚 Tutoría',       type: 'recurring' },
+  { key: 'transfer', en: '💸 Transfer', es: '💸 Transferencia',  type: 'recurring' },
+  { key: 'support',  en: '🎁 Support',  es: '🎁 Apoyo',          type: 'oneoff'    },
+  { key: 'other',    en: '· Other',     es: '· Otro',            type: 'recurring' },
 ]
 
 // ── i18n ──────────────────────────────────────────────────────────────────────

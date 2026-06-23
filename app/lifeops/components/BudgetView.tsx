@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
 } from 'recharts'
-import { DailyLog, BudgetConfig, Lang, Currency, t, formatAmount, DEFAULT_EXPENSE_CATS } from '../types'
+import { DailyLog, BudgetConfig, Lang, Currency, t, formatAmount, DEFAULT_EXPENSE_CATS, DEFAULT_INCOME_CATS } from '../types'
 
 interface Props {
   logs: DailyLog[]
@@ -50,25 +50,47 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
     return { op, lump }
   }
 
-  const { totalExp, totalOp, totalLump, totalInc, opByDate, expByDate, incByDate, loggedDates } = useMemo(() => {
-    let tE = 0, tOp = 0, tLump = 0, tI = 0
+  // Map each income category key → its type (recurring | oneoff)
+  const incCatType = useMemo(() => {
+    const cats = config.income_cats ?? DEFAULT_INCOME_CATS
+    const m = new Map<string, 'recurring' | 'oneoff'>()
+    cats.forEach(c => m.set(c.key, c.type ?? 'recurring'))
+    return m
+  }, [config.income_cats])
+
+  // Split a day's income map into recurring (projected) vs one-off (balance only)
+  function splitIncome(incMap: Record<string, number>) {
+    let rec = 0, oneoff = 0
+    for (const [key, amt] of Object.entries(incMap)) {
+      const catKey = key.split(':')[0]
+      const type = incCatType.get(catKey) ?? 'recurring'
+      if (type === 'oneoff') oneoff += amt   // 생활비 지원 등 → 잔고만, 예측 제외
+      else rec += amt                         // 과외 등 → 예측 기울기에 반영
+    }
+    return { rec, oneoff }
+  }
+
+  const { totalExp, totalOp, totalLump, totalInc, totalIncRec, totalIncOneoff, opByDate, expByDate, incByDate, loggedDates } = useMemo(() => {
+    let tE = 0, tOp = 0, tLump = 0, tI = 0, tIrec = 0, tIone = 0
     const opMap = new Map<string, number>()
     const eMap = new Map<string, number>()
     const iMap = new Map<string, number>()
     const dates = new Set<string>()
     logs.forEach(l => {
       const { op, lump } = splitExpense(l.expense_krw)
+      const { rec, oneoff } = splitIncome(l.income_krw || {})
       const e = op + lump
-      const i = sumKrw(l.income_krw || {})
-      tE += e; tOp += op; tLump += lump; tI += i
+      const i = rec + oneoff           // 잔고/actual 곡선엔 전체 income 반영
+      tE += e; tOp += op; tLump += lump
+      tI += i; tIrec += rec; tIone += oneoff
       opMap.set(l.log_date, op)
       eMap.set(l.log_date, e)
       iMap.set(l.log_date, i)
       if (e > 0 || i > 0) dates.add(l.log_date)
     })
     const sorted = [...dates].sort()
-    return { totalExp: tE, totalOp: tOp, totalLump: tLump, totalInc: tI, opByDate: opMap, expByDate: eMap, incByDate: iMap, loggedDates: sorted }
-  }, [logs, catType])
+    return { totalExp: tE, totalOp: tOp, totalLump: tLump, totalInc: tI, totalIncRec: tIrec, totalIncOneoff: tIone, opByDate: opMap, expByDate: eMap, incByDate: iMap, loggedDates: sorted }
+  }, [logs, catType, incCatType])
 
   const elapsed      = daysBetween(config.start_date, today)
   const loggedDays   = loggedDates.length
@@ -77,10 +99,11 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
 
   const balance      = config.start_balance_krw - totalExp + totalInc
 
-  // ── Operational burn: only daily-type expenses minus income, over logged days ──
+  // ── Operational burn: only daily-type expenses minus RECURRING income, over logged days ──
+  // 일회성 income(생활비 지원 등)은 이미 잔고에 반영됐고, 미래로 외삽하지 않는다.
   const avgOp        = loggedDays > 0 ? totalOp / loggedDays : 0
-  const avgInc       = loggedDays > 0 ? totalInc / loggedDays : 0
-  const opBurn       = avgOp - avgInc                 // daily operational soak
+  const avgInc       = loggedDays > 0 ? totalIncRec / loggedDays : 0
+  const opBurn       = avgOp - avgInc                 // daily operational soak (recurring income만 차감)
   // ── Plus monthly fixed cost spread to a daily-equivalent for the headline ──
   const fixedPerDay  = monthlyFixed / 30
   const netBurn      = opBurn + fixedPerDay           // total effective daily burn
@@ -198,13 +221,17 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
         {firstLogged && lastLogged && (
           <span>Range: <span className="text-gray-300">{firstLogged === lastLogged ? firstLogged : `${firstLogged} ~ ${lastLogged}`}</span></span>
         )}
-        <span>💰 Income: <span className="text-emerald-400">+{fmt(totalInc)}</span></span>
+        <span>💰 Income: <span className="text-emerald-400">+{fmt(totalInc)}</span>
+          {totalIncOneoff > 0 && (
+            <span className="text-gray-600"> (recurring {fmt(totalIncRec)} · one-off {fmt(totalIncOneoff)})</span>
+          )}
+        </span>
         <span>🏠 Monthly fixed est: <span className="text-gray-300">{monthlyFixed > 0 ? fmt(monthlyFixed) : 'not set'}</span></span>
         <span className="text-gray-600">({elapsed} calendar days since start)</span>
       </div>
 
       <div className="bg-gray-900/40 rounded-xl px-4 py-2 text-xs text-gray-500 leading-relaxed">
-        ℹ️ Forecast = current balance − <span className="text-gray-300">operational burn</span> (smooth daily, from <span className="text-gray-300">daily</span>-type tags only) − <span className="text-gray-300">monthly fixed</span> (stepped on the 1st). One-off <span className="text-amber-400">fixed/invest</span> spending already came out of your balance and is not projected forward.
+        ℹ️ Forecast = current balance − <span className="text-gray-300">operational burn</span> (smooth daily, from <span className="text-gray-300">daily</span>-type tags only) − <span className="text-gray-300">monthly fixed</span> (stepped on the 1st), + <span className="text-emerald-400">recurring</span> income. One-off <span className="text-amber-400">fixed/invest</span> spending and <span className="text-emerald-400">one-off income</span> (생활비 지원 등) already moved your balance and are not projected forward.
       </div>
 
       {loggedDays < 3 && (

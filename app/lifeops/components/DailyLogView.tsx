@@ -441,15 +441,20 @@ function TodayCard({ log, dateStr, isToday, expenseCats, incomeCats, activityCat
         )}
 
         <div className="flex flex-wrap gap-2 mb-3">
-          {incomeCats.map(c => (
-            <button key={c.key}
-              onClick={() => { setActiveInc(activeInc === c.key ? null : c.key); setIncAmtInput('') }}
-              className={`text-sm px-3 py-1.5 rounded-full border transition
-                border-emerald-700 text-emerald-300 bg-emerald-900/20 hover:brightness-125
-                ${activeInc === c.key ? 'ring-2 ring-white/30 brightness-125' : ''}`}>
-              {c[lang]}
-            </button>
-          ))}
+          {incomeCats.map(c => {
+            const oneoff = (c.type ?? 'recurring') === 'oneoff'
+            return (
+              <button key={c.key}
+                onClick={() => { setActiveInc(activeInc === c.key ? null : c.key); setIncAmtInput('') }}
+                className={`text-sm px-3 py-1.5 rounded-full border transition hover:brightness-125
+                  ${oneoff
+                    ? 'border-amber-700 text-amber-300 bg-amber-900/20'
+                    : 'border-emerald-700 text-emerald-300 bg-emerald-900/20'}
+                  ${activeInc === c.key ? 'ring-2 ring-white/30 brightness-125' : ''}`}>
+                {c[lang]}{oneoff && <span className="text-[10px] opacity-60 ml-1">1회</span>}
+              </button>
+            )
+          })}
           <IncCatEditorInline incomeCats={incomeCats} lang={lang}
             onSave={cats => onUpdateConfig({ income_cats: cats })} />
         </div>
@@ -680,10 +685,11 @@ function IncCatEditorInline({ incomeCats, lang, onSave }: {
   const [open, setOpen]     = useState(false)
   const [list, setList]     = useState<IncomeCat[]>(incomeCats)
   const [newLabel, setNew]  = useState('')
+  const [newType, setNewType] = useState<'recurring' | 'oneoff'>('recurring')
   const [saving, setSaving] = useState(false)
 
   if (!open) return (
-    <button onClick={() => setOpen(true)}
+    <button onClick={() => { setList(incomeCats); setOpen(true) }}
       className="text-xs text-gray-600 hover:text-gray-400 px-2 py-1.5 rounded-full border border-gray-700 transition">
       ✏️
     </button>
@@ -692,19 +698,32 @@ function IncCatEditorInline({ incomeCats, lang, onSave }: {
   function addCat() {
     const label = newLabel.trim(); if (!label) return
     const key = label.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now()
-    setList(prev => [...prev, { key, en: label, es: label }]); setNew('')
+    setList(prev => [...prev, { key, en: label, es: label, type: newType }]); setNew('')
   }
 
   async function save() {
-    setSaving(true); await onSave(list); setSaving(false); setOpen(false)
+    setSaving(true)
+    try {
+      await onSave(list)
+      setOpen(false)
+    } catch (e) {
+      alert('태그 저장 실패: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <div className="w-full bg-gray-800 rounded-xl p-3 space-y-2 mt-1">
       <div className="flex flex-wrap gap-1.5">
         {list.map(c => (
-          <span key={c.key} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-900/30 text-emerald-300">
+          <span key={c.key}
+            className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full ${
+              (c.type ?? 'recurring') === 'oneoff'
+                ? 'bg-amber-900/30 text-amber-300'
+                : 'bg-emerald-900/30 text-emerald-300'}`}>
             {c[lang]}
+            <span className="text-[10px] opacity-60">{(c.type ?? 'recurring') === 'oneoff' ? '1회' : '반복'}</span>
             <button onClick={() => setList(prev => prev.filter(x => x.key !== c.key))}
               className="text-gray-500 hover:text-red-400">×</button>
           </span>
@@ -715,6 +734,11 @@ function IncCatEditorInline({ incomeCats, lang, onSave }: {
           placeholder="New tag" value={newLabel}
           onChange={e => setNew(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && addCat()} />
+        <select className="bg-gray-700 rounded-lg px-2 py-1.5 text-xs"
+          value={newType} onChange={e => setNewType(e.target.value as 'recurring' | 'oneoff')}>
+          <option value="recurring">반복(예측반영)</option>
+          <option value="oneoff">1회(잔고만)</option>
+        </select>
         <button onClick={addCat} className="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg text-sm">＋</button>
       </div>
       <div className="flex gap-2">
