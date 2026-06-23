@@ -396,7 +396,7 @@ export default function DiagramCardDetail() {
                           }} className="text-xs text-gray-400 hover:text-white">↑ 위로</button>
                         )}
                       </div>
-                      <img src={url} alt={`페이지 ${idx + 1}`} className="max-w-full rounded max-h-32 object-contain" />
+                      <img src={url} alt={`페이지 ${idx + 1}`} className="max-w-full rounded max-h-32 object-contain" loading="lazy" />
                     </div>
                   ))}
                 </div>

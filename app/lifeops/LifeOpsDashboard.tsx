@@ -59,13 +59,20 @@ export default function LifeOpsDashboard() {
   useEffect(() => { fetchAll() }, [fetchAll])
 
   // ── Milestone handlers ───────────────────────────────────────────────────
+  // 변경 후 전체 재조회(fetchAll) 대신 로컬 상태만 갱신 → 매 mutation 시 daily_logs 전체
+  // 재페치 제거. 누적 잔고/streak은 전체 logs 기준이므로 fetchAll의 초기 1회 로드는 유지.
   async function saveMilestone(patch: Partial<Milestone>, id?: string) {
-    if (id) await supabase.from('milestones').update(patch).eq('id', id)
-    else    await supabase.from('milestones').insert(patch)
-    await fetchAll()
+    if (id) {
+      await supabase.from('milestones').update(patch).eq('id', id)
+      setMilestones(p => p.map(m => m.id === id ? { ...m, ...patch } : m))
+    } else {
+      const { data } = await supabase.from('milestones').insert(patch).select().single()
+      if (data) setMilestones(p => [...p, data as Milestone])
+    }
   }
   async function deleteMilestone(id: string) {
-    await supabase.from('milestones').delete().eq('id', id); await fetchAll()
+    await supabase.from('milestones').delete().eq('id', id)
+    setMilestones(p => p.filter(m => m.id !== id))
   }
   async function toggleDone(id: string, done: boolean) {
     await supabase.from('milestones').update({ done }).eq('id', id)
@@ -84,8 +91,9 @@ export default function LifeOpsDashboard() {
         weight_kg:   patch.weight_kg   !== undefined ? patch.weight_kg : existing.weight_kg,
       }
       await supabase.from('daily_logs').update(merged).eq('id', existing.id)
+      setLogs(p => p.map(l => l.id === existing.id ? merged : l))
     } else {
-      await supabase.from('daily_logs').insert({
+      const { data } = await supabase.from('daily_logs').insert({
         log_date:    today,
         expense_krw: patch.expense_krw || {},
         income_krw:  patch.income_krw  || {},
@@ -98,26 +106,31 @@ export default function LifeOpsDashboard() {
         listening_content: patch.listening_content ?? null,
         study_blocks: patch.study_blocks ?? null,
         study_minutes: patch.study_minutes ?? null,
-      })
+      }).select().single()
+      if (data) setLogs(p => [...p, data as DailyLog])
     }
-    await fetchAll()
   }
 
   // ── Edit / delete any past log by id ─────────────────────────────────────
   async function updateLog(id: string, patch: Partial<DailyLog>) {
     await supabase.from('daily_logs').update(patch).eq('id', id)
-    await fetchAll()
+    setLogs(p => p.map(l => l.id === id ? { ...l, ...patch } : l))
   }
   async function deleteLog(id: string) {
     await supabase.from('daily_logs').delete().eq('id', id)
-    await fetchAll()
+    setLogs(p => p.filter(l => l.id !== id))
   }
 
   // ── Config update ────────────────────────────────────────────────────────
   async function updateConfig(patch: Partial<BudgetConfig>) {
-    if (config) await supabase.from('budget_config').update(patch).eq('id', 1)
-    else        await supabase.from('budget_config').insert({ id: 1, ...patch })
-    await fetchAll()
+    if (config) {
+      await supabase.from('budget_config').update(patch).eq('id', 1)
+      setConfig(c => c ? { ...c, ...patch } : c)
+    } else {
+      const { data } = await supabase.from('budget_config')
+        .insert({ id: 1, ...patch }).select().single()
+      if (data) setConfig(data as BudgetConfig)
+    }
   }
 
   const copPerKrw = config?.cop_per_krw ?? 0.42

@@ -422,7 +422,7 @@ export default function JitsugiProblemPage() {
                       <button key={k} onClick={() => setPhotoIdx(k)}
                         className={`shrink-0 rounded-lg overflow-hidden border-2 transition ${k === i ? 'border-blue-500' : 'border-transparent opacity-60 hover:opacity-100'}`}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt={`썸네일 ${k + 1}`} className="h-14 w-14 object-cover" draggable={false} />
+                        <img src={src} alt={`썸네일 ${k + 1}`} className="h-14 w-14 object-cover" draggable={false} loading="lazy" />
                       </button>
                     ))}
                   </div>

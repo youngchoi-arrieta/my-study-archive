@@ -354,7 +354,7 @@ export default function UnitDetailPage() {
           {slides.map((s, i) => (
             <button key={s.id} onClick={() => setIdxSync(i)}
               className={`relative shrink-0 w-16 h-11 rounded overflow-hidden border ${i === idx ? 'border-blue-500' : 'border-gray-700'}`}>
-              {s.images[0] && <img src={s.images[0].src} alt="" className="w-full h-full object-cover" draggable={false} />}
+              {s.images[0] && <img src={s.images[0].src} alt="" className="w-full h-full object-cover" draggable={false} loading="lazy" />}
               {s.images.length > 1 && <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 rounded-tl">{s.images.length}</span>}
             </button>
           ))}

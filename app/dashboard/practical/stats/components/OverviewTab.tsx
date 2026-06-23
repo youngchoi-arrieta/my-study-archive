@@ -141,7 +141,7 @@ export default function OverviewTab({
 
                 {isOpen && editMode === 'photo' && hasPhoto && (
                   <div className={styles.photoBox}>
-                    <img src={photoUrls[sess.id]} alt="완성작" className={styles.photoImg} />
+                    <img src={photoUrls[sess.id]} alt="완성작" className={styles.photoImg} loading="lazy" />
                     <div className={styles.photoBtns}>
                       <button className={styles.photoChange} onClick={() => { fileInputRef.current?.click() }}>🔄 사진 변경</button>
                       <button className={styles.photoDelete} onClick={() => onDeletePhoto(sess.id)}>🗑 삭제</button>
