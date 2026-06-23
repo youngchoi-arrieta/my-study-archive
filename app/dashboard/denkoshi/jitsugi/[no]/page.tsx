@@ -6,9 +6,6 @@ import { useParams } from "next/navigation"
 import { supabase } from '@/lib/supabase'
 import { compressToBase64 } from '@/lib/imageUtils'
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
-} from 'recharts'
-import {
   KOUHO_MONDAI, KEKKAN_CATEGORIES, KEKKAN_ITEM_MAP, DIFF_LABEL, JITSUGI_EXAM,
   toPreviewUrl, fmtDur,
   type JitsugiProblem, type JitsugiAttempt,
@@ -43,17 +40,19 @@ export default function JitsugiProblemPage() {
   const resultFileRef = useRef<HTMLInputElement | null>(null)
   const [imgBusy, setImgBusy] = useState(false)
   const [photoIdx, setPhotoIdx] = useState(0)
+  const refFileRef = useRef<HTMLInputElement | null>(null)
+  const [refBusy, setRefBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: prob }, { data: atts }] = await Promise.all([
       supabase.from('denkoshi_jitsugi_problems')
-        .select('no, q_drive_url, a_drive_url, result_images, updated_at').eq('no', no).single(),
+        .select('no, q_drive_url, a_drive_url, result_images, reference_images, updated_at').eq('no', no).single(),
       supabase.from('denkoshi_jitsugi_attempts')
         .select('id, problem_no, duration_sec, completed, passed_self, defect_codes, notes, created_at')
         .eq('problem_no', no).order('created_at', { ascending: true }),
     ])
-    setProblem((prob ?? { no, q_drive_url: null, a_drive_url: null, result_images: [] }) as JitsugiProblem)
+    setProblem((prob ?? { no, q_drive_url: null, a_drive_url: null, result_images: [], reference_images: [] }) as JitsugiProblem)
     setQUrl(prob?.q_drive_url ?? '')
     setAUrl(prob?.a_drive_url ?? '')
     setAttempts((atts ?? []) as JitsugiAttempt[])
@@ -61,6 +60,29 @@ export default function JitsugiProblemPage() {
   }, [no])
 
   useEffect(() => { load() }, [load])
+
+  // Ctrl+V 로 참고 이미지 붙여넣기
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      const files: File[] = []
+      for (const it of Array.from(items)) {
+        if (it.type.startsWith('image/')) {
+          const fobj = it.getAsFile()
+          if (fobj) files.push(fobj)
+        }
+      }
+      if (files.length === 0) return
+      e.preventDefault()
+      const dt = new DataTransfer()
+      files.forEach(fl => dt.items.add(fl))
+      await addRefImages(dt.files)
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problem?.reference_images])
 
   useEffect(() => {
     if (running) tick.current = setInterval(() => setElapsed(e => e + 1), 1000)
@@ -103,6 +125,32 @@ export default function JitsugiProblemPage() {
     await persistResultImages(cur.filter((_, k) => k !== i))
   }
 
+  // 참고 이미지(복선도·시공조건 캡처): 복수 붙여넣기/업로드
+  const persistRefImages = async (imgs: string[]) => {
+    await supabase.from('denkoshi_jitsugi_problems').upsert(
+      { no, reference_images: imgs, updated_at: new Date().toISOString() },
+      { onConflict: 'no' }
+    )
+    setProblem(p => p ? { ...p, reference_images: imgs } : p)
+  }
+  const addRefImages = async (files: FileList | null) => {
+    if (!files) return
+    setRefBusy(true)
+    const cur = problem?.reference_images ?? []
+    const added: string[] = []
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) continue
+      added.push(await compressToBase64(file))
+    }
+    if (added.length) await persistRefImages([...cur, ...added])
+    if (refFileRef.current) refFileRef.current.value = ''
+    setRefBusy(false)
+  }
+  const removeRefImage = async (i: number) => {
+    const cur = problem?.reference_images ?? []
+    await persistRefImages(cur.filter((_, k) => k !== i))
+  }
+
   const toggleDefect = (code: string) =>
     setDefects(prev => {
       const n = new Set(prev)
@@ -141,12 +189,22 @@ export default function JitsugiProblemPage() {
     load()
   }
 
-  // 시간 추이 데이터 (오래된→최신, 회차 번호)
-  const chartData = useMemo(() =>
-    attempts
-      .filter(a => a.duration_sec != null)
-      .map((a, i) => ({ round: i + 1, min: Math.round((a.duration_sec ?? 0) / 60 * 10) / 10, passed: a.passed_self })),
-    [attempts])
+  // 회차 메모 인라인 수정
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [noteDraft, setNoteDraft] = useState('')
+  const startEditNote = (a: JitsugiAttempt) => { setEditingNoteId(a.id); setNoteDraft(a.notes ?? '') }
+  const saveNote = async (id: string) => {
+    await supabase.from('denkoshi_jitsugi_attempts').update({ notes: noteDraft.trim() || null }).eq('id', id)
+    setEditingNoteId(null); setNoteDraft('')
+    load()
+  }
+
+  // 최근 회차 vs 직전 회차 소요시간 차이 (음수=단축)
+  const timeDelta = useMemo(() => {
+    const durs = attempts.filter(a => a.duration_sec != null).map(a => a.duration_sec as number)
+    if (durs.length < 2) return null
+    return durs[durs.length - 1] - durs[durs.length - 2]
+  }, [attempts])
 
 
   if (!meta) {
@@ -220,6 +278,41 @@ export default function JitsugiProblemPage() {
               정답·복선도
             </button>
           </div>
+
+          {/* ── 참고 이미지(좌) + 타이머·채점(우) 2단 ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 참고 이미지: 복선도·시공조건 캡처 (복수 붙여넣기/업로드) */}
+            <div className="bg-gray-900 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-semibold">📐 참고 이미지</p>
+                  <p className="text-[11px] text-gray-500">복선도·시공조건 · Ctrl+V 또는 업로드</p>
+                </div>
+                <button onClick={() => refFileRef.current?.click()} disabled={refBusy}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition">
+                  {refBusy ? '…' : '+ 추가'}
+                </button>
+                <input ref={refFileRef} type="file" accept="image/*" multiple className="hidden"
+                  onChange={e => addRefImages(e.target.files)} />
+              </div>
+              {(problem?.reference_images?.length ?? 0) === 0 ? (
+                <div className="text-gray-600 text-xs py-8 text-center border border-dashed border-gray-800 rounded-lg">
+                  복선도·시공조건을 캡처해<br />Ctrl+V로 붙여넣거나 [+ 추가]
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 max-h-[420px] overflow-y-auto">
+                  {problem!.reference_images!.map((src, i) => (
+                    <div key={i} className="relative group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={src} alt={`참고 ${i + 1}`}
+                        className="w-full rounded-lg object-contain bg-gray-950 max-h-72" draggable={false} />
+                      <button onClick={() => removeRefImage(i)}
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-red-600 text-white text-xs opacity-0 group-hover:opacity-100 transition">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
           {/* ── 타이머 + 채점 ── */}
           <div className="space-y-4">
@@ -309,38 +402,21 @@ export default function JitsugiProblemPage() {
               </div>
             )}
           </div>
+          </div>
         </div>
 
-        {/* ── 하단: 회차별 트래킹 ── */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* 시간 추이 */}
+        {/* ── 회차별 기록 (시간 단축 + 자가 메모) ── */}
+        <div className="mt-6">
           <div className="bg-gray-900 rounded-2xl p-5">
-            <p className="text-sm font-semibold mb-3">회차별 시간 추이</p>
-            {chartData.length >= 1 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 4, left: -16 }}>
-                  <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-                  <XAxis dataKey="round" tick={{ fill: '#9ca3af', fontSize: 11 }}
-                    tickFormatter={(v) => `${v}회`} />
-                  <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} unit="분" />
-                  <ReferenceLine y={40} stroke="#ef4444" strokeDasharray="4 4"
-                    label={{ value: '40분', fill: '#ef4444', fontSize: 10, position: 'right' }} />
-                  <Tooltip
-                    contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }}
-                    formatter={(v) => [`${v}분`, '소요']} labelFormatter={(l) => `${l}회차`} />
-                  <Line type="monotone" dataKey="min" stroke="#3b82f6" strokeWidth={2}
-                    dot={{ r: 4, fill: '#3b82f6' }} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-gray-600 text-sm">기록이 쌓이면 시간이 줄어드는 추이가 보여요.</p>
-            )}
-          </div>
-
-          {/* 회차별 결함 리스트 */}
-          <div className="bg-gray-900 rounded-2xl p-5">
-            <p className="text-sm font-semibold mb-3">회차별 기록</p>
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold">회차별 기록</p>
+              {timeDelta != null && (
+                <span className={`text-xs font-semibold ${timeDelta < 0 ? 'text-green-400' : timeDelta > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                  {timeDelta < 0 ? `최근 ${fmtDur(Math.abs(timeDelta))} 단축 ↓` : timeDelta > 0 ? `최근 ${fmtDur(timeDelta)} 증가 ↑` : '직전과 동일'}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
               {attempts.length === 0 && <p className="text-gray-600 text-sm">아직 기록이 없어요.</p>}
               {[...attempts].reverse().map((a, idx) => {
                 const round = attempts.length - idx
@@ -353,6 +429,7 @@ export default function JitsugiProblemPage() {
                         {a.passed_self ? '합격' : `불합격 (欠陥 ${a.defect_codes.length})`}
                       </span>
                       <span className="text-[10px] text-gray-600 ml-auto">{a.created_at?.slice(0, 10)}</span>
+                      <button onClick={() => startEditNote(a)} className="text-gray-600 hover:text-blue-400 text-xs">✏️</button>
                       <button onClick={() => del(a.id)} className="text-gray-600 hover:text-red-400 text-xs">삭제</button>
                     </div>
                     {a.defect_codes.length > 0 && (
@@ -368,7 +445,25 @@ export default function JitsugiProblemPage() {
                         })}
                       </div>
                     )}
-                    {a.notes && <p className="text-[11px] text-gray-500 mt-1">{a.notes}</p>}
+                    {editingNoteId === a.id ? (
+                      <div className="mt-2">
+                        <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)}
+                          className="w-full bg-gray-900 rounded-lg px-3 py-2 text-sm text-white h-28 resize-none leading-relaxed"
+                          placeholder="이번 회차에서 시간을 어디서 단축했는지 / 다음에 줄일 부분…" autoFocus />
+                        <div className="flex gap-2 mt-1.5">
+                          <button onClick={() => saveNote(a.id)}
+                            className="text-xs bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-lg font-semibold transition">저장</button>
+                          <button onClick={() => { setEditingNoteId(null); setNoteDraft('') }}
+                            className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition">취소</button>
+                        </div>
+                      </div>
+                    ) : a.notes ? (
+                      <p onClick={() => startEditNote(a)}
+                        className="text-sm text-gray-200 mt-2 whitespace-pre-wrap leading-relaxed cursor-text hover:bg-gray-800/40 rounded px-1 -mx-1 transition">{a.notes}</p>
+                    ) : (
+                      <button onClick={() => startEditNote(a)}
+                        className="text-xs text-gray-600 hover:text-gray-400 mt-1">+ 메모 추가</button>
+                    )}
                   </div>
                 )
               })}
