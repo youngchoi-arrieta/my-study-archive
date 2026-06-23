@@ -42,6 +42,7 @@ export default function JitsugiProblemPage() {
   const [photoIdx, setPhotoIdx] = useState(0)
   const refFileRef = useRef<HTMLInputElement | null>(null)
   const [refBusy, setRefBusy] = useState(false)
+  const [refIdx, setRefIdx] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -279,10 +280,10 @@ export default function JitsugiProblemPage() {
             </button>
           </div>
 
-          {/* ── 참고 이미지(좌) + 타이머·채점(우) 2단 ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* 참고 이미지: 복선도·시공조건 캡처 (복수 붙여넣기/업로드) */}
-            <div className="bg-gray-900 rounded-2xl p-4">
+          {/* ── 타이머(상단 컴팩트) + 참고 이미지(하단 전체폭) ── */}
+          <div className="flex flex-col gap-4">
+            {/* 참고 이미지: 복선도·시공조건 캡처 (복수, 슬라이드쇼) */}
+            <div className="bg-gray-900 rounded-2xl p-4 order-2">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm font-semibold">📐 참고 이미지</p>
@@ -295,34 +296,64 @@ export default function JitsugiProblemPage() {
                 <input ref={refFileRef} type="file" accept="image/*" multiple className="hidden"
                   onChange={e => addRefImages(e.target.files)} />
               </div>
-              {(problem?.reference_images?.length ?? 0) === 0 ? (
-                <div className="text-gray-600 text-xs py-8 text-center border border-dashed border-gray-800 rounded-lg">
-                  복선도·시공조건을 캡처해<br />Ctrl+V로 붙여넣거나 [+ 추가]
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 max-h-[420px] overflow-y-auto">
-                  {problem!.reference_images!.map((src, i) => (
-                    <div key={i} className="relative group">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={`참고 ${i + 1}`}
-                        className="w-full rounded-lg object-contain bg-gray-950 max-h-72" draggable={false} />
-                      <button onClick={() => removeRefImage(i)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-red-600 text-white text-xs opacity-0 group-hover:opacity-100 transition">✕</button>
+              {(() => {
+                const imgs = problem?.reference_images ?? []
+                if (imgs.length === 0) {
+                  return (
+                    <div className="text-gray-600 text-xs py-10 text-center border border-dashed border-gray-800 rounded-lg">
+                      복선도·시공조건을 캡처해<br />Ctrl+V로 붙여넣거나 [+ 추가]
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                }
+                const i = Math.min(refIdx, imgs.length - 1)
+                return (
+                  <div>
+                    <div className="relative bg-gray-950 rounded-xl overflow-hidden flex items-center justify-center" style={{ minHeight: 300 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imgs[i]} alt={`참고 ${i + 1}`}
+                        className="w-full object-contain max-h-[70vh]" draggable={false} />
+                      <button onClick={() => removeRefImage(i)}
+                        className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-red-600 text-white text-sm transition">✕</button>
+                      {imgs.length > 1 && (
+                        <>
+                          <button onClick={() => setRefIdx((i - 1 + imgs.length) % imgs.length)}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white text-lg transition">‹</button>
+                          <button onClick={() => setRefIdx((i + 1) % imgs.length)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white text-lg transition">›</button>
+                        </>
+                      )}
+                      <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">
+                        {i + 1} / {imgs.length}
+                      </span>
+                    </div>
+                    {imgs.length > 1 && (
+                      <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+                        {imgs.map((src, k) => (
+                          <button key={k} onClick={() => setRefIdx(k)}
+                            className={`shrink-0 rounded-lg overflow-hidden border-2 transition ${k === i ? 'border-blue-500' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={src} alt={`썸네일 ${k + 1}`} className="h-14 w-14 object-cover" draggable={false} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
           {/* ── 타이머 + 채점 ── */}
-          <div className="space-y-4">
-            {/* 타이머 */}
-            <div className="bg-gray-900 rounded-2xl p-5 text-center">
-              <p className="text-xs text-gray-500 mb-1">작업 타이머 (목표 40:00)</p>
-              <div className={`font-mono text-5xl tabular-nums mb-3 ${isOver ? 'text-red-400' : 'text-white'}`}>
-                {fmtDur(elapsed)}
+          <div className="space-y-4 order-1">
+            {/* 타이머 (가로 컴팩트) */}
+            <div className="bg-gray-900 rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] text-gray-500">작업 타이머</span>
+                <span className={`font-mono text-3xl tabular-nums ${isOver ? 'text-red-400' : 'text-white'}`}>
+                  {fmtDur(elapsed)}
+                </span>
+                <span className="text-[11px] text-gray-600">/ 40:00</span>
               </div>
-              <div className="flex gap-2 justify-center">
+              <div className="flex gap-2 ml-auto">
                 <button onClick={() => setRunning(r => !r)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${running ? 'bg-amber-600 hover:bg-amber-500' : 'bg-green-600 hover:bg-green-500'}`}>
                   {running ? '일시정지' : elapsed > 0 ? '계속' : '시작'}
