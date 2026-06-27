@@ -18,8 +18,16 @@ const EXAM_META: Record<string, { label: string; back: string }> = {
   engineer:   { label: '⚡ 전기기사 실기', back: '/dashboard' },
   gineung:    { label: '🔧 전기기능사 실기', back: '/dashboard' },
   denkoshi:   { label: '🗾 第二種電気工事士', back: '/dashboard/denkoshi' },
+  denken:     { label: '🏭 電験三種', back: '/dashboard/denken' },
   'jlpt-n4':  { label: '🗣 JLPT N4', back: '/dashboard/jlpt-n4' },
 }
+
+// 시험별 카테고리 프리셋 — 덱 그룹 헤더/만들기 분류에 사용
+const CAT_PRESETS: Record<string, { cats: string[]; emoji: Record<string, string> }> = {
+  'jlpt-n4': { cats: ['어휘', '문법', '문형'], emoji: { '어휘': '📚', '문법': '📝', '문형': '💬' } },
+  denken:    { cats: ['理論', '電力', '機械', '法規'], emoji: { '理論': '📐', '電力': '⚡', '機械': '⚙️', '法規': '📜' } },
+}
+const DEFAULT_PRESET = { cats: ['어휘', '문법', '문형'], emoji: { '어휘': '📚', '문법': '📝', '문형': '💬' } }
 
 export default function FlashcardPageWrapper() {
   return (
@@ -36,20 +44,25 @@ function FlashcardPage() {
   const searchParams = useSearchParams()
   const examParam = searchParams.get('exam') || 'all'
 
+  // 시험 맥락에 맞는 카테고리 프리셋 (덴켄=理論/電力/機械/法規, JLPT=어휘/문법/문형 …)
+  const preset = CAT_PRESETS[examParam] ?? DEFAULT_PRESET
+  const PRESET_CATS = preset.cats
+  const CAT_EMOJI: Record<string, string> = preset.emoji
+
   const [decks, setDecks] = useState<Deck[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
-  const [newCategory, setNewCategory] = useState<string>('어휘')
+  const [newCategory, setNewCategory] = useState<string>(PRESET_CATS[0])
   const [customCategory, setCustomCategory] = useState('')
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [reordering, setReordering] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [splitting, setSplitting] = useState<string | null>(null)
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['어휘', '문법', '문형']))
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(PRESET_CATS))
 
   // description [태그] 우선 추출, 없으면 이름 패턴 폴백
   const classifyDeck = (name: string, description?: string | null): string => {
@@ -61,13 +74,11 @@ function FlashcardPage() {
   }
 
   // 덱에서 실제 사용 중인 카테고리 목록 동적 생성
-  const PRESET_CATS = ['어휘', '문법', '문형']
   const allCats = [...new Set(decks.map(d => classifyDeck(d.name, d.description)))]
   const sortedCats = [
     ...PRESET_CATS.filter(c => allCats.includes(c)),
     ...allCats.filter(c => !PRESET_CATS.includes(c)).sort(),
   ]
-  const CAT_EMOJI: Record<string, string> = { '어휘': '📚', '문법': '📝', '문형': '💬' }
 
   const toggleGroup = (key: string) => {
     setOpenGroups(prev => {
@@ -258,7 +269,7 @@ function FlashcardPage() {
             <h3 className="font-semibold mb-4">새 덱 만들기</h3>
             {/* 카테고리 선택 */}
             <div className="flex gap-1.5 mb-2 flex-wrap">
-              {['어휘', '문법', '문형'].map(cat => (
+              {PRESET_CATS.map(cat => (
                 <button key={cat} onClick={() => { setNewCategory(cat); setCustomCategory('') }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                     newCategory === cat ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'

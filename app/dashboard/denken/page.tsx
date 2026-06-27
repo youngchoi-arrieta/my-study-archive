@@ -330,6 +330,17 @@ export default function DenkenHub() {
             <span className="text-violet-500 text-sm group-hover:translate-x-0.5 transition">→</span>
           </Link>
 
+          {/* 플래시카드 진입 배너 */}
+          <Link href="/flashcard?exam=denken"
+            className="flex items-center gap-3 bg-blue-900/20 hover:bg-blue-900/35 border border-blue-500/20 rounded-2xl px-4 py-3 mb-5 transition group">
+            <span className="text-xl">🃏</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-blue-300">플래시카드</p>
+              <p className="text-[11px] text-gray-500">理論·電力·機械·法規 개념 인출 훈련 · 1회독 대신 능동 복습</p>
+            </div>
+            <span className="text-blue-500 text-sm group-hover:translate-x-0.5 transition">→</span>
+          </Link>
+
           {/* 탭 */}
           <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">
             {([
