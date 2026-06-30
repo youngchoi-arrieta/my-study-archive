@@ -75,6 +75,22 @@ function leafStats(n: TreeNode): { done: number; total: number; weak: number } {
   )
 }
 
+// 교재(플랫 노드) 진도 — 목록 카드용
+function flatBookProgress(nodes: Node[], bookId: string): { done: number; total: number; weak: number } {
+  const own = nodes.filter(n => n.book_id === bookId)
+  const childOf = new Map<string | null, Node[]>()
+  own.forEach(n => {
+    const arr = childOf.get(n.parent_id) ?? []
+    arr.push(n); childOf.set(n.parent_id, arr)
+  })
+  const leaves = own.filter(n => !(childOf.get(n.id)?.length))
+  return {
+    total: leaves.length,
+    done: leaves.filter(n => n.status >= 1).length,
+    weak: leaves.filter(n => n.status === 2).length,
+  }
+}
+
 export default function BooksPageWrapper() {
   return (
     <Suspense fallback={
@@ -115,13 +131,13 @@ function BooksPage() {
     setLoading(false)
   }, [])
 
-  const loadNodes = useCallback(async (bookId: string) => {
-    const { data } = await supabase.from('jp_nodes').select('*').eq('book_id', bookId)
+  // 전체 노드를 한 번에 로드 (목록 카드의 교재별 진도 계산에 사용)
+  const loadNodes = useCallback(async () => {
+    const { data } = await supabase.from('jp_nodes').select('*')
     setNodes((data as Node[]) || [])
   }, [])
 
-  useEffect(() => { loadBooks() }, [loadBooks])
-  useEffect(() => { if (activeBook) loadNodes(activeBook) }, [activeBook, loadNodes])
+  useEffect(() => { loadBooks(); loadNodes() }, [loadBooks, loadNodes])
 
   // ── 교재 CRUD ───────────────────────────────────────────────
   const addBook = async () => {
@@ -159,8 +175,9 @@ function BooksPage() {
   // ── 노드 CRUD (낙관적) ──────────────────────────────────────
   const siblingsOf = useCallback(
     (parentId: string | null) =>
-      nodes.filter(n => n.parent_id === parentId).sort((a, b) => a.sort_order - b.sort_order),
-    [nodes]
+      nodes.filter(n => n.book_id === activeBook && n.parent_id === parentId)
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [nodes, activeBook]
   )
 
   const addNodes = async (parentId: string | null, titles: string[]) => {
@@ -229,7 +246,7 @@ function BooksPage() {
     ])
   }
 
-  const tree = useMemo(() => buildTree(nodes), [nodes])
+  const tree = useMemo(() => buildTree(nodes.filter(n => n.book_id === activeBook)), [nodes, activeBook])
   const book = books.find(b => b.id === activeBook) || null
 
   // ── 교재 목록 화면 ──────────────────────────────────────────
@@ -300,22 +317,32 @@ function BooksPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {books.map(b => (
-                <button
-                  key={b.id}
-                  onClick={() => setActiveBook(b.id)}
-                  className="text-left bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.color }} />
-                    {b.tag && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{b.tag}</span>
-                    )}
-                  </div>
-                  <p className="font-bold leading-snug">{b.title}</p>
-                  <p className="text-xs text-gray-600 mt-1">탭하여 목차 편집 →</p>
-                </button>
-              ))}
+              {books.map(b => {
+                const p = flatBookProgress(nodes, b.id)
+                const pct = p.total === 0 ? 0 : Math.round((p.done / p.total) * 100)
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => setActiveBook(b.id)}
+                    className="text-left bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.color }} />
+                      {b.tag && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{b.tag}</span>
+                      )}
+                      <span className="text-[10px] text-gray-600 ml-auto">
+                        {p.done}/{p.total}{p.weak > 0 && <span className="text-amber-500"> · 약점 {p.weak}</span>}
+                      </span>
+                    </div>
+                    <p className="font-bold leading-snug mb-2">{b.title}</p>
+                    <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: b.color }} />
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-1.5">{pct}% · 탭하여 목차 편집 →</p>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
