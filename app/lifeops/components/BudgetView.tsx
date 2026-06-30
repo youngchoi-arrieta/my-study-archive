@@ -322,6 +322,7 @@ export default function BudgetView({ logs, config, onUpdateConfig, lang, currenc
 
       {settingsOpen && (
         <SettingsModal config={config} lang={lang} copPerKrw={copPerKrw}
+          currentBalance={balance}
           onSave={async p => { await onUpdateConfig(p); setSettingsOpen(false) }}
           onClose={() => setSettingsOpen(false)} />
       )}
@@ -347,33 +348,42 @@ function StatCard({ label, value, sub, tone }: {
 }
 
 // ── Settings modal ────────────────────────────────────────────────────────────
-function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
+function SettingsModal({ config, lang, copPerKrw, currentBalance, onSave, onClose }: {
   config: BudgetConfig; lang: Lang; copPerKrw: number
+  currentBalance: number
   onSave: (p: Partial<BudgetConfig>) => Promise<void>
   onClose: () => void
 }) {
-  const [bal,       setBal]       = useState(String(config.start_balance_krw))
   const [startDate, setStartDate] = useState(config.start_date)
   const [target,    setTarget]    = useState(String(config.daily_target_krw))
   const [monthlyFx, setMonthlyFx] = useState(String(config.monthly_fixed_krw ?? 0))
   const [pivot,     setPivot]     = useState(config.pivot_date || '')
   const [cop,       setCop]       = useState(String(copPerKrw))
-  // Balance adjustment
+  // Balance adjustment — operates on the *current* balance, not the start baseline.
   const [adjMode,   setAdjMode]   = useState<'set' | 'add' | 'sub'>('set')
   const [adjAmt,    setAdjAmt]    = useState('')
 
-  function computeNewBalance(): number {
-    const base = parseInt(bal) || 0
-    const adj  = parseInt(adjAmt) || 0
-    if (adjMode === 'add') return base + adj
-    if (adjMode === 'sub') return base - adj
-    return parseInt(adjAmt) || base
+  // netSpent = (총지출 − 총수입). currentBalance = start − netSpent 이므로 역산 가능.
+  // 이 값을 보존해야 "현재 잔고 = 입력값"이 되도록 start를 다시 잡을 수 있다.
+  const netSpent = config.start_balance_krw - currentBalance
+
+  // 입력한 조정을 적용한 "새 현재 잔고"
+  function computeNewCurrent(): number {
+    const adj = parseInt(adjAmt) || 0
+    if (adjMode === 'add') return currentBalance + adj
+    if (adjMode === 'sub') return currentBalance - adj
+    return parseInt(adjAmt) || currentBalance   // 'set' → 입력값이 곧 현재 잔고
+  }
+
+  // 그 현재 잔고가 나오도록 거꾸로 계산한 start_balance
+  function computeNewStart(): number {
+    return computeNewCurrent() + netSpent
   }
 
   async function handleSave() {
-    const newBal = adjAmt ? computeNewBalance() : (parseInt(bal) || 0)
+    const newStart = adjAmt ? computeNewStart() : config.start_balance_krw
     await onSave({
-      start_balance_krw: newBal,
+      start_balance_krw: newStart,
       start_date:        startDate,
       daily_target_krw:  parseInt(target) || 0,
       monthly_fixed_krw: parseInt(monthlyFx) || 0,
@@ -388,10 +398,16 @@ function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
       <div className="bg-gray-900 rounded-2xl p-5 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
         <h2 className="text-base font-bold">⚙️ {t('settings', lang)}</h2>
 
-        {/* Balance section */}
+        {/* Balance section — operates on CURRENT balance (what the Balance card shows) */}
         <div className="bg-gray-800 rounded-xl p-4 space-y-3">
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Balance (KRW)</p>
-          <p className="text-2xl font-bold">{parseInt(bal).toLocaleString('ko-KR')}원</p>
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Current balance (KRW)</p>
+          <p className="text-2xl font-bold">
+            {(adjAmt ? computeNewCurrent() : currentBalance).toLocaleString('ko-KR')}원
+          </p>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            여기 입력한 값이 <span className="text-gray-300">Balance 카드에 그대로</span> 표시됩니다.
+            지출이 다시 차감되지 않아요. 토스 실제 잔고를 그대로 적으면 됩니다.
+          </p>
 
           {/* Adjustment mode */}
           <div className="flex gap-2">
@@ -405,12 +421,16 @@ function SettingsModal({ config, lang, copPerKrw, onSave, onClose }: {
           </div>
           <input type="number" inputMode="numeric"
             className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm"
-            placeholder={adjMode === 'set' ? 'New balance' : 'Amount to adjust'}
+            placeholder={adjMode === 'set' ? '토스 현재 잔고' : 'Amount to adjust'}
             value={adjAmt} onChange={e => setAdjAmt(e.target.value)} />
           {adjAmt && (
-            <p className="text-xs text-gray-400">
-              Result: <span className="text-white font-mono">{computeNewBalance().toLocaleString('ko-KR')}원</span>
-            </p>
+            <div className="text-xs text-gray-400 space-y-0.5">
+              <p>현재 잔고 → <span className="text-white font-mono">{computeNewCurrent().toLocaleString('ko-KR')}원</span></p>
+              <p className="text-gray-600">
+                내부 시작 잔고(start) → <span className="font-mono">{computeNewStart().toLocaleString('ko-KR')}원</span>
+                <span className="ml-1">(지출 {netSpent.toLocaleString('ko-KR')}원 자동 보정)</span>
+              </p>
+            </div>
           )}
         </div>
 
