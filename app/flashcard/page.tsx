@@ -11,6 +11,7 @@ type Deck = {
   created_at: string
   exam_type: string | null
   sort_order: number
+  book_id: string | null
   card_count?: number
 }
 
@@ -43,25 +44,23 @@ function FlashcardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const examParam = searchParams.get('exam') || 'all'
+  const bookParam = searchParams.get('book') // jp_books.id | 'none' | null
 
-  // JLPT는 교재(jp_books) 목록을 그룹/덱 분류 기준으로 사용
-  const [bookTitles, setBookTitles] = useState<string[]>([])
+  // 교재 스코프: 특정 교재로 들어오면 그 교재의 덱만 표시
+  const [bookTitle, setBookTitle] = useState<string | null>(null)
   useEffect(() => {
-    if (examParam !== 'jlpt-n4') return
-    supabase.from('jp_books').select('title')
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: true })
-      .then(({ data }) => setBookTitles(((data as { title: string }[]) || []).map(b => b.title)))
-  }, [examParam])
+    if (bookParam && bookParam !== 'none') {
+      supabase.from('jp_books').select('title').eq('id', bookParam).single()
+        .then(({ data }) => setBookTitle((data as { title: string } | null)?.title ?? null))
+    } else {
+      setBookTitle(null)
+    }
+  }, [bookParam])
 
-  // 시험 맥락에 맞는 카테고리 프리셋
-  //  · JLPT  → 교재 목록(jp_books)을 그룹으로 사용
-  //  · 그 외 → 고정 프리셋
+  // 시험 맥락에 맞는 카테고리 프리셋 (덴켄=理論/電力/機械/法規, JLPT=어휘/문법/문형 …)
   const preset = CAT_PRESETS[examParam] ?? DEFAULT_PRESET
-  const PRESET_CATS = examParam === 'jlpt-n4' ? bookTitles : preset.cats
-  const CAT_EMOJI: Record<string, string> = examParam === 'jlpt-n4'
-    ? Object.fromEntries(bookTitles.map(t => [t, '📘']))
-    : preset.emoji
+  const PRESET_CATS = preset.cats
+  const CAT_EMOJI: Record<string, string> = preset.emoji
 
   const [decks, setDecks] = useState<Deck[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,21 +68,14 @@ function FlashcardPage() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
-  const [newCategory, setNewCategory] = useState<string>('')
+  const [newCategory, setNewCategory] = useState<string>(PRESET_CATS[0])
   const [customCategory, setCustomCategory] = useState('')
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [reordering, setReordering] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [splitting, setSplitting] = useState<string | null>(null)
-  const [openGroups, setOpenGroups] = useState<Set<string>>(
-    new Set(examParam !== 'jlpt-n4' ? preset.cats : [])
-  )
-
-  // 카테고리 기본 선택값 보정 (교재/프리셋 로드 후)
-  useEffect(() => {
-    if (!newCategory && PRESET_CATS.length) setNewCategory(PRESET_CATS[0])
-  }, [PRESET_CATS, newCategory])
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(PRESET_CATS))
 
   // description [태그] 우선 추출, 없으면 이름 패턴 폴백
   const classifyDeck = (name: string, description?: string | null): string => {
@@ -122,6 +114,11 @@ function FlashcardPage() {
     if (examParam !== 'all') {
       q = q.eq('exam_type', examParam)
     }
+    if (bookParam === 'none') {
+      q = q.is('book_id', null)
+    } else if (bookParam) {
+      q = q.eq('book_id', bookParam)
+    }
 
     const { data } = await q
     if (!data) { setLoading(false); return }
@@ -130,7 +127,7 @@ function FlashcardPage() {
       card_count: (d.flashcard_cards as unknown as { count: number }[])?.[0]?.count ?? 0,
     })))
     setLoading(false)
-  }, [examParam])
+  }, [examParam, bookParam])
 
   useEffect(() => { loadDecks() }, [loadDecks])
 
@@ -155,7 +152,7 @@ function FlashcardPage() {
 
     const finalCat = newCategory === '__custom__'
       ? (customCategory.trim() || '기타')
-      : (newCategory || PRESET_CATS[0] || '기타')
+      : newCategory
     const ttsSuffix = ttsEnabled ? '' : '[notts]'
     const taggedDesc = newDesc.trim()
       ? `[${finalCat}]${ttsSuffix} ${newDesc.trim()}`
@@ -167,6 +164,7 @@ function FlashcardPage() {
       description: taggedDesc,
       exam_type: examType,
       sort_order: nextOrder,
+      book_id: bookParam && bookParam !== 'none' ? bookParam : null,
     })
     setNewName(''); setNewDesc(''); setShowAdd(false); setTtsEnabled(true)
     await loadDecks()
@@ -191,7 +189,7 @@ function FlashcardPage() {
       if (chunk.length === 0) continue
       const { data: newDeck } = await supabase.from('flashcard_decks').insert({
         name: `${deck.name} (${i + 1}/${parts})`,
-        exam_type: deck.exam_type, description: deck.description,
+        exam_type: deck.exam_type, description: deck.description, book_id: deck.book_id,
         user_id: 'flashcard_user', sort_order: maxOrder + i + 1,
       }).select('id').single()
       if (!newDeck) continue
@@ -212,7 +210,7 @@ function FlashcardPage() {
     if (!newName) return
     const maxOrder = Math.max(...decks.map(d => d.sort_order), 0)
     const { data: newDeck } = await supabase.from('flashcard_decks').insert({
-      name: newName, exam_type: sel[0].exam_type, description: sel[0].description,
+      name: newName, exam_type: sel[0].exam_type, description: sel[0].description, book_id: sel[0].book_id,
       user_id: 'flashcard_user', sort_order: maxOrder + 1,
     }).select('id').single()
     if (!newDeck) return
@@ -254,7 +252,15 @@ function FlashcardPage() {
 
   const meta = EXAM_META[examParam]
   const backHref = meta?.back || '/'
-  const pageTitle = meta ? `🃏 플래시카드 — ${meta.label}` : '🃏 플래시카드'
+  const scopeTitle = bookTitle
+    ? `🃏 ${bookTitle}`
+    : bookParam === 'none'
+      ? '🃏 미분류 카드'
+      : (meta ? `🃏 플래시카드 — ${meta.label}` : '🃏 플래시카드')
+  const pageTitle = scopeTitle
+  const scopeSubtitle = (bookTitle || bookParam === 'none')
+    ? `${meta?.label ?? ''} · 교재별 덱 · 어휘·문법·문형 태그`
+    : '멀티필드 인출 훈련 · 덱 관리'
 
   if (loading) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white text-4xl">🃏</div>
@@ -271,7 +277,7 @@ function FlashcardPage() {
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold mb-1">{pageTitle}</h1>
-            <p className="text-gray-500 text-sm">멀티필드 인출 훈련 · 덱 관리</p>
+            <p className="text-gray-500 text-sm">{scopeSubtitle}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => { setSelectMode(v => !v); setSelectedIds(new Set()) }}

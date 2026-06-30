@@ -151,11 +151,25 @@ export default function JlptHub() {
 
         {activeTab === 'cards' && (
           <div className="space-y-2">
-            <Link href="/flashcard?exam=jlpt-n4"
-              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
+            <p className="text-xs text-gray-500 mb-1">교재를 골라 들어가면 그 교재의 덱만 모여요. 덱 안에서는 어휘·문법·문형 태그로 분류됩니다.</p>
+            {books.map(b => (
+              <Link key={b.id} href={`/flashcard?exam=jlpt-n4&book=${b.id}`}
+                className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">📘 {b.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">덱 만들기·관리 {b.tag ? `· ${b.tag}` : ''}</p>
+                  </div>
+                </div>
+                <span className="text-gray-600 text-xs shrink-0">→</span>
+              </Link>
+            ))}
+            <Link href="/flashcard?exam=jlpt-n4&book=none"
+              className="flex items-center justify-between bg-gray-900/60 hover:bg-gray-800 rounded-xl px-4 py-3 transition">
               <div>
-                <p className="text-sm font-semibold">🃏 단어·문형 플래시카드</p>
-                <p className="text-xs text-gray-500 mt-0.5">채굴한 예문 cloze · 음성 인출 훈련</p>
+                <p className="text-sm font-semibold text-gray-300">🗂 미분류 카드</p>
+                <p className="text-xs text-gray-600 mt-0.5">교재에 묶이지 않은 기존 덱</p>
               </div>
               <span className="text-gray-600 text-xs">→</span>
             </Link>
