@@ -198,6 +198,18 @@ export type JitsugiAttempt = {
   created_at: string
 }
 
+// 시공 리스크 항목(Risk item) — 치수 · 시공 유의사항 · 해당 候補問題 태깅
+export type JitsugiRisk = {
+  id: string
+  item: string            // Risk item (예: '引掛シーリング 각형')
+  dimension: string       // 치수 (피복/심선 길이 등)
+  caution: string         // 시공상 유의사항 및 주의할 결함
+  problem_nos: number[]   // 해당 候補問題 (1~13)
+  sort_order: number
+  created_at?: string
+  updated_at?: string | null
+}
+
 // ── 헬퍼 ─────────────────────────────────────────────────────────
 export function toPreviewUrl(url: string): string | null {
   if (!url) return null

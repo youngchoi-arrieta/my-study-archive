@@ -17,11 +17,23 @@ export default function DenkoshiJitsugiHub() {
         {/* 단위작업 진입 */}
         <Link
           href="/dashboard/denkoshi/jitsugi/units"
-          className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-2xl px-5 py-4 mb-6 transition"
+          className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-2xl px-5 py-4 mb-3 transition"
         >
           <div>
             <p className="text-sm font-semibold">🧰 단위작업</p>
             <p className="text-xs text-gray-500 mt-0.5">HOZAN 単位作業 20개 · 캡쳐 이미지 + 캡션 정리</p>
+          </div>
+          <span className="text-gray-600 text-xs">→</span>
+        </Link>
+
+        {/* 시공 리스크 관리 진입 */}
+        <Link
+          href="/dashboard/denkoshi/jitsugi/risks"
+          className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-2xl px-5 py-4 mb-6 transition"
+        >
+          <div>
+            <p className="text-sm font-semibold">⚠️ 시공 리스크 관리</p>
+            <p className="text-xs text-gray-500 mt-0.5">치수 · 유의사항 · 候補問題 태깅 매트릭스</p>
           </div>
           <span className="text-gray-600 text-xs">→</span>
         </Link>
