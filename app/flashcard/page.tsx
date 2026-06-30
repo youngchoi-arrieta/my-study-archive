@@ -131,6 +131,20 @@ function FlashcardPage() {
 
   useEffect(() => { loadDecks() }, [loadDecks])
 
+  // ── 덱을 교재로 이동 ───────────────────────────────────────────
+  const [allBooks, setAllBooks] = useState<{ id: string; title: string; color: string }[]>([])
+  const [movingDeck, setMovingDeck] = useState<string | null>(null)
+  useEffect(() => {
+    supabase.from('jp_books').select('id, title, color')
+      .order('sort_order', { ascending: true }).order('created_at', { ascending: true })
+      .then(({ data }) => setAllBooks((data as { id: string; title: string; color: string }[]) || []))
+  }, [])
+  const moveDeck = async (deckId: string, bookId: string | null) => {
+    setMovingDeck(null)
+    await supabase.from('flashcard_decks').update({ book_id: bookId }).eq('id', deckId)
+    await loadDecks()
+  }
+
   const addDeck = async () => {
     if (!newName.trim()) return
     setSaving(true)
@@ -404,7 +418,8 @@ function FlashcardPage() {
                         {groupDecks.map((deck, idx) => {
                           const globalIdx = decks.indexOf(deck)
                           return (
-                            <div key={deck.id} className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-800 transition group ${selectMode && selectedIds.has(deck.id) ? 'bg-violet-950' : ''}`}>
+                            <div key={deck.id}>
+                            <div className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-800 transition group ${selectMode && selectedIds.has(deck.id) ? 'bg-violet-950' : ''}`}>
                               {selectMode ? (
                                 <button onClick={() => setSelectedIds(prev => { const n=new Set(prev); n.has(deck.id)?n.delete(deck.id):n.add(deck.id); return n })}
                                   className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${selectedIds.has(deck.id)?'bg-violet-600 border-violet-600':'border-gray-600'}`}>
@@ -445,12 +460,30 @@ function FlashcardPage() {
                                     <div className="flex gap-1.5">
                                       <button onClick={() => setSplitting(deck.id)}
                                         className="text-orange-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">✂️ 분할</button>
+                                      <button onClick={() => setMovingDeck(movingDeck === deck.id ? null : deck.id)}
+                                        className="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">📦 교재</button>
                                       <button onClick={() => deleteDeck(deck.id)}
                                         className="text-red-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">🗑 삭제</button>
                                     </div>
                                   )}
                                 </div>
                               )}
+                            </div>
+                            {!selectMode && movingDeck === deck.id && (
+                              <div className="px-5 pb-3">
+                                <div className="bg-gray-950 rounded-lg p-2 flex flex-wrap gap-1.5">
+                                  <span className="text-[10px] text-gray-500 self-center mr-1">교재로 이동:</span>
+                                  {allBooks.map(bk => (
+                                    <button key={bk.id} onClick={() => moveDeck(deck.id, bk.id)}
+                                      className={`px-2 py-1 rounded-lg text-xs transition ${deck.book_id === bk.id ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+                                      {bk.title}
+                                    </button>
+                                  ))}
+                                  <button onClick={() => moveDeck(deck.id, null)}
+                                    className={`px-2 py-1 rounded-lg text-xs transition ${!deck.book_id ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>미분류</button>
+                                </div>
+                              </div>
+                            )}
                             </div>
                           )
                         })}
