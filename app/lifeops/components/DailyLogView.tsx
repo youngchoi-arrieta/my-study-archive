@@ -42,8 +42,18 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
   const isToday = selectedDate === today
 
   const selectedLog = useMemo(() => logs.find(l => l.log_date === selectedDate) || null, [logs, selectedDate])
-  const recent   = useMemo(() => [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date)).slice(0, 14), [logs])
+  const sortedLogs = useMemo(() => [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date)), [logs])
+  const [showAllHistory, setShowAllHistory] = useState(false)
+  const recent = showAllHistory ? sortedLogs : sortedLogs.slice(0, 14)
   const fmt = (krw: number) => formatAmount(krw, currency, copPerKrw)
+
+  // 실제 현재 잔고 = 시작 잔고 − 총지출 + 총수입 (스트립·모달이 같은 값을 쓰도록 한 번만 계산)
+  const currentBalance = useMemo(
+    () => config.start_balance_krw
+      - logs.reduce((s, l) => s + sumKrw(l.expense_krw), 0)
+      + logs.reduce((s, l) => s + sumKrw(l.income_krw || {}), 0),
+    [config.start_balance_krw, logs]
+  )
 
   const expenseCats  = config.expense_cats  ?? DEFAULT_EXPENSE_CATS
   const incomeCats   = config.income_cats   ?? DEFAULT_INCOME_CATS
@@ -58,7 +68,7 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
       <button onClick={() => setBalanceOpen(true)}
         className="w-full bg-gray-900 hover:bg-gray-800 rounded-2xl px-4 py-3 flex items-center justify-between transition group">
         <span className="text-xs text-gray-500 group-hover:text-gray-400">Balance</span>
-        <span className="text-xl font-bold">{fmt(config.start_balance_krw - logs.reduce((s,l)=>s+sumKrw(l.expense_krw),0) + logs.reduce((s,l)=>s+sumKrw(l.income_krw||{}),0))}</span>
+        <span className="text-xl font-bold">{fmt(currentBalance)}</span>
         <span className="text-xs text-gray-600 group-hover:text-gray-400">tap to adjust ✏️</span>
       </button>
 
@@ -88,9 +98,19 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
         studyBlocks={studyBlocks}
         onUpdateLog={onUpdateLog} onDeleteLog={onDeleteLog} />
 
+      {sortedLogs.length > 14 && (
+        <button onClick={() => setShowAllHistory(v => !v)}
+          className="w-full text-xs text-gray-500 hover:text-white py-2 transition">
+          {showAllHistory
+            ? '▲ 간략히 (최근 14일)'
+            : `▼ 전체 기록 보기 (${sortedLogs.length}일)`}
+        </button>
+      )}
+
       {balanceOpen && (
         <BalanceModal
           config={config}
+          currentBalance={currentBalance}
           onSave={async (patch) => { await onUpdateConfig(patch); setBalanceOpen(false) }}
           onClose={() => setBalanceOpen(false)}
         />
@@ -100,8 +120,9 @@ export default function DailyLogView({ logs, config, onUpsertToday, onUpdateConf
 }
 
 // ── Balance modal ─────────────────────────────────────────────────────────────
-function BalanceModal({ config, onSave, onClose }: {
+function BalanceModal({ config, currentBalance, onSave, onClose }: {
   config: BudgetConfig
+  currentBalance: number
   onSave: (p: Partial<BudgetConfig>) => Promise<void>
   onClose: () => void
 }) {
@@ -109,9 +130,11 @@ function BalanceModal({ config, onSave, onClose }: {
   const [amt,  setAmt]  = useState('')
   const [cop,  setCop]  = useState(String(config.cop_per_krw ?? 0.42))
 
-  const current = config.start_balance_krw
-  const parsed  = parseInt(amt.replace(/,/g, '')) || 0
-  const result  = mode === 'set' ? parsed : mode === 'add' ? current + parsed : current - parsed
+  // 모달은 "현재 잔고"를 기준으로 동작한다. start는 역산.
+  const netSpent = config.start_balance_krw - currentBalance   // 총지출 − 총수입
+  const parsed   = parseInt(amt.replace(/,/g, '')) || 0
+  const result   = mode === 'set' ? parsed : mode === 'add' ? currentBalance + parsed : currentBalance - parsed
+  const newStart = result + netSpent                            // 현재 잔고 = result 가 되도록
 
   const copRate = parseFloat(cop) || 0.42
 
@@ -120,8 +143,12 @@ function BalanceModal({ config, onSave, onClose }: {
       <div className="bg-gray-900 rounded-2xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="font-bold">✏️ Adjust Balance</h2>
-          <span className="text-xs text-gray-500">current: {current.toLocaleString('ko-KR')}원</span>
+          <span className="text-xs text-gray-500">current: {currentBalance.toLocaleString('ko-KR')}원</span>
         </div>
+
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          토스 실제 잔고를 그대로 적으면 됩니다. 입력값이 Balance에 그대로 표시돼요(지출 재차감 없음).
+        </p>
 
         <div className="flex gap-2">
           {(['set','add','sub'] as const).map(m => (
@@ -135,13 +162,18 @@ function BalanceModal({ config, onSave, onClose }: {
 
         <input autoFocus type="number" inputMode="numeric"
           className="w-full bg-gray-800 rounded-xl px-4 py-3 text-lg font-mono"
-          placeholder="금액 (원)"
+          placeholder={mode === 'set' ? '토스 현재 잔고 (원)' : '금액 (원)'}
           value={amt} onChange={e => setAmt(e.target.value)} />
 
         {amt && (
-          <p className="text-sm text-center">
-            → <span className="text-xl font-bold text-blue-400">{result.toLocaleString('ko-KR')}원</span>
-          </p>
+          <div className="text-center space-y-0.5">
+            <p className="text-sm">
+              현재 잔고 → <span className="text-xl font-bold text-blue-400">{result.toLocaleString('ko-KR')}원</span>
+            </p>
+            <p className="text-[11px] text-gray-600 font-mono">
+              내부 start → {newStart.toLocaleString('ko-KR')}원 (지출 {netSpent.toLocaleString('ko-KR')}원 보정)
+            </p>
+          </div>
         )}
 
         {/* Exchange rate */}
@@ -161,7 +193,7 @@ function BalanceModal({ config, onSave, onClose }: {
           <button onClick={onClose} className="flex-1 py-2 rounded-lg bg-gray-800 text-sm">Cancel</button>
           <button
             onClick={() => onSave({
-              start_balance_krw: amt ? result : current,
+              start_balance_krw: amt ? newStart : config.start_balance_krw,
               cop_per_krw: copRate,
             })}
             className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold">
