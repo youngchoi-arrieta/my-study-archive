@@ -90,9 +90,9 @@ export default function Home() {
           <ExamCard
             href="/dashboard/jlpt-n4"
             emoji="🗣"
-            org="일본어능력시험 JLPT"
-            title="JLPT N4"
-            desc="해커스 진도 대시보드 · 단어·문형 플래시카드"
+            org="일본어능력시험 · 목표 N2"
+            title="JLPT"
+            desc="교재 진도 · 채굴 예문 플래시카드"
             badge="준비 중"
           />
           <ExamCard

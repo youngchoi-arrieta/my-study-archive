@@ -374,6 +374,12 @@ function BooksPage() {
           </div>
         </div>
 
+        {/* 사용법 안내 */}
+        <p className="text-[11px] text-gray-600 mb-3 leading-relaxed">
+          맨 아래 <span className="text-gray-400">+ 최상위 항목</span>으로 회차·챕터를 추가하고, 각 항목의 <span className="text-blue-400">＋하위</span>로 세부문항을 넣으세요.
+          여러 줄을 붙여넣으면 한꺼번에 등록돼요. 말단 항목의 <span className="text-gray-400">동그라미</span>를 누르면 미완→완료→약점으로 바뀝니다.
+        </p>
+
         {/* 트리 */}
         <div className="space-y-1">
           {tree.map(n => (
@@ -479,11 +485,11 @@ function TreeNodeRow({
           </span>
         )}
 
-        {/* 액션 (hover 시 노출) */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition shrink-0">
-          <button onClick={() => onReorder(node, -1)} className="text-gray-600 hover:text-white text-xs px-1">▲</button>
-          <button onClick={() => onReorder(node, 1)} className="text-gray-600 hover:text-white text-xs px-1">▼</button>
-          <button onClick={() => setAdding(v => !v)} title="하위 추가" className="text-gray-600 hover:text-blue-400 text-xs px-1">＋</button>
+        {/* 액션 (항상 표시) */}
+        <div className="flex items-center gap-0.5 transition shrink-0">
+          <button onClick={() => onReorder(node, -1)} title="위로" className="text-gray-600 hover:text-white text-xs px-1">▲</button>
+          <button onClick={() => onReorder(node, 1)} title="아래로" className="text-gray-600 hover:text-white text-xs px-1">▼</button>
+          <button onClick={() => setAdding(v => !v)} title="하위 항목 추가" className="text-blue-500 hover:text-blue-400 text-sm px-1.5 font-bold">＋하위</button>
           <button onClick={() => { setMemoText(node.memo ?? ''); setMemoOpen(v => !v) }} title="메모" className="text-gray-600 hover:text-white text-xs px-1">📝</button>
           <button onClick={() => onDelete(node.id)} title="삭제" className="text-gray-700 hover:text-red-400 text-xs px-1">🗑</button>
         </div>
