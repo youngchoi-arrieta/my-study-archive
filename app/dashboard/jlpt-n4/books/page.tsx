@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ───────────────────────────────────────────────────────────────
@@ -74,11 +75,28 @@ function leafStats(n: TreeNode): { done: number; total: number; weak: number } {
   )
 }
 
-export default function BooksPage() {
+export default function BooksPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white text-4xl">📚</div>
+    }>
+      <BooksPage />
+    </Suspense>
+  )
+}
+
+function BooksPage() {
+  const searchParams = useSearchParams()
   const [books, setBooks] = useState<Book[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
   const [activeBook, setActiveBook] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // 허브에서 ?book=<id> 로 들어오면 해당 교재 바로 열기 (최초 1회)
+  useEffect(() => {
+    const b = searchParams.get('book')
+    if (b) setActiveBook(b)
+  }, [searchParams])
 
   // 교재 추가 폼
   const [showAddBook, setShowAddBook] = useState(false)
