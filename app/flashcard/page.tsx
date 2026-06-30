@@ -19,7 +19,7 @@ const EXAM_META: Record<string, { label: string; back: string }> = {
   gineung:    { label: '🔧 전기기능사 실기', back: '/dashboard' },
   denkoshi:   { label: '🗾 第二種電気工事士', back: '/dashboard/denkoshi' },
   denken:     { label: '🏭 電験三種', back: '/dashboard/denken' },
-  'jlpt-n4':  { label: '🗣 JLPT N4', back: '/dashboard/jlpt-n4' },
+  'jlpt-n4':  { label: '🗣 JLPT', back: '/dashboard/jlpt-n4' },
 }
 
 // 시험별 카테고리 프리셋 — 덱 그룹 헤더/만들기 분류에 사용
@@ -44,10 +44,24 @@ function FlashcardPage() {
   const searchParams = useSearchParams()
   const examParam = searchParams.get('exam') || 'all'
 
-  // 시험 맥락에 맞는 카테고리 프리셋 (덴켄=理論/電力/機械/法規, JLPT=어휘/문법/문형 …)
+  // JLPT는 교재(jp_books) 목록을 그룹/덱 분류 기준으로 사용
+  const [bookTitles, setBookTitles] = useState<string[]>([])
+  useEffect(() => {
+    if (examParam !== 'jlpt-n4') return
+    supabase.from('jp_books').select('title')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+      .then(({ data }) => setBookTitles(((data as { title: string }[]) || []).map(b => b.title)))
+  }, [examParam])
+
+  // 시험 맥락에 맞는 카테고리 프리셋
+  //  · JLPT  → 교재 목록(jp_books)을 그룹으로 사용
+  //  · 그 외 → 고정 프리셋
   const preset = CAT_PRESETS[examParam] ?? DEFAULT_PRESET
-  const PRESET_CATS = preset.cats
-  const CAT_EMOJI: Record<string, string> = preset.emoji
+  const PRESET_CATS = examParam === 'jlpt-n4' ? bookTitles : preset.cats
+  const CAT_EMOJI: Record<string, string> = examParam === 'jlpt-n4'
+    ? Object.fromEntries(bookTitles.map(t => [t, '📘']))
+    : preset.emoji
 
   const [decks, setDecks] = useState<Deck[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,14 +69,21 @@ function FlashcardPage() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [saving, setSaving] = useState(false)
-  const [newCategory, setNewCategory] = useState<string>(PRESET_CATS[0])
+  const [newCategory, setNewCategory] = useState<string>('')
   const [customCategory, setCustomCategory] = useState('')
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [reordering, setReordering] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [splitting, setSplitting] = useState<string | null>(null)
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(PRESET_CATS))
+  const [openGroups, setOpenGroups] = useState<Set<string>>(
+    new Set(examParam !== 'jlpt-n4' ? preset.cats : [])
+  )
+
+  // 카테고리 기본 선택값 보정 (교재/프리셋 로드 후)
+  useEffect(() => {
+    if (!newCategory && PRESET_CATS.length) setNewCategory(PRESET_CATS[0])
+  }, [PRESET_CATS, newCategory])
 
   // description [태그] 우선 추출, 없으면 이름 패턴 폴백
   const classifyDeck = (name: string, description?: string | null): string => {
@@ -134,7 +155,7 @@ function FlashcardPage() {
 
     const finalCat = newCategory === '__custom__'
       ? (customCategory.trim() || '기타')
-      : newCategory
+      : (newCategory || PRESET_CATS[0] || '기타')
     const ttsSuffix = ttsEnabled ? '' : '[notts]'
     const taggedDesc = newDesc.trim()
       ? `[${finalCat}]${ttsSuffix} ${newDesc.trim()}`
