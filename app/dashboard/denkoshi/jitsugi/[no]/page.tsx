@@ -8,8 +8,10 @@ import { compressToBase64 } from '@/lib/imageUtils'
 import {
   KOUHO_MONDAI, KEKKAN_CATEGORIES, KEKKAN_ITEM_MAP, DIFF_LABEL, JITSUGI_EXAM,
   toPreviewUrl, fmtDur,
-  type JitsugiProblem, type JitsugiAttempt,
+  type JitsugiProblem, type JitsugiAttempt, type Difficulty,
 } from '@/lib/constants-denkoshi-jitsugi'
+
+const FELT_ORDER: Difficulty[] = ['easy', 'mid', 'hard']
 
 export default function JitsugiProblemPage() {
   const params = useParams()
@@ -48,12 +50,12 @@ export default function JitsugiProblemPage() {
     setLoading(true)
     const [{ data: prob }, { data: atts }] = await Promise.all([
       supabase.from('denkoshi_jitsugi_problems')
-        .select('no, q_drive_url, a_drive_url, result_images, reference_images, updated_at').eq('no', no).single(),
+        .select('no, q_drive_url, a_drive_url, result_images, reference_images, felt_difficulty, updated_at').eq('no', no).single(),
       supabase.from('denkoshi_jitsugi_attempts')
         .select('id, problem_no, duration_sec, completed, passed_self, defect_codes, notes, created_at')
         .eq('problem_no', no).order('created_at', { ascending: true }),
     ])
-    setProblem((prob ?? { no, q_drive_url: null, a_drive_url: null, result_images: [], reference_images: [] }) as JitsugiProblem)
+    setProblem((prob ?? { no, q_drive_url: null, a_drive_url: null, result_images: [], reference_images: [], felt_difficulty: null }) as JitsugiProblem)
     setQUrl(prob?.q_drive_url ?? '')
     setAUrl(prob?.a_drive_url ?? '')
     setAttempts((atts ?? []) as JitsugiAttempt[])
@@ -98,6 +100,16 @@ export default function JitsugiProblemPage() {
     )
     setEditUrls(false)
     load()
+  }
+
+  // 체감 난이도 설정(같은 값 재클릭 시 해제)
+  const setFelt = async (d: Difficulty) => {
+    const next: Difficulty | null = problem?.felt_difficulty === d ? null : d
+    setProblem(p => p ? { ...p, felt_difficulty: next } : p)
+    await supabase.from('denkoshi_jitsugi_problems').upsert(
+      { no, felt_difficulty: next, updated_at: new Date().toISOString() },
+      { onConflict: 'no' },
+    )
   }
 
   // 작업 결과 사진: base64 압축 후 result_images 배열에 누적 저장
@@ -234,7 +246,24 @@ export default function JitsugiProblemPage() {
           <span className="font-bold text-blue-400">No.{no}</span>
           <span className="text-sm text-gray-300">{meta.feature}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-            style={{ background: diff.color + '22', color: diff.color }}>{diff.ko}</span>
+            style={{ background: diff.color + '22', color: diff.color }}>기준 {diff.ko}</span>
+          {/* 체감 난이도 태깅 */}
+          <span className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-500">체감</span>
+            {FELT_ORDER.map(d => {
+              const dl = DIFF_LABEL[d]
+              const on = problem?.felt_difficulty === d
+              return (
+                <button key={d} onClick={() => setFelt(d)}
+                  className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold transition border"
+                  style={on
+                    ? { background: dl.color, color: '#fff', borderColor: dl.color }
+                    : { background: 'transparent', color: '#9ca3af', borderColor: '#374151' }}>
+                  {dl.ko}
+                </button>
+              )
+            })}
+          </span>
           <button onClick={() => setEditUrls(v => !v)}
             className="ml-auto text-xs bg-gray-800 hover:bg-gray-700 px-2.5 py-1 rounded-lg transition">
             🔗 PDF 링크

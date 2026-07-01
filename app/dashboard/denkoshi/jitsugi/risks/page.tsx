@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { KOUHO_MONDAI, type JitsugiRisk } from '@/lib/constants-denkoshi-jitsugi'
+import { KOUHO_MONDAI, type JitsugiRisk, type JitsugiWire } from '@/lib/constants-denkoshi-jitsugi'
 
 const PROBLEM_NOS = KOUHO_MONDAI.map(p => p.no) // [1..13]
-type View = 'matrix' | 'cards'
+type View = 'matrix' | 'cards' | 'wires'
 
 export default function JitsugiRisksPage() {
   const [risks, setRisks] = useState<JitsugiRisk[]>([])
@@ -16,6 +16,10 @@ export default function JitsugiRisksPage() {
   const [filter, setFilter] = useState<number | null>(null) // 선택된 候補問題, null=전체
   const [savingId, setSavingId] = useState<string | null>(null)
   const newCardId = useRef<string | null>(null)
+
+  // ── 전선 소요량(wires) 상태 ─────────────────────────────────────
+  const [wires, setWires] = useState<JitsugiWire[]>([])
+  const [wiresMissing, setWiresMissing] = useState(false)
 
   // ── 로드 ───────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -37,6 +41,89 @@ export default function JitsugiRisksPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // ── 전선 소요량 로드 ────────────────────────────────────────────
+  const loadWires = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('denkoshi_jitsugi_wires')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+    if (error) {
+      if (error.code === '42P01' || /relation .* does not exist/i.test(error.message)) {
+        setWiresMissing(true)
+      }
+    } else {
+      // amounts 가 null 이면 빈 객체로 정규화
+      setWires((data ?? []).map((w) => ({ ...(w as JitsugiWire), amounts: (w as JitsugiWire).amounts ?? {} })))
+    }
+  }, [])
+
+  useEffect(() => { loadWires() }, [loadWires])
+
+  // ── 전선 CRUD (매트릭스: 행=전선 종류, 셀=amounts[問題no]) ─────────
+  const patchWireLocal = (id: string, patch: Partial<JitsugiWire>) =>
+    setWires(prev => prev.map(w => (w.id === id ? { ...w, ...patch } : w)))
+
+  const persistWire = async (id: string, patch: Partial<JitsugiWire>) => {
+    setSavingId(id)
+    await supabase.from('denkoshi_jitsugi_wires')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    setSavingId(null)
+  }
+
+  // 행 라벨(전선 종류) 저장
+  const saveWireType = (id: string, value: string) => {
+    const cur = wires.find(w => w.id === id)
+    if (!cur || cur.wire_type === value) return
+    persistWire(id, { wire_type: value })
+  }
+
+  // 셀(특정 問題의 소요량) 저장
+  const saveWireCell = (id: string, no: number, value: string) => {
+    const cur = wires.find(w => w.id === id)
+    if (!cur) return
+    const v = value.trim()
+    const nextAmounts = { ...cur.amounts }
+    if (v === '') delete nextAmounts[String(no)]
+    else nextAmounts[String(no)] = v
+    patchWireLocal(id, { amounts: nextAmounts })
+    persistWire(id, { amounts: nextAmounts })
+  }
+
+  const addWire = async () => {
+    const maxOrder = wires.reduce((m, w) => Math.max(m, w.sort_order), 0)
+    const payload = { wire_type: '', amounts: {}, sort_order: maxOrder + 10 }
+    const { data, error } = await supabase.from('denkoshi_jitsugi_wires').insert(payload).select().single()
+    if (!error && data) {
+      newCardId.current = data.id
+      setWires(prev => [...prev, { ...(data as JitsugiWire), amounts: (data as JitsugiWire).amounts ?? {} }])
+    }
+  }
+
+  const deleteWire = async (id: string) => {
+    const w = wires.find(x => x.id === id)
+    if (!confirm(`전선 '${w?.wire_type || '빈 행'}' 행을 삭제할까요?`)) return
+    setWires(prev => prev.filter(x => x.id !== id))
+    await supabase.from('denkoshi_jitsugi_wires').delete().eq('id', id)
+  }
+
+  const moveWire = async (id: string, dir: -1 | 1) => {
+    const sorted = [...wires].sort((a, b) => a.sort_order - b.sort_order)
+    const idx = sorted.findIndex(w => w.id === id)
+    const swap = idx + dir
+    if (swap < 0 || swap >= sorted.length) return
+    const a = sorted[idx], b = sorted[swap]
+    const ao = a.sort_order, bo = b.sort_order
+    patchWireLocal(a.id, { sort_order: bo })
+    patchWireLocal(b.id, { sort_order: ao })
+    setWires(prev => [...prev].sort((x, y) => x.sort_order - y.sort_order))
+    await Promise.all([
+      supabase.from('denkoshi_jitsugi_wires').update({ sort_order: bo }).eq('id', a.id),
+      supabase.from('denkoshi_jitsugi_wires').update({ sort_order: ao }).eq('id', b.id),
+    ])
+  }
 
   // ── 로컬 패치 + 영속 ────────────────────────────────────────────
   const patchLocal = (id: string, patch: Partial<JitsugiRisk>) =>
@@ -136,7 +223,7 @@ export default function JitsugiRisksPage() {
           <h1 className="text-2xl font-bold">시공 리스크 관리</h1>
         </div>
         <p className="text-gray-500 text-sm mb-5">
-          Risk item별 <span className="text-gray-300">치수 · 시공 유의사항 · 해당 候補問題</span> 자유 태깅 · 타임어택 전 리스크 점검
+          Risk item별 <span className="text-gray-300">치수 · 시공 유의사항 · 해당 候補問題</span> 자유 태깅 · 후보문제별 <span className="text-gray-300">전선 소요량</span> · 타임어택 전 점검
         </p>
 
         {tableMissing ? (
@@ -154,14 +241,21 @@ export default function JitsugiRisksPage() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'cards' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
                   ✎ 카드 편집
                 </button>
+                <button onClick={() => setView('wires')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'wires' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  🧵 전선 소요량
+                </button>
               </div>
-              <button onClick={addRisk}
-                className="ml-auto text-xs px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-semibold transition">
-                + 리스크 항목 추가
-              </button>
+              {view !== 'wires' && (
+                <button onClick={addRisk}
+                  className="ml-auto text-xs px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-semibold transition">
+                  + 리스크 항목 추가
+                </button>
+              )}
             </div>
 
-            {/* 候補問題 필터 바 */}
+            {/* 候補問題 필터 바 (리스크 매트릭스·카드 전용) */}
+            {view !== 'wires' && (<>
             <div className="flex flex-wrap gap-1.5 mb-4">
               <button onClick={() => setFilter(null)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${filter == null ? 'bg-white text-gray-900' : 'bg-gray-900 text-gray-300 hover:bg-gray-800'}`}>
@@ -193,8 +287,16 @@ export default function JitsugiRisksPage() {
                 </Link>
               </div>
             )}
+            </>)}
 
-            {loading ? (
+            {view === 'wires' ? (
+              <WiresView
+                wires={wires} wiresMissing={wiresMissing}
+                autoFocusId={newCardId.current}
+                onAdd={addWire} onType={saveWireType} onCell={saveWireCell}
+                onPatchLocal={patchWireLocal} onDelete={deleteWire} onMove={moveWire}
+              />
+            ) : loading ? (
               <p className="text-gray-600 text-sm py-10 text-center">불러오는 중…</p>
             ) : risks.length === 0 ? (
               <div className="text-gray-600 text-sm py-16 text-center border border-dashed border-gray-800 rounded-2xl">
@@ -284,6 +386,22 @@ function MatrixView({
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="bg-gray-900/60">
+            <td className="sticky left-0 z-10 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-400 border-t border-gray-800">
+              문제별 리스크 합계
+            </td>
+            <td className="border-t border-gray-800" />
+            {PROBLEM_NOS.map(no => {
+              const c = rows.filter(r => r.problem_nos.includes(no)).length
+              return (
+                <td key={no} className={`text-center px-0 py-2 border-t border-gray-800 text-xs font-semibold tabular-nums ${filter === no ? 'bg-blue-600/10 text-blue-300' : c > 0 ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {c > 0 ? c : '–'}
+                </td>
+              )
+            })}
+          </tr>
+        </tfoot>
       </table>
     </div>
   )
@@ -363,6 +481,204 @@ function RiskCard({
         </div>
       </div>
     </div>
+  )
+}
+
+// ── 전선 소요량(wires) 뷰: 행=전선 종류, 열=候補問題, 셀=소요량 ────────
+// 셀 문자열 → mm 로 환산(숫자에 m/cm/mm 접미사 인식, 없으면 mm로 간주)
+function amountToMm(raw: string | undefined): number {
+  if (!raw) return 0
+  const s = raw.trim().toLowerCase().replace(/\s+/g, '')
+  const m = s.match(/^([\d.]+)(mm|cm|m)?$/)
+  if (!m) return 0
+  const n = parseFloat(m[1])
+  if (isNaN(n)) return 0
+  const unit = m[2] || 'mm'
+  return unit === 'm' ? n * 1000 : unit === 'cm' ? n * 10 : n
+}
+// mm → 'X.XXm' (0이면 '–')
+function fmtMeters(mm: number): string {
+  if (mm <= 0) return '–'
+  return `${(mm / 1000).toFixed(2)}m`
+}
+
+function WiresView({
+  wires, wiresMissing, autoFocusId,
+  onAdd, onType, onCell, onPatchLocal, onDelete, onMove,
+}: {
+  wires: JitsugiWire[]
+  wiresMissing: boolean
+  autoFocusId: string | null
+  onAdd: () => void
+  onType: (id: string, v: string) => void
+  onCell: (id: string, no: number, v: string) => void
+  onPatchLocal: (id: string, p: Partial<JitsugiWire>) => void
+  onDelete: (id: string) => void
+  onMove: (id: string, dir: -1 | 1) => void
+}) {
+  const rows = useMemo(() => [...wires].sort((a, b) => a.sort_order - b.sort_order), [wires])
+
+  // 열(問題)별 합계 mm + 전체 총합
+  const colTotals = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const no of PROBLEM_NOS) m.set(no, 0)
+    for (const w of wires) for (const no of PROBLEM_NOS) {
+      m.set(no, (m.get(no) ?? 0) + amountToMm(w.amounts[String(no)]))
+    }
+    return m
+  }, [wires])
+  const grandTotalMm = useMemo(
+    () => Array.from(colTotals.values()).reduce((s, v) => s + v, 0),
+    [colTotals],
+  )
+
+  if (wiresMissing) {
+    return (
+      <div className="bg-gray-900 rounded-2xl p-5 text-sm text-gray-300 leading-relaxed">
+        <p className="font-semibold text-amber-400 mb-2">전선 소요량 테이블이 아직 없어요</p>
+        <p className="text-gray-400 mb-3">Supabase SQL Editor에서 아래 마이그레이션을 한 번 실행하면 기본 전선 목록과 함께 활성화됩니다.</p>
+        <code className="block bg-gray-950 rounded-lg px-3 py-2 text-xs text-gray-300">
+          supabase/denkoshi_jitsugi_wires_migration.sql
+        </code>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <p className="text-[11px] text-gray-500">
+          셀 = 소요량 <span className="text-gray-600">(mm 기준 · <span className="text-gray-500">m·cm</span> 접미사 인식)</span> · 우측 <span className="text-gray-400">합계(m)</span> = 전선 종류별 총합
+        </p>
+        <button onClick={onAdd}
+          className="ml-auto text-xs px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-semibold transition">
+          + 전선 종류 추가
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="text-gray-600 text-sm py-16 text-center border border-dashed border-gray-800 rounded-2xl">
+          아직 전선 행이 없어요. [+ 전선 종류 추가]로 시작하거나 마이그레이션 시드로 기본 목록을 넣으세요.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-gray-800">
+          <table className="border-collapse text-sm min-w-max">
+            <thead>
+              <tr className="bg-gray-900">
+                <th className="sticky left-0 z-10 bg-gray-900 text-left px-3 py-2.5 text-xs font-semibold text-gray-400 border-b border-gray-800 min-w-[150px]">
+                  전선 종류
+                </th>
+                {PROBLEM_NOS.map(no => (
+                  <th key={no} className="px-0 py-2.5 text-xs font-semibold text-gray-500 border-b border-gray-800 w-14 text-center">
+                    {no}
+                  </th>
+                ))}
+                <th className="px-3 py-2.5 text-xs font-semibold text-blue-300 border-b border-gray-800 border-l border-gray-800 text-right min-w-[80px]">
+                  합계(m)
+                </th>
+                <th className="px-2 py-2.5 text-xs font-semibold text-gray-500 border-b border-gray-800 text-center w-16">정렬</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(w => {
+                const rowMm = PROBLEM_NOS.reduce((s, no) => s + amountToMm(w.amounts[String(no)]), 0)
+                return (
+                  <tr key={w.id} className="hover:bg-gray-900/40">
+                    {/* 전선 종류(행 라벨) — sticky */}
+                    <td className="sticky left-0 z-10 bg-gray-950 px-2 py-1.5 border-b border-gray-800/70">
+                      <WireTypeInput wire={w} autoFocus={autoFocusId === w.id} onType={onType} onPatchLocal={onPatchLocal} />
+                    </td>
+                    {/* 각 問題 셀 */}
+                    {PROBLEM_NOS.map(no => (
+                      <td key={no} className="border-b border-gray-800/70 text-center px-0.5 py-1">
+                        <WireCell
+                          value={w.amounts[String(no)] ?? ''}
+                          onCommit={v => onCell(w.id, no, v)}
+                        />
+                      </td>
+                    ))}
+                    {/* 행 합계(m) */}
+                    <td className="border-b border-gray-800/70 border-l border-gray-800 text-right px-3 py-1.5">
+                      <span className={rowMm > 0 ? 'text-blue-300 font-semibold tabular-nums' : 'text-gray-700'}>
+                        {fmtMeters(rowMm)}
+                      </span>
+                    </td>
+                    {/* 정렬/삭제 */}
+                    <td className="border-b border-gray-800/70 text-center px-1 py-1 whitespace-nowrap">
+                      <button onClick={() => onMove(w.id, -1)} className="text-gray-600 hover:text-white text-xs px-1" aria-label="위로">▲</button>
+                      <button onClick={() => onMove(w.id, 1)} className="text-gray-600 hover:text-white text-xs px-1" aria-label="아래로">▼</button>
+                      <button onClick={() => onDelete(w.id)} className="text-gray-600 hover:text-red-400 text-xs px-1" aria-label="삭제">✕</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {/* 열(問題)별 합계 + 전체 총합 */}
+            <tfoot>
+              <tr className="bg-gray-900/60">
+                <td className="sticky left-0 z-10 bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-400 border-t border-gray-800">
+                  문제별 합계(m)
+                </td>
+                {PROBLEM_NOS.map(no => {
+                  const mm = colTotals.get(no) ?? 0
+                  return (
+                    <td key={no} className="text-center px-0.5 py-2 border-t border-gray-800 text-[11px] tabular-nums">
+                      <span className={mm > 0 ? 'text-gray-300' : 'text-gray-700'}>{mm > 0 ? (mm / 1000).toFixed(1) : '–'}</span>
+                    </td>
+                  )
+                })}
+                <td className="text-right px-3 py-2 border-t border-l border-gray-800 text-blue-300 font-bold tabular-nums">
+                  {fmtMeters(grandTotalMm)}
+                </td>
+                <td className="border-t border-gray-800" />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 전선 종류(행 라벨) 입력 — 부모 state controlled
+function WireTypeInput({
+  wire, autoFocus, onType, onPatchLocal,
+}: {
+  wire: JitsugiWire
+  autoFocus: boolean
+  onType: (id: string, v: string) => void
+  onPatchLocal: (id: string, p: Partial<JitsugiWire>) => void
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useEffect(() => { if (autoFocus) ref.current?.focus() }, [autoFocus])
+  return (
+    <input
+      ref={ref}
+      value={wire.wire_type}
+      onChange={e => onPatchLocal(wire.id, { wire_type: e.target.value })}
+      onBlur={e => onType(wire.id, e.target.value)}
+      placeholder="전선 종류 (예: VVF 1.6mm 2심)"
+      className="w-full bg-transparent text-sm text-gray-100 outline-none border-b border-transparent focus:border-blue-500 transition py-1"
+    />
+  )
+}
+
+// 셀(소요량) 입력 — 로컬 draft, blur 시 commit
+function WireCell({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  const [v, setV] = useState(value)
+  useEffect(() => { setV(value) }, [value])
+  return (
+    <input
+      value={v}
+      onChange={e => setV(e.target.value)}
+      onBlur={() => { if (v.trim() !== value.trim()) onCommit(v) }}
+      inputMode="decimal"
+      placeholder="–"
+      className={`w-12 text-center rounded px-1 py-1 text-sm outline-none transition ${
+        v.trim() ? 'bg-gray-800 text-gray-100 focus:ring-1 focus:ring-blue-500'
+                 : 'bg-transparent text-gray-500 hover:bg-gray-800/60 focus:bg-gray-800 focus:ring-1 focus:ring-blue-500'
+      }`}
+    />
   )
 }
 

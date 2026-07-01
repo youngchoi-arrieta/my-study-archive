@@ -184,6 +184,7 @@ export type JitsugiProblem = {
   a_drive_url: string | null
   result_images?: string[] | null
   reference_images?: string[] | null
+  felt_difficulty?: Difficulty | null   // 연습하며 느낀 체감 난이도(내가 태깅). KOUHO_MONDAI.difficulty(기준값)와 별개.
   updated_at?: string | null
 }
 
@@ -205,6 +206,16 @@ export type JitsugiRisk = {
   dimension: string       // 치수 (피복/심선 길이 등)
   caution: string         // 시공상 유의사항 및 주의할 결함
   problem_nos: number[]   // 해당 候補問題 (1~13)
+  sort_order: number
+  created_at?: string
+  updated_at?: string | null
+}
+
+// 전선 종류별 소요량 매트릭스 — 행=전선 종류, 열=候補問題(1~13), 셀=소요량
+export type JitsugiWire = {
+  id: string
+  wire_type: string                // 전선 종류 (행 라벨, 예: 'VVF 1.6mm 2심')
+  amounts: Record<string, string>  // { [問題no]: 소요량 }  예: { '1': '2', '4': '1' }
   sort_order: number
   created_at?: string
   updated_at?: string | null
