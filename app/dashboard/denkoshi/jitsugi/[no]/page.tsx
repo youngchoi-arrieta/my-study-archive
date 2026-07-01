@@ -223,7 +223,6 @@ export default function JitsugiProblemPage() {
   if (!meta) {
     return <main className="min-h-screen bg-gray-950 text-white p-8"><p>없는 문제예요. <Link href="/dashboard/denkoshi/jitsugi" className="text-blue-400">← 목록</Link></p></main>
   }
-  const diff = DIFF_LABEL[meta.difficulty]
   const isOver = elapsed > JITSUGI_EXAM.durationSec
 
   return (
@@ -245,8 +244,6 @@ export default function JitsugiProblemPage() {
           <span className="text-gray-700">·</span>
           <span className="font-bold text-blue-400">No.{no}</span>
           <span className="text-sm text-gray-300">{meta.feature}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-            style={{ background: diff.color + '22', color: diff.color }}>기준 {diff.ko}</span>
           {/* 체감 난이도 태깅 */}
           <span className="flex items-center gap-1">
             <span className="text-[10px] text-gray-500">체감</span>

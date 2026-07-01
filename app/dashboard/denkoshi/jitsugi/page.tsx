@@ -85,15 +85,9 @@ export default function DenkoshiJitsugiHub() {
         </Link>
 
         {/* 후보문제 */}
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-gray-600 uppercase tracking-widest">候補問題 No.1~13</p>
-          <p className="text-[11px] text-gray-600">
-            <span className="text-gray-500">기준</span> = 공표 고정값 · <span className="text-gray-500">체감</span> = 내 태깅
-          </p>
-        </div>
+        <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">候補問題 No.1~13</p>
         <div className="grid sm:grid-cols-2 gap-2.5">
           {KOUHO_MONDAI.map(p => {
-            const base = DIFF_LABEL[p.difficulty]        // 기준(자동) 난이도
             const f = felt.get(p.no)                     // 체감 난이도(내 태깅)
             const fLabel = f ? DIFF_LABEL[f] : null
             return (
@@ -104,20 +98,13 @@ export default function DenkoshiJitsugiHub() {
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-bold text-blue-400 group-hover:text-blue-300 transition">No.{p.no}</span>
-                    <span className="flex items-center gap-1">
-                      {/* 기준(자동) 난이도 — 라벨 명시 */}
-                      <span className="text-[10px] px-2 py-0.5 rounded-full"
-                        style={{ background: `${base.color}22`, color: base.color }}>
-                        기준 {base.ko}
+                    {/* 체감 난이도 — 설정돼 있으면 강조 배지 */}
+                    {fLabel && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                        style={{ background: fLabel.color, color: '#fff' }}>
+                        체감 {fLabel.ko}
                       </span>
-                      {/* 체감 난이도 — 설정돼 있으면 강조 배지 */}
-                      {fLabel && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-                          style={{ background: fLabel.color, color: '#fff' }}>
-                          체감 {fLabel.ko}
-                        </span>
-                      )}
-                    </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-200 leading-snug group-hover:text-white transition">{p.feature}</p>
                   <p className="text-xs text-gray-600 mt-1">{p.featureJa}</p>
