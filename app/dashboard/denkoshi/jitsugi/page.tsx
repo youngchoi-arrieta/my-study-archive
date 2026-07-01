@@ -13,12 +13,15 @@ const FELT_ORDER: Difficulty[] = ['easy', 'mid', 'hard']
 export default function DenkoshiJitsugiHub() {
   // 후보문제 no → 체감 난이도(felt_difficulty). 미설정이면 map에 없음.
   const [felt, setFelt] = useState<Map<number, Difficulty>>(new Map())
+  // 후보문제 no → 연습 회차 수(attempts count)
+  const [attemptCount, setAttemptCount] = useState<Map<number, number>>(new Map())
   const [savingNo, setSavingNo] = useState<number | null>(null)
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('denkoshi_jitsugi_problems')
-      .select('no, felt_difficulty')
+    const [{ data, error }, { data: atts }] = await Promise.all([
+      supabase.from('denkoshi_jitsugi_problems').select('no, felt_difficulty'),
+      supabase.from('denkoshi_jitsugi_attempts').select('problem_no'),
+    ])
     if (!error && data) {
       const m = new Map<number, Difficulty>()
       for (const row of data as { no: number; felt_difficulty: Difficulty | null }[]) {
@@ -26,7 +29,14 @@ export default function DenkoshiJitsugiHub() {
       }
       setFelt(m)
     }
-    // 컬럼이 아직 없어도(마이그레이션 미적용) 태깅만 비활성인 채로 페이지는 정상 동작
+    if (atts) {
+      const c = new Map<number, number>()
+      for (const row of atts as { problem_no: number }[]) {
+        c.set(row.problem_no, (c.get(row.problem_no) ?? 0) + 1)
+      }
+      setAttemptCount(c)
+    }
+    // 컬럼/테이블이 아직 없어도(마이그레이션 미적용) 페이지는 정상 동작
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -50,7 +60,8 @@ export default function DenkoshiJitsugiHub() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
+        <div className="max-w-3xl">
         <div className="mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
         </div>
@@ -83,13 +94,15 @@ export default function DenkoshiJitsugiHub() {
           </div>
           <span className="text-gray-600 text-xs">→</span>
         </Link>
+        </div>
 
         {/* 후보문제 */}
         <p className="text-xs text-gray-600 uppercase tracking-widest mb-3">候補問題 No.1~13</p>
-        <div className="grid sm:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
           {KOUHO_MONDAI.map(p => {
             const f = felt.get(p.no)                     // 체감 난이도(내 태깅)
             const fLabel = f ? DIFF_LABEL[f] : null
+            const n = attemptCount.get(p.no) ?? 0        // 연습 회차 수
             return (
               <div key={p.no} className="bg-gray-900 rounded-2xl p-4">
                 <Link
@@ -97,7 +110,12 @@ export default function DenkoshiJitsugiHub() {
                   className="block group"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-bold text-blue-400 group-hover:text-blue-300 transition">No.{p.no}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-sm font-bold text-blue-400 group-hover:text-blue-300 transition">No.{p.no}</span>
+                      <span className={`text-[10px] ${n > 0 ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {n > 0 ? `🔁 ${n}회` : '미연습'}
+                      </span>
+                    </span>
                     {/* 체감 난이도 — 설정돼 있으면 강조 배지 */}
                     {fLabel && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
