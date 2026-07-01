@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { KOUHO_MONDAI, type JitsugiRisk, type JitsugiWire } from '@/lib/constants-denkoshi-jitsugi'
+import { KOUHO_MONDAI, PRACTICE_PRIORITY, type JitsugiRisk, type JitsugiWire } from '@/lib/constants-denkoshi-jitsugi'
 
 const PROBLEM_NOS = KOUHO_MONDAI.map(p => p.no) // [1..13]
-type View = 'matrix' | 'cards' | 'wires'
+type View = 'matrix' | 'cards' | 'wires' | 'priority'
 
 export default function JitsugiRisksPage() {
   const [risks, setRisks] = useState<JitsugiRisk[]>([])
@@ -245,8 +245,12 @@ export default function JitsugiRisksPage() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'wires' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
                   🧵 전선 소요량
                 </button>
+                <button onClick={() => setView('priority')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${view === 'priority' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  🎯 우선순위
+                </button>
               </div>
-              {view !== 'wires' && (
+              {(view === 'matrix' || view === 'cards') && (
                 <button onClick={addRisk}
                   className="ml-auto text-xs px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-semibold transition">
                   + 리스크 항목 추가
@@ -255,7 +259,7 @@ export default function JitsugiRisksPage() {
             </div>
 
             {/* 候補問題 필터 바 (리스크 매트릭스·카드 전용) */}
-            {view !== 'wires' && (<>
+            {(view === 'matrix' || view === 'cards') && (<>
             <div className="flex flex-wrap gap-1.5 mb-4">
               <button onClick={() => setFilter(null)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${filter == null ? 'bg-white text-gray-900' : 'bg-gray-900 text-gray-300 hover:bg-gray-800'}`}>
@@ -289,7 +293,9 @@ export default function JitsugiRisksPage() {
             )}
             </>)}
 
-            {view === 'wires' ? (
+            {view === 'priority' ? (
+              <PriorityView riskCount={countByProblem} />
+            ) : view === 'wires' ? (
               <WiresView
                 wires={wires} wiresMissing={wiresMissing}
                 autoFocusId={newCardId.current}
@@ -679,6 +685,72 @@ function WireCell({ value, onCommit }: { value: string; onCommit: (v: string) =>
                  : 'bg-transparent text-gray-500 hover:bg-gray-800/60 focus:bg-gray-800 focus:ring-1 focus:ring-blue-500'
       }`}
     />
+  )
+}
+
+// ── 연습 우선순위 뷰 ──────────────────────────────────────────────
+function PriorityView({ riskCount }: { riskCount: Map<number, number> }) {
+  return (
+    <div className="space-y-5">
+      {/* 방법론 */}
+      <p className="text-xs text-gray-500 leading-relaxed bg-gray-900/60 rounded-xl px-4 py-3">
+        {PRACTICE_PRIORITY.intro}
+      </p>
+
+      {/* 티어 */}
+      {PRACTICE_PRIORITY.tiers.map(tier => (
+        <div key={tier.key}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: tier.color, boxShadow: `0 0 6px 1px ${tier.color}` }} />
+            <span className="text-sm font-bold" style={{ color: tier.color }}>{tier.label}</span>
+            <span className="text-[11px] text-gray-500">{tier.desc}</span>
+          </div>
+          <div className="space-y-2">
+            {tier.problems.map(({ no, why }) => {
+              const meta = KOUHO_MONDAI.find(p => p.no === no)
+              const rc = riskCount.get(no) ?? 0
+              return (
+                <Link key={no} href={`/dashboard/denkoshi/jitsugi/${no}`}
+                  className="flex items-start gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 transition group">
+                  <span className="shrink-0 w-11 text-center">
+                    <span className="text-sm font-bold text-blue-400 group-hover:text-blue-300">No.{no}</span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-gray-100 font-medium">{meta?.feature}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400 shrink-0">
+                        리스크 {rc}
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-gray-400 leading-snug mt-1">{why}</p>
+                  </div>
+                  <span className="text-gray-600 text-xs shrink-0 self-center group-hover:text-gray-400">→</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* 베이스라인 추천 */}
+      <div className="bg-blue-600/10 border border-blue-600/30 rounded-xl px-4 py-3">
+        <p className="text-xs font-semibold text-blue-300 mb-1">🏁 오늘 첫 실전 베이스라인</p>
+        <p className="text-[13px] text-gray-200 leading-relaxed">{PRACTICE_PRIORITY.baseline}</p>
+      </div>
+
+      {/* 메모 */}
+      <div>
+        <p className="text-[11px] text-gray-600 uppercase tracking-widest mb-2">메모</p>
+        <ul className="space-y-1.5">
+          {PRACTICE_PRIORITY.notes.map((n, i) => (
+            <li key={i} className="text-[12px] text-gray-400 leading-snug flex gap-2">
+              <span className="text-gray-600 shrink-0">·</span>
+              <span>{n}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   )
 }
 
