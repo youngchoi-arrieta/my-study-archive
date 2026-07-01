@@ -13,14 +13,16 @@ const FELT_ORDER: Difficulty[] = ['easy', 'mid', 'hard']
 export default function DenkoshiJitsugiHub() {
   // 후보문제 no → 체감 난이도(felt_difficulty). 미설정이면 map에 없음.
   const [felt, setFelt] = useState<Map<number, Difficulty>>(new Map())
-  // 후보문제 no → 연습 회차 수(attempts count)
-  const [attemptCount, setAttemptCount] = useState<Map<number, number>>(new Map())
+  // 후보문제 no → 회차별 합격 여부 배열(오래된→최신). 길이 = 연습 회차 수.
+  const [attempts, setAttempts] = useState<Map<number, boolean[]>>(new Map())
   const [savingNo, setSavingNo] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     const [{ data, error }, { data: atts }] = await Promise.all([
       supabase.from('denkoshi_jitsugi_problems').select('no, felt_difficulty'),
-      supabase.from('denkoshi_jitsugi_attempts').select('problem_no'),
+      supabase.from('denkoshi_jitsugi_attempts')
+        .select('problem_no, passed_self, created_at')
+        .order('created_at', { ascending: true }),
     ])
     if (!error && data) {
       const m = new Map<number, Difficulty>()
@@ -30,11 +32,13 @@ export default function DenkoshiJitsugiHub() {
       setFelt(m)
     }
     if (atts) {
-      const c = new Map<number, number>()
-      for (const row of atts as { problem_no: number }[]) {
-        c.set(row.problem_no, (c.get(row.problem_no) ?? 0) + 1)
+      const c = new Map<number, boolean[]>()
+      for (const row of atts as { problem_no: number; passed_self: boolean }[]) {
+        const arr = c.get(row.problem_no) ?? []
+        arr.push(!!row.passed_self)
+        c.set(row.problem_no, arr)
       }
-      setAttemptCount(c)
+      setAttempts(c)
     }
     // 컬럼/테이블이 아직 없어도(마이그레이션 미적용) 페이지는 정상 동작
   }, [])
@@ -102,7 +106,10 @@ export default function DenkoshiJitsugiHub() {
           {KOUHO_MONDAI.map(p => {
             const f = felt.get(p.no)                     // 체감 난이도(내 태깅)
             const fLabel = f ? DIFF_LABEL[f] : null
-            const n = attemptCount.get(p.no) ?? 0        // 연습 회차 수
+            const results = attempts.get(p.no) ?? []     // 회차별 합격 여부(오래된→최신)
+            const n = results.length
+            const shown = results.slice(-12)             // 최근 12회만 LED로
+            const passCount = results.filter(Boolean).length
             return (
               <div key={p.no} className="bg-gray-900 rounded-2xl p-4">
                 <Link
@@ -110,12 +117,7 @@ export default function DenkoshiJitsugiHub() {
                   className="block group"
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-sm font-bold text-blue-400 group-hover:text-blue-300 transition">No.{p.no}</span>
-                      <span className={`text-[10px] ${n > 0 ? 'text-gray-400' : 'text-gray-600'}`}>
-                        {n > 0 ? `🔁 ${n}회` : '미연습'}
-                      </span>
-                    </span>
+                    <span className="text-sm font-bold text-blue-400 group-hover:text-blue-300 transition">No.{p.no}</span>
                     {/* 체감 난이도 — 설정돼 있으면 강조 배지 */}
                     {fLabel && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
@@ -126,6 +128,32 @@ export default function DenkoshiJitsugiHub() {
                   </div>
                   <p className="text-sm text-gray-200 leading-snug group-hover:text-white transition">{p.feature}</p>
                   <p className="text-xs text-gray-600 mt-1">{p.featureJa}</p>
+
+                  {/* 연습 회차 · 합불 LED 스트립 */}
+                  <div className="flex items-center gap-2 mt-2.5 min-h-[18px]">
+                    {n === 0 ? (
+                      <>
+                        <span className="w-3 h-3 rounded-full bg-gray-700 shrink-0" />
+                        <span className="text-xs text-gray-500 font-medium">미연습</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex items-center gap-1 flex-wrap">
+                          {n > 12 && <span className="text-[11px] text-gray-600 mr-0.5">+{n - 12}</span>}
+                          {shown.map((pass, i) => (
+                            <span key={i} title={pass ? '합격' : '불합격'}
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={pass
+                                ? { background: '#22c55e', boxShadow: '0 0 6px 1px rgba(34,197,94,0.85)' }
+                                : { background: '#ef4444', boxShadow: '0 0 6px 1px rgba(239,68,68,0.85)' }} />
+                          ))}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-300 ml-auto tabular-nums shrink-0">
+                          {n}회 <span className="text-green-400">{passCount}✓</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </Link>
 
                 {/* 체감 난이도 태깅 (카드 이동과 분리) */}
