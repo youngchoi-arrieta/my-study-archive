@@ -21,13 +21,13 @@ export const KOUHO_MONDAI: KouhoMondai[] = [
   { no: 4,  feature: '단상100V + 삼상200V 전동기(M)',       featureJa: '単相100V + 三相200V電動機',       tags: ['3φ3W 200V', '전원표시등ED', '단자대'], difficulty: 'hard' },
   { no: 5,  feature: '100V + 200V 2회로',                featureJa: '100V回路と200V回路',             tags: ['200V', 'ED', 'VVF2.0-3C'],          difficulty: 'mid'  },
   { no: 6,  feature: '3로스위치 + 노출형 콘센트',           featureJa: '3路スイッチ + 露出形コンセント',   tags: ['3로SW', '노출콘센트', '輪づくり'],     difficulty: 'mid'  },
-  { no: 7,  feature: '3로스위치 (단독)',                  featureJa: '3路スイッチ',                    tags: ['3로SW', '施工省略'],                difficulty: 'mid'  },
-  { no: 8,  feature: '3로 + 4로 스위치',                 featureJa: '3路 + 4路スイッチ',              tags: ['3로SW', '4로SW', '복선도주의'],       difficulty: 'hard' },
+  { no: 7,  feature: '3로 + 4로 스위치',                 featureJa: '3路スイッチ + 4路スイッチ',        tags: ['3로SW', '4로SW', '복선도주의'],       difficulty: 'hard' },
+  { no: 8,  feature: '리모컨 릴레이 (단자대 대용)',        featureJa: 'リモコンリレー(端子台代用)',       tags: ['릴레이Rイロハ', '단자대', 'VVR2.0-2C'], difficulty: 'mid'  },
   { no: 9,  feature: '접지극부 접지단자부 콘센트(EET)',     featureJa: '接地極付接地端子付コンセント(EET)', tags: ['EET콘센트', '녹색접지선E1.6'],        difficulty: 'mid'  },
   { no: 10, feature: '확인표시등 동시점멸',               featureJa: '確認表示灯=同時点滅',              tags: ['PL 동시점멸', '레셉터클R'],            difficulty: 'mid'  },
   { no: 11, feature: '금속관공사 IV1.6(E19)',           featureJa: '金属管工事 IV1.6(E19)',          tags: ['금속관E19', '止めねじ', '본드공사'],   difficulty: 'hard' },
   { no: 12, feature: 'PF관공사 IV1.6(PF16)',           featureJa: '合成樹脂製可とう電線管 IV1.6(PF16)', tags: ['PF관', '커넥터접속'],               difficulty: 'mid'  },
-  { no: 13, feature: '배선용차단기 A(3A) + VVR',          featureJa: '配線用遮断器 A(3A) + VVR',        tags: ['차단기A', 'VVR1.6-2C', '施工省略'],   difficulty: 'mid'  },
+  { no: 13, feature: '자동점멸기 A(3A) + VVR',           featureJa: '自動点滅器(端子台代用) + VVR',     tags: ['자동점멸기A', 'VVR1.6-2C', '施工省略'], difficulty: 'mid'  },
 ]
 
 // ── 欠陥の判断基準 公式 12 카테고리 (풀버전) ─────────────────────
@@ -198,7 +198,7 @@ export const PRACTICE_PRIORITY: {
       key: 't1', label: '1군 · 최우선', color: '#dc2626',
       desc: '약점이 겹쳐 시간·결함이 가장 많이 터질 문제. 오늘·내일 먼저.',
       problems: [
-        { no: 8,  why: '3로+4로 복선도(최난) + 단자대 + 조인트박스 + VVR — 약점 3개 집결. 시간·결함 최다 예상.' },
+        { no: 7,  why: '3로+4로 복선도(최난) + 조인트박스×2 — 복선도 약점 직격. 시간·결함 최다 예상.' },
         { no: 11, why: '金属管 E19 · 止めねじ 절단·본드공사·부싱 — 손이 딴판인 관공사. 중 size 압착 포함, 일찍 익혀야 함.' },
       ],
     },
@@ -206,6 +206,7 @@ export const PRACTICE_PRIORITY: {
       key: 't2', label: '2군 · 약점 클러스터', color: '#d97706',
       desc: '압착·조인트박스·PL 배선을 직격하는 문제들.',
       problems: [
+        { no: 8,  why: '리모컨 릴레이(단자대 대용) + VVR2.0 전원 — 접속점·압착 다수, 조인트박스 약점 직격.' },
         { no: 9,  why: '접지선(녹 IV) + 조인트박스·부싱 + 압착 다수 · 접지 결선 판단.' },
         { no: 12, why: 'PF管 + 커넥터 접속 + 압착 · 11과 짝으로 관공사 굳히기 · 커넥터 재고 확인.' },
         { no: 10, why: '동시점멸 PL + 배선용차단기 · "콘센트 뒷편 PL 배선" 약점 직격.' },
@@ -226,15 +227,14 @@ export const PRACTICE_PRIORITY: {
       problems: [
         { no: 13, why: '이미 압착까지 실전 27분 · 재현 1회 + 커넥터만 끼워 초록 2개 만들고 제외.' },
         { no: 6,  why: '3로 + 노출콘센트 · 輪づくり.' },
-        { no: 7,  why: '3로 단독 · 施工省略 많아 가벼움.' },
         { no: 2,  why: 'PL 상시점등 · 기본.' },
         { no: 3,  why: 'TS(단자대 대용) · 施工省略, 가벼움.' },
       ],
     },
   ],
-  baseline: '오늘 첫 실전 타임은 1군(8·11) 말고 중간짜리로 — No.1 또는 No.5. 접속점·특수선·PL이 다 들어 있어 "제대로 하면 몇 분"이 정직하게 나옴. 13번은 이미 실전값 있으니 앵커로 두고 재현만.',
+  baseline: '오늘 첫 실전 타임은 1군(7·11) 말고 중간짜리로 — No.1 또는 No.5. 접속점·특수선·PL이 다 들어 있어 "제대로 하면 몇 분"이 정직하게 나옴. 13번은 이미 실전값 있으니 앵커로 두고 재현만.',
   notes: [
-    '특수선(1·5·8·13)은 새 EM-EEF·VVR·RGB 있을 때 몰아서 — 재활용 잘 안 됨(뻣뻣·외장/介在物 리스크).',
+    '특수선(1·5·8·13)은 새 EM-EEF·VVR2.0·VVR1.6·RGB 있을 때 몰아서 — 재활용 잘 안 됨(뻣뻣·외장/介在物 리스크).',
     '작업량 최대: 11·12(2.9m)·7(2.8m) → 시간 예산 더 잡기. 최소: 10(1.4m)은 PL 판단만 통과하면 빠름.',
     '태깅 구멍: No.10도 PL(동시점멸)인데 매트릭스에 「파일럿램프등」 태깅이 빠짐 → 10에 체크하면 PL 삼형제(1·2·10)가 묶임.',
   ],
