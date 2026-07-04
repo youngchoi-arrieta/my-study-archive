@@ -9,14 +9,62 @@ const RichEditor = dynamic(() => import('@/app/components/RichEditor'), {
   loading: () => <div style={{ height: 80, background: '#1e293b', borderRadius: 8, opacity: 0.5 }} />,
 })
 import { OcclusionEditor, OcclusionView, type OcclusionData } from '../OcclusionEditor'
+import { compressToBase64 } from '@/lib/imageUtils'
 
 type CardType = 'basic' | 'multi' | 'cloze' | 'occlusion'
-type Field = { name: string; value: string; type: 'text' | 'rich'; canBeGiven?: boolean }
+type Field = { name: string; value: string; type: 'text' | 'rich' | 'image'; canBeGiven?: boolean }
 type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; occlusion?: OcclusionData; created_at: string }
 type Deck = { id: string; name: string; description: string | null; exam_type: string | null }
 
 const TYPE_LABELS: Record<CardType, string> = {
   basic: '🔵 Basic', multi: '🟣 Multi-field', cloze: '🟠 Cloze', occlusion: '🔴 Occlusion',
+}
+
+// cloze 카드 필드 접근 헬퍼 (이름 기반 — 위치 의존 안 함)
+const clozeText  = (fields: Field[]) => fields.find(f => f.name === 'cloze')?.value ?? fields[0]?.value ?? ''
+const clozeImage = (fields: Field[]) => fields.find(f => f.name === 'image')?.value ?? ''
+const clozeHint  = (fields: Field[]) => {
+  const h = fields.find(f => f.name === 'hint')
+  if (h) return h.value
+  const f1 = fields[1]                     // 레거시 힌트(이름 없이 [1]에 저장된 경우) 하위호환
+  return f1 && f1.name !== 'image' && f1.name !== 'cloze' ? f1.value : ''
+}
+
+// 회로도 등 이미지 첨부용 위젯 (파일 선택 · Ctrl+V 붙여넣기 · 미리보기 · 삭제)
+function ImageAttach({ value, onChange, label = '🖼️ 회로도 첨부' }: { value: string; onChange: (v: string) => void; label?: string }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const handleFile = async (file: File) => {
+    setBusy(true)
+    try { onChange(await compressToBase64(file)) } finally { setBusy(false) }
+  }
+  return (
+    <div
+      tabIndex={0}
+      onPaste={e => {
+        const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image'))
+        const f = item?.getAsFile()
+        if (f) { e.preventDefault(); handleFile(f) }
+      }}
+      className="mt-2 border border-dashed border-gray-600 rounded-lg p-3 focus:outline-none focus:ring-1 focus:ring-blue-500"
+    >
+      {value ? (
+        <div className="relative inline-block">
+          <img src={value} className="max-h-40 rounded-lg" alt="첨부 이미지" />
+          <button type="button" onClick={() => onChange('')}
+            className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-500 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center">✕</button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="bg-gray-700 hover:bg-gray-600 px-2.5 py-1.5 rounded-lg">{label}</button>
+          <span>{busy ? '압축 중...' : '또는 이 영역 클릭 후 Ctrl+V'}</span>
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
+    </div>
+  )
 }
 
 function ClozePreview({ text }: { text: string }) {
@@ -48,6 +96,7 @@ export default function DeckEditPage() {
     { name: '뒷면', value: '', type: 'rich' },
   ])
   const [newClozeText, setNewClozeText] = useState('')
+  const [newClozeImage, setNewClozeImage] = useState('')
   const [newOcclusion, setNewOcclusion] = useState<OcclusionData>({ imageUrl: '', blocks: [] })
   const [editOcclusion, setEditOcclusion] = useState<OcclusionData>({ imageUrl: '', blocks: [] })
   // 덱 이름/설명 편집
@@ -79,6 +128,7 @@ export default function DeckEditPage() {
 
   const changeNewType = (t: CardType) => {
     setNewType(t)
+    setNewClozeImage('')
     if (t === 'basic') setNewFields([{ name: '앞면', value: '', type: 'rich' }, { name: '뒷면', value: '', type: 'rich' }])
     else if (t === 'multi') setNewFields([{ name: '', value: '', type: 'rich' }, { name: '', value: '', type: 'rich' }])
     else if (t === 'occlusion') setNewOcclusion({ imageUrl: '', blocks: [] })
@@ -124,7 +174,10 @@ export default function DeckEditPage() {
       let fields: Field[] = []
       if (newType === 'cloze') {
         if (!newClozeText.includes('{{')) { alert('{{빈칸}} 형식으로 빈칸을 표시해주세요'); setSaving(false); return }
-        fields = [{ name: 'cloze', value: newClozeText, type: 'text' }]
+        fields = [
+          { name: 'cloze', value: newClozeText, type: 'text' },
+          ...(newClozeImage ? [{ name: 'image', value: newClozeImage, type: 'image' as const }] : []),
+        ]
       } else {
         if (newFields.some(f => !f.name.trim())) { alert('필드명을 입력해주세요'); setSaving(false); return }
         fields = newFields
@@ -256,6 +309,8 @@ export default function DeckEditPage() {
                   placeholder={`예: 케이블헤드는 {{고압 케이블}}을 {{인입}}할 때 사용한다.`}
                   value={newClozeText} onChange={e => setNewClozeText(e.target.value)} />
                 {newClozeText && <div className="mt-2 bg-gray-800 rounded-lg p-3"><ClozePreview text={newClozeText} /></div>}
+                <p className="text-xs text-gray-500 mt-3 mb-0">회로도·그림 (선택)</p>
+                <ImageAttach value={newClozeImage} onChange={setNewClozeImage} />
               </div>
             )}
             {newType === 'occlusion' && (
@@ -405,9 +460,21 @@ export default function DeckEditPage() {
                     </div>
                     {isEditing ? (
                       card.card_type === 'cloze'
-                        ? <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
-                            value={editFields[0]?.value ?? ''}
-                            onChange={e => setEditFields([{ name: 'cloze', value: e.target.value, type: 'text' }])} />
+                        ? <div>
+                            <textarea className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm outline-none resize-none h-24"
+                              value={clozeText(editFields)}
+                              onChange={e => setEditFields(prev => [
+                                { name: 'cloze', value: e.target.value, type: 'text' },
+                                ...prev.filter(f => f.name !== 'cloze'),
+                              ])} />
+                            <p className="text-xs text-gray-500 mt-3 mb-0">회로도·그림 (선택)</p>
+                            <ImageAttach
+                              value={clozeImage(editFields)}
+                              onChange={img => setEditFields(prev => {
+                                const rest = prev.filter(f => f.name !== 'image')
+                                return img ? [...rest, { name: 'image', value: img, type: 'image' }] : rest
+                              })} />
+                          </div>
                         : card.card_type === 'occlusion'
                           ? <OcclusionEditor data={editOcclusion} onChange={setEditOcclusion} />
                           : <div>
@@ -425,13 +492,18 @@ export default function DeckEditPage() {
                     ) : (
                       card.card_type === 'cloze'
                         ? <div className="rounded-xl overflow-hidden border border-gray-800">
+                            {clozeImage(card.fields) && (
+                              <div className="bg-gray-800/60 px-3 py-2.5 border-b border-gray-800 text-center">
+                                <img src={clozeImage(card.fields)} className="max-h-56 inline-block rounded-lg" alt="회로도" />
+                              </div>
+                            )}
                             <div className="bg-gray-800 px-3 py-2.5">
-                              <ClozePreview text={card.fields[0]?.value ?? ''} />
+                              <ClozePreview text={clozeText(card.fields)} />
                             </div>
-                            {card.fields[1]?.value && (
+                            {clozeHint(card.fields) && (
                               <div className="px-3 py-2 bg-gray-900 border-t border-gray-800">
                                 <p className="text-[10px] text-yellow-600 mb-0.5">힌트</p>
-                                <p className="text-xs text-gray-400">{card.fields[1].value}</p>
+                                <p className="text-xs text-gray-400">{clozeHint(card.fields)}</p>
                               </div>
                             )}
                           </div>

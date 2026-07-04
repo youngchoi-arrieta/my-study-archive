@@ -28,6 +28,16 @@ function renderField(f: Field) {
   return <p className="text-2xl font-bold whitespace-pre-wrap">{f?.value || '—'}</p>
 }
 
+// cloze 필드 접근 헬퍼 (이름 기반)
+const clozeText  = (fields: Field[]) => fields.find(f => f.name === 'cloze')?.value ?? fields[0]?.value ?? ''
+const clozeImage = (fields: Field[]) => fields.find(f => f.name === 'image')?.value ?? ''
+const clozeHint  = (fields: Field[]) => {
+  const h = fields.find(f => f.name === 'hint')
+  if (h) return h.value
+  const f1 = fields[1]
+  return f1 && f1.name !== 'image' && f1.name !== 'cloze' ? f1.value : ''
+}
+
 type Card = { id: string; card_type: CardType; fields: Field[]; occlusion?: OcclusionData }
 
 type QuizItem =
@@ -173,7 +183,7 @@ function QuizPage() {
         }
         givenIndices.forEach((i: number) => items.push({ kind: 'multi', card, givenIdx: i }))
       } else if (type === 'cloze') {
-        const { blanks } = parseCloze(card.fields[0]?.value ?? '')
+        const { blanks } = parseCloze(clozeText(card.fields))
         items.push({ kind: 'cloze', card, blanks })
       } else if (type === 'occlusion') {
         if (card.occlusion?.imageUrl && card.occlusion.blocks.length > 0) {
@@ -351,8 +361,9 @@ function QuizPage() {
       )
     }
     if (current.kind === 'cloze') {
-      const hint = current.card.fields[1]?.value
-      const rawText = current.card.fields[0]?.value ?? ''
+      const hint = clozeHint(current.card.fields)
+      const rawText = clozeText(current.card.fields)
+      const img = clozeImage(current.card.fields)
       // TTS용: {{단어}} → 단어 (빈칸 채운 전체 문장 읽기)
       const speakText = rawText.replace(/\{\{([^}]+)\}\}/g, '$1')
       return (
@@ -375,6 +386,11 @@ function QuizPage() {
           </div>
           {hintVisible && hint && (
             <p className="text-sm text-yellow-300 bg-yellow-900/20 rounded-xl px-3 py-2 mb-3 leading-relaxed">{hint}</p>
+          )}
+          {img && (
+            <div className="mb-4 text-center">
+              <img src={img} className="max-h-72 inline-block rounded-xl" alt="회로도" />
+            </div>
           )}
           <ClozeDisplay text={rawText} revealed={revealed} />
         </div>
