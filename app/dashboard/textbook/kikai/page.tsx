@@ -60,7 +60,7 @@ export default function KikaiChapterDashboard() {
           <h1 className="text-2xl font-bold tracking-tight">{subject.name}</h1>
           <span className="text-xs bg-violet-800/40 text-violet-400 px-2 py-0.5 rounded-full font-bold">N제</span>
         </div>
-        <p className="text-gray-600 text-sm mb-5">전체 {totalQ}문제 · 7단원</p>
+        <p className="text-gray-600 text-sm mb-5">전체 {totalQ}문제 · {subject.chapters.length}단원</p>
 
         {/* 상태 요약 */}
         <div className="grid grid-cols-4 gap-2 mb-6">

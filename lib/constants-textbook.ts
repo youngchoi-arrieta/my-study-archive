@@ -38,7 +38,11 @@ const KIKAI_CHAPTERS: TextbookChapter[] = [
   { slug: 'sync',     name: '동기기',   start: 62,  end: 84,  accent: '#be123c' },
   { slug: 'power-e',  name: '전력전자', start: 85,  end: 103, accent: '#c2410c' },
   { slug: 'control',  name: '자동제어', start: 104, end: 113, accent: '#0f766e' },
-  { slug: 'info',     name: '정보',     start: 114, end: 123, accent: '#4338ca' },
+  { slug: 'info',     name: '정보',     start: 114, end: 122, accent: '#4338ca' },
+  { slug: 'light',    name: '조명',     start: 123, end: 128, accent: '#a16207' },
+  { slug: 'heat',     name: '전열',     start: 129, end: 137, accent: '#991b1b' },
+  { slug: 'motor-app',name: '전동기응용', start: 138, end: 146, accent: '#0e7490' },
+  { slug: 'electrochem', name: '전기화학', start: 147, end: 157, accent: '#4d7c0f' },
 ]
 
 export const TEXTBOOK_SUBJECTS: TextbookSubject[] = [
@@ -46,7 +50,7 @@ export const TEXTBOOK_SUBJECTS: TextbookSubject[] = [
     slug: 'kikai',
     name: '機械',
     emoji: '⚙️',
-    desc: '직류기·변압기·유도기·동기기·전력전자·자동제어·정보',
+    desc: '직류기·변압기·유도기·동기기·전력전자·자동제어·정보·조명·전열·전동기응용·전기화학',
     accent: '#6d28d9',
     chapters: KIKAI_CHAPTERS,
   },
