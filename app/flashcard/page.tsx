@@ -145,6 +145,21 @@ function FlashcardPage() {
     await loadDecks()
   }
 
+  // ── 덱을 다른 카테고리로 이동 (description의 [태그] 접두사 재작성) ──
+  const [movingCatDeck, setMovingCatDeck] = useState<string | null>(null)
+  const moveCategory = async (deck: Deck, newCat: string) => {
+    setMovingCatDeck(null)
+    const cat = newCat.trim()
+    if (!cat || classifyDeck(deck.name, deck.description) === cat) return
+    const desc = deck.description ?? ''
+    const m = desc.match(/^\[[^\]]+\](\[notts\])?\s*([\s\S]*)$/)
+    const notts = m?.[1] ?? ''
+    const rest = (m ? m[2] : desc).trim()
+    const newDesc = rest ? `[${cat}]${notts} ${rest}` : `[${cat}]${notts}`
+    await supabase.from('flashcard_decks').update({ description: newDesc }).eq('id', deck.id)
+    await loadDecks()
+  }
+
   const addDeck = async () => {
     if (!newName.trim()) return
     setSaving(true)
@@ -460,8 +475,12 @@ function FlashcardPage() {
                                     <div className="flex gap-1.5">
                                       <button onClick={() => setSplitting(deck.id)}
                                         className="text-orange-500 hover:text-orange-400 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">✂️ 분할</button>
-                                      <button onClick={() => setMovingDeck(movingDeck === deck.id ? null : deck.id)}
-                                        className="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">📦 교재</button>
+                                      <button onClick={() => { setMovingCatDeck(movingCatDeck === deck.id ? null : deck.id); setMovingDeck(null) }}
+                                        className="text-violet-400 hover:text-violet-300 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">🏷 이동</button>
+                                      {deck.exam_type === 'jlpt-n4' && (
+                                        <button onClick={() => { setMovingDeck(movingDeck === deck.id ? null : deck.id); setMovingCatDeck(null) }}
+                                          className="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">📦 교재</button>
+                                      )}
                                       <button onClick={() => deleteDeck(deck.id)}
                                         className="text-red-500 hover:text-red-400 text-xs px-2 py-1 rounded-lg bg-gray-800 transition">🗑 삭제</button>
                                     </div>
@@ -481,6 +500,27 @@ function FlashcardPage() {
                                   ))}
                                   <button onClick={() => moveDeck(deck.id, null)}
                                     className={`px-2 py-1 rounded-lg text-xs transition ${!deck.book_id ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>미분류</button>
+                                </div>
+                              </div>
+                            )}
+                            {!selectMode && movingCatDeck === deck.id && (
+                              <div className="px-5 pb-3">
+                                <div className="bg-gray-950 rounded-lg p-2 flex flex-wrap gap-1.5">
+                                  <span className="text-[10px] text-gray-500 self-center mr-1">카테고리로 이동:</span>
+                                  {[...new Set([...PRESET_CATS, ...allCats])].map(cat => {
+                                    const isCur = classifyDeck(deck.name, deck.description) === cat
+                                    return (
+                                      <button key={cat} onClick={() => moveCategory(deck, cat)} disabled={isCur}
+                                        className={`px-2 py-1 rounded-lg text-xs transition ${isCur ? 'bg-violet-600 text-white cursor-default' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}>
+                                        {CAT_EMOJI[cat] ?? '🏷'} {cat}
+                                      </button>
+                                    )
+                                  })}
+                                  <button onClick={() => {
+                                    const c = prompt('새 카테고리 이름:')
+                                    if (c) moveCategory(deck, c)
+                                  }}
+                                    className="px-2 py-1 rounded-lg text-xs bg-gray-800 text-purple-400 hover:bg-gray-700 transition">+ 직접 입력</button>
                                 </div>
                               </div>
                             )}
