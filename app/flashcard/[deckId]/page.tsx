@@ -140,7 +140,14 @@ export default function DeckEditPage() {
     if (d) { setDeck(d); setDeckName(d.name); setDeckDesc(d.description ?? '') }
     const { data: c } = await supabase.from('flashcard_cards').select('*').eq('deck_id', deckId).order('created_at', { ascending: false })
     if (c) setCards(c)
-    const { data: allD } = await supabase.from('flashcard_decks').select('id, name, description, exam_type').neq('id', deckId)
+    // 이동 대상 덱: 같은 시험(exam_type)의 덱만 — 덴켄 카드는 덴켄 덱으로만
+    let deckQ = supabase.from('flashcard_decks').select('id, name, description, exam_type').neq('id', deckId)
+    if (d?.exam_type) {
+      deckQ = deckQ.eq('exam_type', d.exam_type)
+    } else {
+      deckQ = deckQ.is('exam_type', null)
+    }
+    const { data: allD } = await deckQ.order('sort_order', { ascending: true })
     if (allD) setAllDecks(allD)
     setLoading(false)
   }
@@ -442,13 +449,16 @@ export default function DeckEditPage() {
                                 <button onClick={() => setMovingCard(movingCard === card.id ? null : card.id)}
                                   className="text-gray-400 hover:text-blue-400 px-2 py-1 rounded text-xs">이동</button>
                                 {movingCard === card.id && (
-                                  <div className="absolute right-0 top-6 bg-gray-800 border border-gray-700 rounded-lg py-1 z-10 min-w-[140px] shadow-xl">
-                                    {allDecks.map(d => (
-                                      <button key={d.id} onClick={() => moveCard(card.id, d.id)}
-                                        className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition">
-                                        → {d.name}
-                                      </button>
-                                    ))}
+                                  <div className="absolute right-0 top-6 bg-gray-800 border border-gray-700 rounded-lg py-1 z-10 min-w-[140px] shadow-xl max-h-64 overflow-y-auto">
+                                    {allDecks.map(d => {
+                                      const cat = d.description?.match(/^\[([^\]]+)\]/)?.[1]
+                                      return (
+                                        <button key={d.id} onClick={() => moveCard(card.id, d.id)}
+                                          className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition">
+                                          → {cat && <span className="text-gray-500">[{cat}] </span>}{d.name}
+                                        </button>
+                                      )
+                                    })}
                                   </div>
                                 )}
                               </div>
