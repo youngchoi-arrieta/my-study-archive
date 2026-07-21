@@ -7,14 +7,13 @@ import { supabase } from '@/lib/supabase'
 import {
   DENKEN_STRUCTURE,
   SUBJECT_ACCENT,
-  DENKEN_EXAM_MAP,
   isBArea,
   isSelectQ,
   isDimmedSelect,
   scoreDenken,
   gradedCount,
   answerableCount,
-  examFullLabel,
+  examLabelFromId,
   type DenkenSubject,
   type Result,
   type Sub,
@@ -103,8 +102,7 @@ export default function GeneralSubjectPage() {
   const struct    = DENKEN_STRUCTURE[subject]
   const accent    = SUBJECT_ACCENT[subject]
   const selectPair = struct.selectPair ?? []
-  const examMeta  = DENKEN_EXAM_MAP.get(examId)
-  const examLabel = examMeta ? examFullLabel(examMeta.year, examMeta.term) : examId
+  const examLabel = examLabelFromId(examId)
 
   const [session, setSession]               = useState<Session | null>(null)
   const [answers, setAnswers]               = useState<Answer[]>(() =>

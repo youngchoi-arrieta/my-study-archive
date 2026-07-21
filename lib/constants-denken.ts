@@ -153,29 +153,38 @@ export function examShortLabel(year: number, term: Term): string {
   return term === '' ? era : `${era} ${term}`
 }
 
+// ── 시험 ID → 会計年度·학기 유도 (라벨의 단일 진실) ─────────────────
+// ID 규칙: dk_{Y}_{n}  (Y = 시행 '달력 연도', n = 그 해 회차)
+//   n=1 → 3월 시행 = (Y-1)年度 下期   (예: dk_2026_1 = 令和7年度 下期 · 2026.3)
+//   n=2 → 8월 시행 =  Y年度   上期     (예: dk_2026_2 = 令和8年度 上期 · 2026.8)
+//   n=0 → 연 1회(구제도) =  Y年度
+// (下期가 翌年 3월에 치러지므로 '달력 연도' 회차 번호와 '会計年度'가 한 칸 어긋난다)
+export function deriveDenkenExam(id: string): { year: number; term: Term } {
+  const m = /^dk_(\d{4})_(\d)$/.exec(id)
+  if (!m) return { year: 0, term: '' }
+  const Y = Number(m[1]), n = Number(m[2])
+  if (n === 1) return { year: Y - 1, term: '下期' }
+  if (n === 2) return { year: Y,     term: '上期' }
+  return { year: Y, term: '' }
+}
+
+// ID만으로 헤더 풀 라벨 생성: "令和7年度 下期 · 2026.3"
+export function examLabelFromId(id: string): string {
+  const { year, term } = deriveDenkenExam(id)
+  if (year === 0) return id
+  return examFullLabel(year, term)
+}
+
 // ── 시험 목록 (단일 소스) ───────────────────────────────────────────
 export type DenkenExam = { id: string; year: number; term: Term }
 
-export const DENKEN_EXAMS: DenkenExam[] = [
-  // 연 2회 (2023~): 上期=당년 8월 / 下期=翌年 3월
-  { id: 'dk_2026_1', year: 2026, term: '上期' },
-  { id: 'dk_2025_2', year: 2025, term: '下期' },
-  { id: 'dk_2025_1', year: 2025, term: '上期' },
-  { id: 'dk_2024_2', year: 2024, term: '下期' },
-  { id: 'dk_2024_1', year: 2024, term: '上期' },
-  { id: 'dk_2023_2', year: 2023, term: '下期' },
-  { id: 'dk_2023_1', year: 2023, term: '上期' },
-  // 연 1회 (구제도)
-  { id: 'dk_2022_0', year: 2022, term: '' },
-  { id: 'dk_2021_0', year: 2021, term: '' },
-  { id: 'dk_2020_0', year: 2020, term: '' },
-  { id: 'dk_2019_0', year: 2019, term: '' },
-  { id: 'dk_2018_0', year: 2018, term: '' },
-  { id: 'dk_2017_0', year: 2017, term: '' },
-  { id: 'dk_2016_0', year: 2016, term: '' },
-  { id: 'dk_2015_0', year: 2015, term: '' },
-  { id: 'dk_2014_0', year: 2014, term: '' },
+// id 값은 절대 변경 금지(사용자 저장 데이터와 연결). year/term은 ID에서 유도.
+const DENKEN_EXAM_IDS = [
+  'dk_2026_1', 'dk_2025_2', 'dk_2025_1', 'dk_2024_2', 'dk_2024_1', 'dk_2023_2', 'dk_2023_1',
+  'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0', 'dk_2016_0', 'dk_2015_0', 'dk_2014_0',
 ]
+
+export const DENKEN_EXAMS: DenkenExam[] = DENKEN_EXAM_IDS.map(id => ({ id, ...deriveDenkenExam(id) }))
 
 export const DENKEN_EXAM_MAP = new Map<string, DenkenExam>(
   DENKEN_EXAMS.map(e => [e.id, e]),

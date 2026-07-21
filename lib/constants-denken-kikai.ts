@@ -1,6 +1,6 @@
 // 電験三種 機械 과목 전용 constants (태그 · 유형)
 // 시험 구조/채점/연호 라벨은 lib/constants-denken.ts 로 일원화됨
-import { examFullLabel } from './constants-denken'
+import { examLabelFromId, deriveDenkenExam } from './constants-denken'
 
 export type KikaiTag = {
   id: number
@@ -38,33 +38,17 @@ export type KikaiExam = {
   totalQ: 18   // A문제 14 + B문제 4 = 18문제 (17/18번은 선택)
 }
 
-// 라벨은 공용 examFullLabel(연호 + 上期/下期 + 시행월)로 생성 → 시험지 원문과 일치
-const KIKAI_EXAM_SEED: { id: string; year: number; term: '上期' | '下期' | '' }[] = [
-  // 2023~ 연 2회 (上期=당년 8월, 下期=翌年 3월)
-  { id: 'dk_2026_1', year: 2026, term: '上期' },
-  { id: 'dk_2025_2', year: 2025, term: '下期' },
-  { id: 'dk_2025_1', year: 2025, term: '上期' },
-  { id: 'dk_2024_2', year: 2024, term: '下期' },
-  { id: 'dk_2024_1', year: 2024, term: '上期' },
-  { id: 'dk_2023_2', year: 2023, term: '下期' },
-  { id: 'dk_2023_1', year: 2023, term: '上期' },
-  // 2022 이전 연 1회
-  { id: 'dk_2022_0', year: 2022, term: '' },
-  { id: 'dk_2021_0', year: 2021, term: '' },
-  { id: 'dk_2020_0', year: 2020, term: '' },
-  { id: 'dk_2019_0', year: 2019, term: '' },
-  { id: 'dk_2018_0', year: 2018, term: '' },
-  { id: 'dk_2017_0', year: 2017, term: '' },
-  { id: 'dk_2016_0', year: 2016, term: '' },
-  { id: 'dk_2015_0', year: 2015, term: '' },
-  { id: 'dk_2014_0', year: 2014, term: '' },
+// year/term/label 모두 ID에서 유도(dk_{Y}_1=前年度 下期, dk_{Y}_2=Y年度 上期)
+// → 시험지 원문(令和X年度 上期/下期)과 정확히 일치. id 값은 절대 변경 금지.
+const KIKAI_EXAM_IDS = [
+  'dk_2026_1', 'dk_2025_2', 'dk_2025_1', 'dk_2024_2', 'dk_2024_1', 'dk_2023_2', 'dk_2023_1',
+  'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0', 'dk_2016_0', 'dk_2015_0', 'dk_2014_0',
 ]
 
-export const KIKAI_EXAMS: KikaiExam[] = KIKAI_EXAM_SEED.map(s => ({
-  ...s,
-  label: examFullLabel(s.year, s.term),
-  totalQ: 18 as const,
-}))
+export const KIKAI_EXAMS: KikaiExam[] = KIKAI_EXAM_IDS.map(id => {
+  const { year, term } = deriveDenkenExam(id)
+  return { id, year, term, label: examLabelFromId(id), totalQ: 18 as const }
+})
 
 // 문제번호별 기본 정보
 // A문제: 1~14 (5점×14=70점), B문제: 15~18 (10점×4문제, 단 17/18 선택)
