@@ -29,25 +29,24 @@ export const KIKAI_TAG_MAP = new Map<number, KikaiTag>(
 )
 
 // 기출 메타데이터 (機械 과목)
-// 2023년부터 연 2회 (上期/下期), 2022 이전 연 1회
+// 2023년부터 연 2회 (3월·8월), 2022 이전 연 1회
 export type KikaiExam = {
   id: string
   year: number
-  term: '上期' | '下期' | ''
   label: string
   totalQ: 18   // A문제 14 + B문제 4 = 18문제 (17/18번은 선택)
 }
 
-// year/term/label 모두 ID에서 유도(dk_{Y}_1=前年度 下期, dk_{Y}_2=Y年度 上期)
-// → 시험지 원문(令和X年度 上期/下期)과 정확히 일치. id 값은 절대 변경 금지.
+// 라벨은 ID에서 유도: dk_{Y}_1 → Y.3, dk_{Y}_2 → Y.8, dk_{Y}_0 → Y (연호 미사용)
+// id 값은 절대 변경 금지(저장 데이터와 연결).
 const KIKAI_EXAM_IDS = [
   'dk_2026_1', 'dk_2025_2', 'dk_2025_1', 'dk_2024_2', 'dk_2024_1', 'dk_2023_2', 'dk_2023_1',
   'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0', 'dk_2016_0', 'dk_2015_0', 'dk_2014_0',
 ]
 
 export const KIKAI_EXAMS: KikaiExam[] = KIKAI_EXAM_IDS.map(id => {
-  const { year, term } = deriveDenkenExam(id)
-  return { id, year, term, label: examLabelFromId(id), totalQ: 18 as const }
+  const { year } = deriveDenkenExam(id)
+  return { id, year, label: examLabelFromId(id), totalQ: 18 as const }
 })
 
 // 문제번호별 기본 정보

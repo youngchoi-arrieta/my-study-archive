@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { scoreDenken, deriveDenkenExam, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
+import { scoreDenken, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
 
 // ── 과거문 메타데이터 (20개년) ───────────────────────────────────
 const SUBJECTS = ['理論', '電力', '機械', '法規'] as const
@@ -13,23 +13,20 @@ type Subject = typeof SUBJECTS[number]
 type DenkenExam = {
   id: string
   year: number
-  term: '上期' | '下期' | ''
   label: string
 }
 
 // 시험 라벨은 lib/constants-denken 의 examLabelFromId(id) 로 생성 → 시험지 원문과 일치
 const PAST_EXAMS: DenkenExam[] = [
   ...([2026, 2025, 2024, 2023].flatMap(y => {
-    const mk = (id: string, calYear: number): DenkenExam => {
-      const { term } = deriveDenkenExam(id)   // 시험지 기준 上期/下期
-      return { id, year: calYear, term, label: examLabelFromId(id) }
-    }
+    const mk = (id: string, calYear: number): DenkenExam =>
+      ({ id, year: calYear, label: examLabelFromId(id) })
     const exams: DenkenExam[] = [ mk(`dk_${y}_1`, y) ]
     if (y !== 2026) exams.push(mk(`dk_${y}_2`, y))
     return exams
   })),
   ...[2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010,2009].map(y => ({
-    id: `dk_${y}_0`, year: y, term: '' as const, label: examLabelFromId(`dk_${y}_0`),
+    id: `dk_${y}_0`, year: y, label: examLabelFromId(`dk_${y}_0`),
   })),
 ]
 

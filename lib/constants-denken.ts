@@ -6,11 +6,9 @@
 //   機械 : A 1~14 (5점) + B 15~18 (각 (a)5+(b)5) ── 17·18 선택 1문제
 //   法規 : A 1~10 (6점) + B 11~13 ── 선택 없음, 총 13문
 //          B 배점: 問11·問12 = (a)6/(b)7, 問13 = (a)7/(b)7  (B 합계 40점)
-// 상/하반기 표기는 시험지 원문(上期/下期)에 맞춤:
-//   上期 = 8월 시행 / 下期 = 翌年 3월 시행 (会計年度=4월 시작 기준)
+// 시험 라벨은 연도.월(예: 2026.3)로만 표기 (일본식 연호 미사용)
 
 export type DenkenSubject = '理論' | '電力' | '機械' | '法規'
-export type Term = '上期' | '下期' | ''
 export type Result = 'correct' | 'wrong' | null
 export type Sub = 'a' | 'b'   // B문제 소문항
 
@@ -126,74 +124,34 @@ export function gradedCount(
   ).length
 }
 
-// ── 연호 (令和/平成) 라벨 ───────────────────────────────────────────
-// 令和 = 西暦 - 2018 (令和1年=2019) / 그 이전은 平成 (平成N年 = 西暦-1988)
-export function jpEra(year: number): string {
-  if (year >= 2019) {
-    const n = year - 2018
-    return `令和${n === 1 ? '元' : n}年`   // 令和元年 = 2019 (공식 표기)
-  }
-  return `平成${year - 1988}年`
-}
-
-// 실제 시행 연·월 (下期는 翌年 3월, 上期는 당년 8월)
-export function examHeld(year: number, term: Term): { year: number; month: number } | null {
-  if (term === '下期') return { year: year + 1, month: 3 }
-  if (term === '上期') return { year, month: 8 }
-  return null   // 연 1회(구제도)는 시행월 정보 없음
-}
-
-// 상세 헤더용 풀 라벨: "令和7年度 下期 · 2026.3"
-export function examFullLabel(year: number, term: Term): string {
-  const nendo = `${jpEra(year)}度`
-  const held = examHeld(year, term)
-  if (!held) return `${nendo} (${year})`
-  return `${nendo} ${term} · ${held.year}.${held.month}`
-}
-
-// 짧은 라벨(목록/칩): "令和7 下期"
-export function examShortLabel(year: number, term: Term): string {
-  const era = year >= 2019 ? `令和${year - 2018}` : `平成${year - 1988}`
-  return term === '' ? era : `${era} ${term}`
-}
-
-// ── 시험 ID → 会計年度·학기 유도 (라벨의 단일 진실) ─────────────────
-// ID 규칙: dk_{Y}_{n}  (Y = 시행 '달력 연도', n = 그 해 회차)
-//   n=1 → 3월 시행 = (Y-1)年度 下期   (예: dk_2026_1 = 令和7年度 下期 · 2026.3)
-//   n=2 → 8월 시행 =  Y年度   上期     (예: dk_2026_2 = 令和8年度 上期 · 2026.8)
-//   n=0 → 연 1회(구제도) =  Y年度
-// (下期가 翌年 3월에 치러지므로 '달력 연도' 회차 번호와 '会計年度'가 한 칸 어긋난다)
-export function deriveDenkenExam(id: string): { year: number; term: Term } {
-  // dk_2022_0 = 2022.8 시행 = 令和4년도 上期 (2022년은 연2회 첫 해였고 앱은 上期만 슬롯 보유)
-  if (id === 'dk_2022_0') return { year: 2022, term: '上期' }
+// ── 시험 라벨: 연도.월 표기 (일본식 연호 미사용) ───────────────────
+// ID 규칙: dk_{Y}_{n}  →  n=1: Y년 3월 / n=2: Y년 8월 / n=0: 연 1회(연도만 표기)
+export function deriveDenkenExam(id: string): { year: number; month: number | null } {
   const m = /^dk_(\d{4})_(\d)$/.exec(id)
-  if (!m) return { year: 0, term: '' }
+  if (!m) return { year: 0, month: null }
   const Y = Number(m[1]), n = Number(m[2])
-  if (n === 1) return { year: Y - 1, term: '下期' }
-  if (n === 2) return { year: Y,     term: '上期' }
-  return { year: Y, term: '' }
+  if (n === 1) return { year: Y, month: 3 }
+  if (n === 2) return { year: Y, month: 8 }
+  return { year: Y, month: null }
 }
 
-// 실시일 기준 정렬키(내림차순 정렬용). _1=3월 시행, _2=8월 시행, _0=연1회(~9월, 단 2021·2022는 8월)
-export function denkenHeldKey(id: string): number {
-  const m = /^dk_(\d{4})_(\d)$/.exec(id)
-  if (!m) return 0
-  const Y = Number(m[1]), n = Number(m[2])
-  const month = n === 1 ? 3 : n === 2 ? 8 : (Y >= 2021 ? 8 : 9)
-  return Y * 100 + month
-}
-
-// ID만으로 헤더 풀 라벨 생성: "令和7年度 下期 · 2026.3"
+// 헤더/목록 라벨: "2026.3" / "2025.8" / "2022"
 export function examLabelFromId(id: string): string {
-  const { year, term } = deriveDenkenExam(id)
+  const { year, month } = deriveDenkenExam(id)
   if (year === 0) return id
-  return examFullLabel(year, term)
+  return month === null ? `${year}` : `${year}.${month}`
+}
+
+// 정렬키 (내림차순: 2026.3 → 2025.8 → 2025.3 → 2024.8 → …)
+export function denkenHeldKey(id: string): number {
+  const { year, month } = deriveDenkenExam(id)
+  return year * 100 + (month ?? 9)
 }
 
 // ── 시험 목록 (단일 소스) ───────────────────────────────────────────
-export type DenkenExam = { id: string; year: number; term: Term }
+export type DenkenExam = { id: string; year: number; month: number | null }
 
-// id 값은 절대 변경 금지(사용자 저장 데이터와 연결). year/term은 ID에서 유도.
+// id 값은 절대 변경 금지(사용자 저장 데이터와 연결). year/month는 ID에서 유도.
 const DENKEN_EXAM_IDS = [
   'dk_2026_1', 'dk_2025_2', 'dk_2025_1', 'dk_2024_2', 'dk_2024_1', 'dk_2023_2', 'dk_2023_1',
   'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0', 'dk_2016_0', 'dk_2015_0', 'dk_2014_0',
