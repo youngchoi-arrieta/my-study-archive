@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { scoreDenken, deriveDenkenExam, examLabelFromId, type Result } from '@/lib/constants-denken'
+import { scoreDenken, deriveDenkenExam, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
 
 // ── 과거문 메타데이터 (20개년) ───────────────────────────────────
 const SUBJECTS = ['理論', '電力', '機械', '法規'] as const
@@ -33,7 +33,8 @@ const PAST_EXAMS: DenkenExam[] = [
   })),
 ]
 
-const YEARS_ORDER = [...new Set(PAST_EXAMS.map(e => e.year))].sort((a, b) => b - a)
+// 실시일(시행월) 기준 내림차순: 2026.3 → 2025.8 → 2025.3 → 2024.8 → 2024.3 → …
+const SORTED_EXAMS = [...PAST_EXAMS].sort((a, b) => denkenHeldKey(b.id) - denkenHeldKey(a.id))
 
 function toPreviewUrl(url: string): string | null {
   if (!url) return null
@@ -400,8 +401,7 @@ export default function DenkenHub() {
                 <p className="text-gray-500 text-sm">불러오는 중...</p>
               ) : (
                 <div className="space-y-2">
-                  {YEARS_ORDER.map(year =>
-                    PAST_EXAMS.filter(e => e.year === year).map(exam => (
+                  {SORTED_EXAMS.map(exam => (
                       <div key={exam.id} className="bg-gray-900 rounded-xl overflow-hidden">
                         <div className="px-4 py-3 border-b border-gray-800">
                           <p className="text-sm font-semibold text-gray-300">{exam.label}</p>
@@ -521,8 +521,7 @@ export default function DenkenHub() {
                           })}
                         </div>
                       </div>
-                    ))
-                  )}
+                  ))}
                 </div>
               )}
             </div>

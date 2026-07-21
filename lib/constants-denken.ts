@@ -129,7 +129,11 @@ export function gradedCount(
 // ── 연호 (令和/平成) 라벨 ───────────────────────────────────────────
 // 令和 = 西暦 - 2018 (令和1年=2019) / 그 이전은 平成 (平成N年 = 西暦-1988)
 export function jpEra(year: number): string {
-  return year >= 2019 ? `令和${year - 2018}年` : `平成${year - 1988}年`
+  if (year >= 2019) {
+    const n = year - 2018
+    return `令和${n === 1 ? '元' : n}年`   // 令和元年 = 2019 (공식 표기)
+  }
+  return `平成${year - 1988}年`
 }
 
 // 실제 시행 연·월 (下期는 翌年 3월, 上期는 당년 8월)
@@ -160,12 +164,23 @@ export function examShortLabel(year: number, term: Term): string {
 //   n=0 → 연 1회(구제도) =  Y年度
 // (下期가 翌年 3월에 치러지므로 '달력 연도' 회차 번호와 '会計年度'가 한 칸 어긋난다)
 export function deriveDenkenExam(id: string): { year: number; term: Term } {
+  // dk_2022_0 = 2022.8 시행 = 令和4년도 上期 (2022년은 연2회 첫 해였고 앱은 上期만 슬롯 보유)
+  if (id === 'dk_2022_0') return { year: 2022, term: '上期' }
   const m = /^dk_(\d{4})_(\d)$/.exec(id)
   if (!m) return { year: 0, term: '' }
   const Y = Number(m[1]), n = Number(m[2])
   if (n === 1) return { year: Y - 1, term: '下期' }
   if (n === 2) return { year: Y,     term: '上期' }
   return { year: Y, term: '' }
+}
+
+// 실시일 기준 정렬키(내림차순 정렬용). _1=3월 시행, _2=8월 시행, _0=연1회(~9월, 단 2021·2022는 8월)
+export function denkenHeldKey(id: string): number {
+  const m = /^dk_(\d{4})_(\d)$/.exec(id)
+  if (!m) return 0
+  const Y = Number(m[1]), n = Number(m[2])
+  const month = n === 1 ? 3 : n === 2 ? 8 : (Y >= 2021 ? 8 : 9)
+  return Y * 100 + month
 }
 
 // ID만으로 헤더 풀 라벨 생성: "令和7年度 下期 · 2026.3"
