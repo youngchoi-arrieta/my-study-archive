@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { KIKAI_EXAMS, KIKAI_TAGS, KIKAI_TAG_MAP, Q_TOTAL, isQSelectPair, scoreForQ } from '@/lib/constants-denken-kikai'
+import { KIKAI_EXAMS, KIKAI_TAGS } from '@/lib/constants-denken-kikai'
+import { scoreDenken, isBArea, type Result } from '@/lib/constants-denken'
+
+const SUBJECT = '機械' as const
 
 // ── 타입 ──────────────────────────────────────────────────────────
-type Result = 'correct' | 'wrong' | null
-
 type SessionRow = {
   exam_id: string
   drive_url: string | null
@@ -19,18 +20,29 @@ type AnswerRow = {
   exam_id: string
   q_num: number
   result: Result
+  result_a: Result
+  result_b: Result
   tag_id: number | null
   memo: string | null
 }
 
+// 채점은 공용 scoreDenken 사용 (A=result, B=result_a/result_b)
 function calcScore(answers: AnswerRow[], selectedQ: number | null): number {
-  let total = 0
-  for (const a of answers) {
-    if (a.result !== 'correct') continue
-    if (isQSelectPair(a.q_num) && a.q_num !== selectedQ) continue
-    total += scoreForQ(a.q_num)
+  return scoreDenken(SUBJECT, answers, selectedQ)
+}
+
+// 문제 단위 정오 (태그통계용): B문제는 (a)(b) 합산
+function problemStatus(a: AnswerRow): Result {
+  if (isBArea(SUBJECT, a.q_num)) {
+    if (a.result_a === null || a.result_b === null) return (a.result_a === 'wrong' || a.result_b === 'wrong') ? 'wrong' : null
+    return (a.result_a === 'correct' && a.result_b === 'correct') ? 'correct' : 'wrong'
   }
-  return total
+  return a.result
+}
+
+// 채점 흔적 존재 여부
+function hasAny(a: AnswerRow): boolean {
+  return a.result !== null || a.result_a !== null || a.result_b !== null
 }
 
 const scoreColor = (s: number | null) => {
@@ -55,7 +67,7 @@ export default function KikaiHub() {
     setLoading(true)
     const [{ data: sessData }, { data: ansData }] = await Promise.all([
       supabase.from('denken_kikai_sessions').select('exam_id, drive_url, selected_q'),
-      supabase.from('denken_kikai_answers').select('exam_id, q_num, result, tag_id, memo'),
+      supabase.from('denken_kikai_answers').select('exam_id, q_num, result, result_a, result_b, tag_id, memo'),
     ])
     setSessions((sessData || []) as SessionRow[])
     setAnswers((ansData || []) as AnswerRow[])
@@ -82,8 +94,8 @@ export default function KikaiHub() {
   // 태그별 통계
   const tagStats = useMemo(() =>
     KIKAI_TAGS.map(tag => {
-      const tagged = answers.filter(a => a.tag_id === tag.id && a.result !== null)
-      const correct = tagged.filter(a => a.result === 'correct').length
+      const tagged = answers.filter(a => a.tag_id === tag.id && problemStatus(a) !== null)
+      const correct = tagged.filter(a => problemStatus(a) === 'correct').length
       const rate = tagged.length === 0 ? null : Math.round((correct / tagged.length) * 100)
       return { tag, total: tagged.length, correct, rate }
     }),
@@ -92,7 +104,7 @@ export default function KikaiHub() {
 
   const totalAttempts = sessions.filter(s => {
     const ans = answersByExam.get(s.exam_id) || []
-    return ans.some(a => a.result !== null)
+    return ans.some(hasAny)
   }).length
 
   const passedCount = sessions.filter(s => {
@@ -191,7 +203,7 @@ export default function KikaiHub() {
                           const sess = sessionMap.get(exam.id)
                           const ans = answersByExam.get(exam.id) || []
                           const score = calcScore(ans, sess?.selected_q ?? null)
-                          const hasData = ans.some(a => a.result !== null)
+                          const hasData = ans.some(hasAny)
                           const hasMemo = ans.some(a => a.memo)
                           const tagCount = ans.filter(a => a.tag_id !== null).length
                           const memoCount = ans.filter(a => a.memo).length
@@ -253,7 +265,7 @@ export default function KikaiHub() {
         {/* ── 탭: 단원별 정답률 ── */}
         {activeTab === 'stats' && (
           <div>
-            {answers.filter(a => a.result !== null).length === 0 ? (
+            {answers.filter(hasAny).length === 0 ? (
               <div className="text-center py-16">
                 <p className="text-gray-600 text-sm">아직 채점 데이터가 없어요.</p>
                 <p className="text-gray-700 text-xs mt-1">기출을 풀고 O/X를 체크하면 여기에 통계가 쌓여요.</p>

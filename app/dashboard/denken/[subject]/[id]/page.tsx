@@ -4,28 +4,39 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import {
+  DENKEN_STRUCTURE,
+  SUBJECT_ACCENT,
+  DENKEN_EXAM_MAP,
+  isBArea,
+  isSelectQ,
+  isDimmedSelect,
+  scoreDenken,
+  gradedCount,
+  answerableCount,
+  examFullLabel,
+  type DenkenSubject,
+  type Result,
+  type Sub,
+} from '@/lib/constants-denken'
 
-const SUBJECT_META: Record<string, { accent: string; label: string; totalQ: number; selectPair: [number,number]; splitAt: number; scoreA: number; scoreB: number }> = {
-  '理論': { accent: '#1d4ed8', label: '理論', totalQ: 18, selectPair: [17,18], splitAt: 14, scoreA: 5, scoreB: 10 },
-  '電力': { accent: '#047857', label: '電力', totalQ: 18, selectPair: [17,18], splitAt: 14, scoreA: 5, scoreB: 10 },
-  '法規': { accent: '#92400e', label: '法規', totalQ: 13, selectPair: [12,13], splitAt: 10, scoreA: 6, scoreB: 13 },
+// 機械는 전용 페이지(kikai)로 라우팅되므로 여기서는 理論/電力/法規만 처리
+const FALLBACK: DenkenSubject = '理論'
+function asSubject(s: string): DenkenSubject {
+  return (['理論', '電力', '機械', '法規'] as const).includes(s as DenkenSubject)
+    ? (s as DenkenSubject) : FALLBACK
 }
 
-const PAST_EXAMS: Record<string, string> = {
-  'dk_2026_1': '2026년도 상반기 (2026.8)',
-  'dk_2025_2': '2025년도 하반기 (2026.3)',
-  'dk_2025_1': '2025년도 상반기 (2025.8)',
-  'dk_2024_2': '2024년도 하반기 (2025.3)',
-  'dk_2024_1': '2024년도 상반기 (2024.8)',
-  'dk_2023_2': '2023년도 하반기 (2024.3)',
-  'dk_2023_1': '2023년도 상반기 (2023.8)',
-  'dk_2022_0': '2022년도', 'dk_2021_0': '2021년도', 'dk_2020_0': '2020년도',
-  'dk_2019_0': '2019년도', 'dk_2018_0': '2018년도', 'dk_2017_0': '2017년도',
-  'dk_2016_0': '2016년도', 'dk_2015_0': '2015년도', 'dk_2014_0': '2014년도',
-}
+type Answer = { q_num: number; result: Result; result_a: Result; result_b: Result; memo: string }
 
-type Result = 'correct' | 'wrong' | null
-type Answer = { q_num: number; result: Result; memo: string }
+// 문제 단위 정오 (목록/헤더 색상용): B문제는 (a)(b) 합산
+function problemStatus(subject: DenkenSubject, a: Answer): Result {
+  if (isBArea(subject, a.q_num)) {
+    if (a.result_a === null || a.result_b === null) return (a.result_a === 'wrong' || a.result_b === 'wrong') ? 'wrong' : null
+    return (a.result_a === 'correct' && a.result_b === 'correct') ? 'correct' : 'wrong'
+  }
+  return a.result
+}
 type Session = { id: string; exam_id: string; subject: string; drive_url: string | null; answer_drive_url: string | null; selected_q: number | null }
 
 function toPreviewUrl(url: string): string | null {
@@ -36,41 +47,68 @@ function toPreviewUrl(url: string): string | null {
   return null
 }
 
-function ScoreCell({ qNum, answer, isExcluded, isActive, onResultToggle, onClick }: {
-  qNum: number; answer: Answer; isExcluded: boolean; isActive: boolean
-  onResultToggle: () => void; onClick: () => void
+function ScoreCell({ subject, qNum, answer, isSelectPair, isExcluded, isActive, onResultToggle, onSubToggle, onClick }: {
+  subject: DenkenSubject; qNum: number; answer: Answer; isSelectPair: boolean; isExcluded: boolean; isActive: boolean
+  onResultToggle: () => void; onSubToggle: (sub: Sub) => void; onClick: () => void
 }) {
+  const isB = isBArea(subject, qNum)
   let cellBg = 'bg-[#0f1c2e]'
   if (isActive) cellBg = 'bg-[#1a2e47] ring-1 ring-blue-500/60'
   if (isExcluded) cellBg = 'bg-[#0a1220] opacity-40'
   return (
     <div className={`relative flex flex-col items-center rounded-xl pt-1.5 pb-1 px-1 cursor-pointer select-none ${cellBg}`}
-      style={{ minWidth: 44 }} onClick={onClick}>
+      style={{ minWidth: isB ? 52 : 44 }} onClick={onClick}>
       <div className="flex items-center gap-0.5 mb-1">
         <span className={`text-[10px] font-bold ${isActive ? 'text-blue-400' : 'text-gray-500'}`}>{qNum}</span>
+        {isB && <span className="text-[8px] text-sky-500 font-bold">B</span>}
+        {isSelectPair && <span className="text-[8px] text-yellow-500 font-bold">選</span>}
         {answer.memo && <span className="w-1 h-1 rounded-full bg-blue-400 ml-0.5" />}
       </div>
-      <button onClick={(e) => { e.stopPropagation(); onResultToggle() }}
-        className={`w-8 h-8 rounded-lg flex items-center justify-center text-base font-black transition ${
-          answer.result === 'correct' ? 'bg-emerald-600/80 text-white'
-          : answer.result === 'wrong' ? 'bg-red-700/80 text-white'
-          : 'bg-[#1e3048] text-gray-600 hover:bg-[#253d5c]'}`}>
-        {answer.result === 'correct' ? '○' : answer.result === 'wrong' ? '✕' : '·'}
-      </button>
+      {isB ? (
+        <div className="flex gap-0.5">
+          {(['a', 'b'] as Sub[]).map(sub => {
+            const r = sub === 'a' ? answer.result_a : answer.result_b
+            return (
+              <div key={sub} className="flex flex-col items-center gap-0.5">
+                <span className="text-[8px] leading-none text-gray-500">({sub})</span>
+                <button onClick={(e) => { e.stopPropagation(); onSubToggle(sub) }}
+                  className={`w-6 h-8 rounded-md flex items-center justify-center text-sm font-black transition ${
+                    r === 'correct' ? 'bg-emerald-600/80 text-white'
+                    : r === 'wrong' ? 'bg-red-700/80 text-white'
+                    : 'bg-[#1e3048] text-gray-600 hover:bg-[#253d5c]'}`}
+                  title={`(${sub}) ${r === 'correct' ? '정답' : r === 'wrong' ? '오답' : '미채점'}`}>
+                  {r === 'correct' ? '○' : r === 'wrong' ? '✕' : '·'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <button onClick={(e) => { e.stopPropagation(); onResultToggle() }}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-base font-black transition ${
+            answer.result === 'correct' ? 'bg-emerald-600/80 text-white'
+            : answer.result === 'wrong' ? 'bg-red-700/80 text-white'
+            : 'bg-[#1e3048] text-gray-600 hover:bg-[#253d5c]'}`}>
+          {answer.result === 'correct' ? '○' : answer.result === 'wrong' ? '✕' : '·'}
+        </button>
+      )}
     </div>
   )
 }
 
 export default function GeneralSubjectPage() {
   const params  = useParams()
-  const subject = decodeURIComponent(params.subject as string)
+  const subject = asSubject(decodeURIComponent(params.subject as string))
   const examId  = params.id as string
-  const cfg       = SUBJECT_META[subject] ?? SUBJECT_META['理論']
-  const examLabel = PAST_EXAMS[examId] ?? examId
+  const struct    = DENKEN_STRUCTURE[subject]
+  const accent    = SUBJECT_ACCENT[subject]
+  const selectPair = struct.selectPair ?? []
+  const examMeta  = DENKEN_EXAM_MAP.get(examId)
+  const examLabel = examMeta ? examFullLabel(examMeta.year, examMeta.term) : examId
 
   const [session, setSession]               = useState<Session | null>(null)
   const [answers, setAnswers]               = useState<Answer[]>(() =>
-    Array.from({ length: cfg.totalQ }, (_, i) => ({ q_num: i + 1, result: null, memo: '' }))
+    Array.from({ length: struct.totalQ }, (_, i) => ({ q_num: i + 1, result: null, result_a: null, result_b: null, memo: '' }))
   )
   const [selectedQ, setSelectedQ]           = useState<number | null>(null)
   const [previewUrl, setPreviewUrl]         = useState<string | null>(null)
@@ -104,12 +142,18 @@ export default function GeneralSubjectPage() {
       if (sess.selected_q) setSelectedQ(sess.selected_q)
       const { data: ans } = await supabase
         .from('denken_general_answers')
-        .select('q_num, result, memo')
+        .select('q_num, result, result_a, result_b, memo')
         .eq('exam_id', examId).eq('subject', subject)
       if (ans && ans.length > 0) {
         setAnswers(prev => prev.map(a => {
           const f = ans.find(x => x.q_num === a.q_num)
-          return f ? { ...a, result: (f.result as Result) ?? null, memo: f.memo ?? '' } : a
+          return f ? {
+            ...a,
+            result: (f.result as Result) ?? null,
+            result_a: (f.result_a as Result) ?? null,
+            result_b: (f.result_b as Result) ?? null,
+            memo: f.memo ?? '',
+          } : a
         }))
       }
     }
@@ -132,16 +176,26 @@ export default function GeneralSubjectPage() {
   const saveAnswer = useCallback(async (a: Answer) => {
     const sid = await ensureSession()
     await supabase.from('denken_general_answers').upsert(
-      { session_id: sid, exam_id: examId, subject, q_num: a.q_num, result: a.result, memo: a.memo || null },
+      { session_id: sid, exam_id: examId, subject, q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b, memo: a.memo || null },
       { onConflict: 'exam_id,subject,q_num' }
     )
   }, [ensureSession, examId, subject])
 
+  const cycle = (r: Result): Result => r === null ? 'correct' : r === 'correct' ? 'wrong' : null
+
   const handleResultToggle = useCallback((qNum: number) => {
     setAnswers(prev => prev.map(a => {
       if (a.q_num !== qNum) return a
-      const next: Result = a.result === null ? 'correct' : a.result === 'correct' ? 'wrong' : null
-      const newA = { ...a, result: next }
+      const newA = { ...a, result: cycle(a.result) }
+      saveAnswer(newA)
+      return newA
+    }))
+  }, [saveAnswer])
+
+  const handleSubToggle = useCallback((qNum: number, sub: Sub) => {
+    setAnswers(prev => prev.map(a => {
+      if (a.q_num !== qNum) return a
+      const newA = sub === 'a' ? { ...a, result_a: cycle(a.result_a) } : { ...a, result_b: cycle(a.result_b) }
       saveAnswer(newA)
       return newA
     }))
@@ -194,11 +248,9 @@ export default function GeneralSubjectPage() {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  const score = answers.reduce((sum, a) => {
-    if (a.result !== 'correct') return sum
-    if ((cfg.selectPair as number[]).includes(a.q_num) && a.q_num !== selectedQ) return sum
-    return sum + (a.q_num <= cfg.splitAt ? cfg.scoreA : cfg.scoreB)
-  }, 0)
+  const score     = scoreDenken(subject, answers, selectedQ)
+  const answered  = gradedCount(subject, answers, selectedQ)
+  const totalQ    = answerableCount(subject, selectedQ)
   const activeAnswer = answers.find(a => a.q_num === activeQ)!
 
   return (
@@ -207,28 +259,31 @@ export default function GeneralSubjectPage() {
         <div className="flex items-center gap-3 mb-2">
           <Link href="/dashboard/denken" className="text-gray-500 hover:text-white text-xs transition">← 電験三種</Link>
           <span className="text-sm font-bold text-white">{examLabel}</span>
-          <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: cfg.accent }}>{subject}</span>
+          <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>{subject}</span>
           <div className="ml-auto flex items-center gap-3">
             <span className={`text-lg font-black tabular-nums ${score >= 60 ? 'text-emerald-400' : score >= 40 ? 'text-yellow-400' : 'text-white'}`}>{score}점</span>
+            <span className="text-xs text-gray-600">{answered}/{totalQ}문</span>
             {score >= 60 && <span className="text-[10px] bg-emerald-600/30 text-emerald-400 px-1.5 py-0.5 rounded-full font-bold">합격</span>}
           </div>
         </div>
         <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
           {answers.map(a => {
-            const isPair = (cfg.selectPair as number[]).includes(a.q_num)
-            const isExcluded = isPair && selectedQ !== null && a.q_num !== selectedQ
-            return <ScoreCell key={a.q_num} qNum={a.q_num} answer={a} isExcluded={isExcluded}
-              isActive={activeQ === a.q_num} onResultToggle={() => handleResultToggle(a.q_num)} onClick={() => setActiveQ(a.q_num)} />
+            const isPair = isSelectQ(subject, a.q_num)
+            const isExcluded = isDimmedSelect(subject, a.q_num, selectedQ)
+            return <ScoreCell key={a.q_num} subject={subject} qNum={a.q_num} answer={a} isSelectPair={isPair} isExcluded={isExcluded}
+              isActive={activeQ === a.q_num} onResultToggle={() => handleResultToggle(a.q_num)} onSubToggle={(sub) => handleSubToggle(a.q_num, sub)} onClick={() => setActiveQ(a.q_num)} />
           })}
-          <div className="flex flex-col justify-center ml-2 shrink-0 gap-1">
-            <p className="text-[9px] text-gray-600">선택</p>
-            {cfg.selectPair.map(q => (
-              <button key={q} onClick={() => handleSelectQ(q)}
-                className={`text-[10px] px-2 py-0.5 rounded font-bold transition ${selectedQ === q ? 'bg-yellow-500 text-black' : 'bg-[#1e3048] text-gray-500 hover:text-white'}`}>
-                {q}번
-              </button>
-            ))}
-          </div>
+          {selectPair.length > 0 && (
+            <div className="flex flex-col justify-center ml-2 shrink-0 gap-1">
+              <p className="text-[9px] text-gray-600">선택</p>
+              {selectPair.map(q => (
+                <button key={q} onClick={() => handleSelectQ(q)}
+                  className={`text-[10px] px-2 py-0.5 rounded font-bold transition ${selectedQ === q ? 'bg-yellow-500 text-black' : 'bg-[#1e3048] text-gray-500 hover:text-white'}`}>
+                  {q}번
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -238,7 +293,7 @@ export default function GeneralSubjectPage() {
             <div className="flex bg-[#0f1c2e] rounded-lg p-0.5 shrink-0">
               <button onClick={() => setPdfTab('question')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'question' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                style={pdfTab === 'question' ? { backgroundColor: cfg.accent } : {}}>問題</button>
+                style={pdfTab === 'question' ? { backgroundColor: accent } : {}}>問題</button>
               <button onClick={() => setPdfTab('answer')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'answer' ? 'bg-emerald-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>解答</button>
             </div>
@@ -246,7 +301,7 @@ export default function GeneralSubjectPage() {
               <input value={urlInput} onChange={e => setUrlInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleUrlLoad()}
                 placeholder="문제지 PDF URL..." className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500/60 placeholder-gray-700 font-mono" />
               <button onClick={handleUrlLoad} disabled={saving} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
-                style={{ backgroundColor: cfg.accent }}>{saving ? '…' : '불러오기'}</button>
+                style={{ backgroundColor: accent }}>{saving ? '…' : '불러오기'}</button>
             </>) : (<>
               <input value={answerUrl} onChange={e => setAnswerUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAnswerUrlLoad()}
                 placeholder="정답지 PDF URL..." className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500/60 placeholder-gray-700 font-mono" />
@@ -281,9 +336,22 @@ export default function GeneralSubjectPage() {
         <div className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5" style={{ width: panelWidth, minWidth: 200 }}>
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
             <span className="text-sm font-bold text-white">{activeQ}번 메모</span>
-            <span className={`ml-auto text-xs font-bold ${activeAnswer?.result === 'correct' ? 'text-emerald-400' : activeAnswer?.result === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>
-              {activeAnswer?.result === 'correct' ? '○ 정답' : activeAnswer?.result === 'wrong' ? '✕ 오답' : '미채점'}
-            </span>
+            {isBArea(subject, activeQ) ? (
+              <span className="ml-auto flex items-center gap-2 text-xs font-bold">
+                {(['a', 'b'] as Sub[]).map(sub => {
+                  const r = sub === 'a' ? activeAnswer?.result_a : activeAnswer?.result_b
+                  return (
+                    <span key={sub} className={r === 'correct' ? 'text-emerald-400' : r === 'wrong' ? 'text-red-400' : 'text-gray-600'}>
+                      ({sub}) {r === 'correct' ? '○' : r === 'wrong' ? '✕' : '·'}
+                    </span>
+                  )
+                })}
+              </span>
+            ) : (
+              <span className={`ml-auto text-xs font-bold ${activeAnswer?.result === 'correct' ? 'text-emerald-400' : activeAnswer?.result === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>
+                {activeAnswer?.result === 'correct' ? '○ 정답' : activeAnswer?.result === 'wrong' ? '✕ 오답' : '미채점'}
+              </span>
+            )}
           </div>
           <div className="flex-1 p-3 flex flex-col min-h-0">
             <textarea ref={memoRef} key={activeQ} value={activeAnswer?.memo ?? ''}
@@ -298,7 +366,7 @@ export default function GeneralSubjectPage() {
               : <div className="space-y-1.5">{answers.filter(a => a.memo.trim()).map(a => (
                   <button key={a.q_num} onClick={() => setActiveQ(a.q_num)}
                     className={`w-full text-left flex items-start gap-2 rounded-lg px-2 py-1.5 transition ${activeQ === a.q_num ? 'bg-blue-900/40' : 'hover:bg-[#0f1c2e]'}`}>
-                    <span className={`text-[10px] font-bold mt-0.5 shrink-0 ${a.result === 'correct' ? 'text-emerald-400' : a.result === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>Q{a.q_num}</span>
+                    <span className={`text-[10px] font-bold mt-0.5 shrink-0 ${problemStatus(subject, a) === 'correct' ? 'text-emerald-400' : problemStatus(subject, a) === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>Q{a.q_num}</span>
                     <span className="text-[11px] text-gray-400 truncate">{a.memo}</span>
                   </button>
                 ))}</div>

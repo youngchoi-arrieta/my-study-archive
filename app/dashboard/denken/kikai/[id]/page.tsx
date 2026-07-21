@@ -9,18 +9,30 @@ import {
   KIKAI_EXAMS,
   KIKAI_TAGS,
   KIKAI_TAG_MAP,
-  Q_TOTAL,
-  Q_SELECT_PAIR,
-  isQSelectPair,
-  scoreForQ,
 } from '@/lib/constants-denken-kikai'
+import {
+  DENKEN_STRUCTURE,
+  isBArea,
+  isSelectQ,
+  isDimmedSelect,
+  scoreDenken,
+  gradedCount,
+  answerableCount,
+  type Result,
+  type Sub,
+} from '@/lib/constants-denken'
+
+const SUBJECT = '機械' as const
+const STRUCT = DENKEN_STRUCTURE[SUBJECT]
+const Q_TOTAL = STRUCT.totalQ
+const SELECT_PAIR = STRUCT.selectPair ?? []
 
 // ── 타입 ──────────────────────────────────────────────────────────
-type Result = 'correct' | 'wrong' | null
-
 type Answer = {
   q_num: number
-  result: Result
+  result: Result       // A문제(단일 정오)
+  result_a: Result     // B문제 (a) 소문항
+  result_b: Result     // B문제 (b) 소문항
   tag_id: number | null
   ptype: ProblemType | null
   memo: string
@@ -43,15 +55,17 @@ function toPreviewUrl(url: string): string | null {
   return null
 }
 
-function calcScore(answers: Answer[], selectedQ: number | null): number {
-  let total = 0
-  for (const a of answers) {
-    if (a.result !== 'correct') continue
-    // 선택문제: selectedQ 아닌 쪽은 점수 제외
-    if (isQSelectPair(a.q_num) && a.q_num !== selectedQ) continue
-    total += scoreForQ(a.q_num)
+// 채점은 lib/constants-denken 의 scoreDenken 으로 일원화됨
+
+// 문제 단위 정오 (태그통계·목록 색상용): B문제는 (a)(b) 합산
+function problemStatus(a: Answer): Result {
+  if (isBArea(SUBJECT, a.q_num)) {
+    if (a.result_a === null || a.result_b === null) {
+      return (a.result_a === 'wrong' || a.result_b === 'wrong') ? 'wrong' : null
+    }
+    return (a.result_a === 'correct' && a.result_b === 'correct') ? 'correct' : 'wrong'
   }
-  return total
+  return a.result
 }
 
 // ── 태그 배지 ──────────────────────────────────────────────────────
@@ -116,6 +130,7 @@ function ScoreCell({
   isExcluded,       // 선택문제 중 제외된 것
   isActive,         // 현재 메모 포커스
   onResultToggle,
+  onSubToggle,
   onTagChange,
   onClick,
 }: {
@@ -125,6 +140,7 @@ function ScoreCell({
   isExcluded: boolean
   isActive: boolean
   onResultToggle: () => void
+  onSubToggle: (sub: Sub) => void
   onTagChange: (id: number | null) => void
   onClick: () => void
 }) {
@@ -141,8 +157,8 @@ function ScoreCell({
     return () => document.removeEventListener('mousedown', handler)
   }, [tagOpen])
 
-  const isSelectPair = isQSelectPair(qNum)
-  const result = answer.result
+  const isSelectPair = isSelectQ(SUBJECT, qNum)
+  const isB = isBArea(SUBJECT, qNum)
 
   // 배경색
   let cellBg = 'bg-[#0f1c2e]'
@@ -153,13 +169,14 @@ function ScoreCell({
     <div
       ref={ref}
       className={`relative flex flex-col items-center rounded-xl pt-1.5 pb-1 px-1 transition cursor-pointer select-none ${cellBg}`}
-      style={{ minWidth: 44 }}
+      style={{ minWidth: isB ? 52 : 44 }}
     >
       {/* 문제 번호 */}
       <div className="flex items-center gap-0.5 mb-1" onClick={onClick}>
         <span className={`text-[10px] font-bold ${isActive ? 'text-blue-400' : 'text-gray-500'}`}>
           {qNum}
         </span>
+        {isB && <span className="text-[8px] text-sky-500 font-bold">B</span>}
         {isSelectPair && (
           <span className="text-[8px] text-yellow-500 font-bold">選</span>
         )}
@@ -168,20 +185,46 @@ function ScoreCell({
         )}
       </div>
 
-      {/* O / X 토글 */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onResultToggle() }}
-        className={`w-8 h-8 rounded-lg flex items-center justify-center text-base font-black transition ${
-          result === 'correct'
-            ? 'bg-emerald-600/80 text-white'
-            : result === 'wrong'
-            ? 'bg-red-700/80 text-white'
-            : 'bg-[#1e3048] text-gray-600 hover:bg-[#253d5c]'
-        }`}
-        title={result === 'correct' ? '정답' : result === 'wrong' ? '오답' : '미채점'}
-      >
-        {result === 'correct' ? '○' : result === 'wrong' ? '✕' : '·'}
-      </button>
+      {/* O / X 토글: B문제는 (a)(b) 소문항, A문제는 단일 */}
+      {isB ? (
+        <div className="flex gap-0.5">
+          {(['a', 'b'] as Sub[]).map(sub => {
+            const r = sub === 'a' ? answer.result_a : answer.result_b
+            return (
+              <div key={sub} className="flex flex-col items-center gap-0.5">
+                <span className="text-[8px] leading-none text-gray-500">({sub})</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSubToggle(sub) }}
+                  className={`w-6 h-8 rounded-md flex items-center justify-center text-sm font-black transition ${
+                    r === 'correct'
+                      ? 'bg-emerald-600/80 text-white'
+                      : r === 'wrong'
+                      ? 'bg-red-700/80 text-white'
+                      : 'bg-[#1e3048] text-gray-600 hover:bg-[#253d5c]'
+                  }`}
+                  title={`(${sub}) ${r === 'correct' ? '정답' : r === 'wrong' ? '오답' : '미채점'}`}
+                >
+                  {r === 'correct' ? '○' : r === 'wrong' ? '✕' : '·'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <button
+          onClick={(e) => { e.stopPropagation(); onResultToggle() }}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-base font-black transition ${
+            answer.result === 'correct'
+              ? 'bg-emerald-600/80 text-white'
+              : answer.result === 'wrong'
+              ? 'bg-red-700/80 text-white'
+              : 'bg-[#1e3048] text-gray-600 hover:bg-[#253d5c]'
+          }`}
+          title={answer.result === 'correct' ? '정답' : answer.result === 'wrong' ? '오답' : '미채점'}
+        >
+          {answer.result === 'correct' ? '○' : answer.result === 'wrong' ? '✕' : '·'}
+        </button>
+      )}
 
       {/* 태그 */}
       <div className="relative mt-1" onClick={(e) => e.stopPropagation()}>
@@ -228,12 +271,14 @@ export default function KikaiExamPage() {
     Array.from({ length: Q_TOTAL }, (_, i) => ({
       q_num: i + 1,
       result: null,
+      result_a: null,
+      result_b: null,
       tag_id: null,
       ptype: null,
       memo: '',
     }))
   )
-  const [selectedQ, setSelectedQ] = useState<17 | 18 | null>(null)
+  const [selectedQ, setSelectedQ] = useState<number | null>(null)
   const [driveUrl, setDriveUrl] = useState('')
   const [previewUrl, setPreviewUrl]       = useState<string | null>(null)
   const [answerUrl, setAnswerUrl]         = useState('')
@@ -269,11 +314,11 @@ export default function KikaiExamPage() {
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
       setAnswerUrl(sess.answer_drive_url || '')
       if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
-      if (sess.selected_q) setSelectedQ(sess.selected_q as 17 | 18)
+      if (sess.selected_q) setSelectedQ(sess.selected_q)
 
       const { data: ans } = await supabase
         .from('denken_kikai_answers')
-        .select('q_num, result, tag_id, ptype, memo')
+        .select('q_num, result, result_a, result_b, tag_id, ptype, memo')
         .eq('exam_id', examId)
 
       if (ans && ans.length > 0) {
@@ -283,6 +328,8 @@ export default function KikaiExamPage() {
           return {
             ...a,
             result: (found.result as Result) ?? null,
+            result_a: (found.result_a as Result) ?? null,
+            result_b: (found.result_b as Result) ?? null,
             tag_id: found.tag_id ?? null,
             ptype: (found.ptype as ProblemType) ?? null,
             memo: found.memo ?? '',
@@ -324,6 +371,8 @@ export default function KikaiExamPage() {
         exam_id: examId,
         q_num: a.q_num,
         result: a.result,
+        result_a: a.result_a,
+        result_b: a.result_b,
         tag_id: a.tag_id,
         ptype: a.ptype,
         memo: a.memo || null,
@@ -333,19 +382,29 @@ export default function KikaiExamPage() {
     )
   }, [ensureSession, examId])
 
-  // ── O/X 토글 ─────────────────────────────────────────────────
+  // ── O/X 토글 (A문제 단일) ─────────────────────────────────────
+  const cycle = (r: Result): Result =>
+    r === null ? 'correct' : r === 'correct' ? 'wrong' : null
+
   const handleResultToggle = useCallback((qNum: number) => {
-    setAnswers(prev => {
-      const updated = prev.map(a => {
-        if (a.q_num !== qNum) return a
-        const next: Result =
-          a.result === null ? 'correct' : a.result === 'correct' ? 'wrong' : null
-        const newA = { ...a, result: next }
-        saveAnswer(newA)
-        return newA
-      })
-      return updated
-    })
+    setAnswers(prev => prev.map(a => {
+      if (a.q_num !== qNum) return a
+      const newA = { ...a, result: cycle(a.result) }
+      saveAnswer(newA)
+      return newA
+    }))
+  }, [saveAnswer])
+
+  // ── O/X 토글 (B문제 소문항 (a)/(b)) ───────────────────────────
+  const handleSubToggle = useCallback((qNum: number, sub: Sub) => {
+    setAnswers(prev => prev.map(a => {
+      if (a.q_num !== qNum) return a
+      const newA = sub === 'a'
+        ? { ...a, result_a: cycle(a.result_a) }
+        : { ...a, result_b: cycle(a.result_b) }
+      saveAnswer(newA)
+      return newA
+    }))
   }, [saveAnswer])
 
   // ── 태그 변경 ─────────────────────────────────────────────────
@@ -406,7 +465,7 @@ export default function KikaiExamPage() {
   }, [])
 
   // ── 선택문제 설정 ─────────────────────────────────────────────
-  const handleSelectQ = useCallback(async (q: 17 | 18) => {
+  const handleSelectQ = useCallback(async (q: number) => {
     const next = selectedQ === q ? null : q
     setSelectedQ(next)
     const sessionId = await ensureSession()
@@ -440,17 +499,14 @@ export default function KikaiExamPage() {
   }, [answerUrl, examId])
 
   // ── 점수 계산 ─────────────────────────────────────────────────
-  const score = calcScore(answers, selectedQ)
-  const answered = answers.filter(a => {
-    if (isQSelectPair(a.q_num) && a.q_num !== selectedQ) return false
-    return a.result !== null
-  }).length
-  const totalQ = selectedQ ? Q_TOTAL - 1 : Q_TOTAL  // 선택문제 하나 제외
+  const score = scoreDenken(SUBJECT, answers, selectedQ)
+  const answered = gradedCount(SUBJECT, answers, selectedQ)
+  const totalQ = answerableCount(SUBJECT, selectedQ)
 
   // 태그별 정답률 미니
   const tagStats = KIKAI_TAGS.map(tag => {
-    const tagged = answers.filter(a => a.tag_id === tag.id && a.result !== null)
-    const correct = tagged.filter(a => a.result === 'correct').length
+    const tagged = answers.filter(a => a.tag_id === tag.id && problemStatus(a) !== null)
+    const correct = tagged.filter(a => problemStatus(a) === 'correct').length
     return { tag, total: tagged.length, correct }
   }).filter(s => s.total > 0)
 
@@ -503,8 +559,8 @@ export default function KikaiExamPage() {
         {/* 채점 셀 행 */}
         <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
           {answers.map(a => {
-            const isPair = isQSelectPair(a.q_num)
-            const isExcluded = isPair && selectedQ !== null && a.q_num !== selectedQ
+            const isPair = isSelectQ(SUBJECT, a.q_num)
+            const isExcluded = isDimmedSelect(SUBJECT, a.q_num, selectedQ)
             const isSelected = isPair && a.q_num === selectedQ
             return (
               <ScoreCell
@@ -515,6 +571,7 @@ export default function KikaiExamPage() {
                 isExcluded={isExcluded}
                 isActive={activeQ === a.q_num}
                 onResultToggle={() => handleResultToggle(a.q_num)}
+                onSubToggle={(sub) => handleSubToggle(a.q_num, sub)}
                 onTagChange={(id) => handleTagChange(a.q_num, id)}
                 onClick={() => setActiveQ(a.q_num)}
               />
@@ -522,22 +579,24 @@ export default function KikaiExamPage() {
           })}
 
           {/* 선택문제 선택 버튼 (17/18 옆) */}
-          <div className="flex flex-col justify-center ml-2 shrink-0 gap-1">
-            <p className="text-[9px] text-gray-600">선택</p>
-            {Q_SELECT_PAIR.map(q => (
-              <button
-                key={q}
-                onClick={() => handleSelectQ(q as 17 | 18)}
-                className={`text-[10px] px-2 py-0.5 rounded font-bold transition ${
-                  selectedQ === q
-                    ? 'bg-yellow-500 text-black'
-                    : 'bg-[#1e3048] text-gray-500 hover:text-white'
-                }`}
-              >
-                {q}번
-              </button>
-            ))}
-          </div>
+          {SELECT_PAIR.length > 0 && (
+            <div className="flex flex-col justify-center ml-2 shrink-0 gap-1">
+              <p className="text-[9px] text-gray-600">선택</p>
+              {SELECT_PAIR.map(q => (
+                <button
+                  key={q}
+                  onClick={() => handleSelectQ(q)}
+                  className={`text-[10px] px-2 py-0.5 rounded font-bold transition ${
+                    selectedQ === q
+                      ? 'bg-yellow-500 text-black'
+                      : 'bg-[#1e3048] text-gray-500 hover:text-white'
+                  }`}
+                >
+                  {q}번
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 태그별 정답률 미니 바 */}
@@ -666,13 +725,29 @@ export default function KikaiExamPage() {
             {activeAnswer?.tag_id && (
               <TagBadge tagId={activeAnswer.tag_id} />
             )}
-            <span className={`ml-auto text-xs font-bold ${
-              activeAnswer?.result === 'correct' ? 'text-emerald-400' :
-              activeAnswer?.result === 'wrong' ? 'text-red-400' : 'text-gray-600'
-            }`}>
-              {activeAnswer?.result === 'correct' ? '○ 정답' :
-               activeAnswer?.result === 'wrong' ? '✕ 오답' : '미채점'}
-            </span>
+            {isBArea(SUBJECT, activeQ) ? (
+              <span className="ml-auto flex items-center gap-2 text-xs font-bold">
+                {(['a', 'b'] as Sub[]).map(sub => {
+                  const r = sub === 'a' ? activeAnswer?.result_a : activeAnswer?.result_b
+                  return (
+                    <span key={sub} className={
+                      r === 'correct' ? 'text-emerald-400' :
+                      r === 'wrong' ? 'text-red-400' : 'text-gray-600'
+                    }>
+                      ({sub}) {r === 'correct' ? '○' : r === 'wrong' ? '✕' : '·'}
+                    </span>
+                  )
+                })}
+              </span>
+            ) : (
+              <span className={`ml-auto text-xs font-bold ${
+                activeAnswer?.result === 'correct' ? 'text-emerald-400' :
+                activeAnswer?.result === 'wrong' ? 'text-red-400' : 'text-gray-600'
+              }`}>
+                {activeAnswer?.result === 'correct' ? '○ 정답' :
+                 activeAnswer?.result === 'wrong' ? '✕ 오답' : '미채점'}
+              </span>
+            )}
           </div>
 
           {/* 유형 태그 */}
@@ -716,8 +791,8 @@ export default function KikaiExamPage() {
                     }`}
                   >
                     <span className={`text-[10px] font-bold mt-0.5 shrink-0 ${
-                      a.result === 'correct' ? 'text-emerald-400' :
-                      a.result === 'wrong' ? 'text-red-400' : 'text-gray-600'
+                      problemStatus(a) === 'correct' ? 'text-emerald-400' :
+                      problemStatus(a) === 'wrong' ? 'text-red-400' : 'text-gray-600'
                     }`}>
                       Q{a.q_num}
                     </span>

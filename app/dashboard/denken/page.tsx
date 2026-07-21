@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { scoreDenken, jpEra, type Result } from '@/lib/constants-denken'
 
 // ── 과거문 메타데이터 (20개년) ───────────────────────────────────
 const SUBJECTS = ['理論', '電力', '機械', '法規'] as const
@@ -16,14 +17,11 @@ type DenkenExam = {
   label: string
 }
 
-// 2023~: 연 2회 (上期=8월 / 下期=翌年3월)
-// 令和 = 西暦 - 2018  (令和1年=2019, 令和7年=2025, 令和8年=2026)
-function toReiwa(y: number): number { return y - 2018 }
+// 연 2회(2023~): 上期=당년 8월 / 下期=翌年 3월. 연호는 lib/constants-denken 의 jpEra 사용
+// (令和 = 西暦-2018, 그 이전은 平成)
 function examLabel(y: number, term: '上期' | '下期' | ''): string {
-  const r = toReiwa(y)
-  if (term === '') return `令和${r}年`
-  // 下期 시험은 翌年 3월에 실시되지만 '年度' 기준으로 표기
-  return `令和${r}年度 ${term}`
+  if (term === '') return jpEra(y)                 // 예: 令和4年 / 平成26年
+  return `${jpEra(y)}度 ${term}`                    // 예: 令和7年度 下期
 }
 
 const PAST_EXAMS: DenkenExam[] = [
@@ -190,19 +188,16 @@ export default function DenkenHub() {
   const fetchKikai = useCallback(async () => {
     const [{ data: sessions }, { data: answers }] = await Promise.all([
       supabase.from('denken_kikai_sessions').select('exam_id, drive_url, selected_q'),
-      supabase.from('denken_kikai_answers').select('exam_id, result, tag_id, memo, q_num'),
+      supabase.from('denken_kikai_answers').select('exam_id, result, result_a, result_b, tag_id, memo, q_num'),
     ])
     const map = new Map<string, KikaiSummary>()
     for (const s of (sessions || [])) {
-      const ans = (answers || []).filter((a: {exam_id:string,result:string|null,tag_id:number|null,memo:string|null,q_num:number}) => a.exam_id === s.exam_id)
-      // 점수 계산 (A문제 5점, B문제 10점, 선택문제 반영)
+      const ans = (answers || []).filter((a: {exam_id:string,q_num:number}) => a.exam_id === s.exam_id)
+      // 점수 계산 (A문제 5점, B문제 (a)(b) 각 5점, 선택문제 반영) — 공용 로직 사용
       const selectedQ = s.selected_q as number | null
-      let score = 0
-      for (const a of ans) {
-        if (a.result !== 'correct') continue
-        if ((a.q_num === 17 || a.q_num === 18) && a.q_num !== selectedQ) continue
-        score += a.q_num <= 14 ? 5 : 10
-      }
+      const score = scoreDenken('機械', (ans as {q_num:number;result:Result;result_a:Result;result_b:Result}[]).map(a => ({
+        q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b,
+      })), selectedQ)
       map.set(s.exam_id, {
         exam_id: s.exam_id,
         score,
