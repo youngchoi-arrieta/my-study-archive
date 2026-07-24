@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { scoreDenken, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
 import {
-  DENKEN_RATE_BASELINE, DENKEN_RATE_MAP, TIER_META, RATE_THRESHOLD,
-  rateTier, isAdjusted, mergeRate, subjectAverage,
-  type ExamRate, type RateOverrideRow,
+  DENKEN_RATE_BASELINE, DENKEN_RATE_MAP, TIER_META,
+  RATIO_THRESHOLD, OVERALL_THRESHOLD,
+  overallTier, subjectTier, ratioOf, isAdjusted, isAdjustSignal, mergeRate, computeMedians,
+  type ExamRate, type RateOverrideRow, type SubjectMedians,
 } from '@/lib/constants-denken-rate'
 
 // ── 과거문 메타데이터 (20개년) ───────────────────────────────────
@@ -79,42 +80,91 @@ const scoreColor = (s: number | null) => {
 }
 
 // ── 난이도 표시 ──────────────────────────────────────────────────
-// 합격률 10% 이하 빨강 · 15% 이하 노랑 · 15% 초과 초록
-function RatePill({ rate, pass, size = 'sm' }: {
-  rate: number | null
-  pass?: number | null
-  size?: 'sm' | 'md'
-}) {
-  const t = TIER_META[rateTier(rate)]
-  const adjusted = isAdjusted(pass)
+// 회차 전체 합격률: 절대 기준 (10% 이하 빨강 / 15% 이하 노랑)
+// 과목별 합격률: 그 과목의 중앙값 대비 배율 (0.75배 이하 빨강 / 1.15배 초과 초록)
+//                단, 합격기준점이 인하된 회차는 무조건 빨강
+const pillClass = (size: 'sm' | 'md') =>
+  `inline-flex items-center gap-1 rounded-md font-bold tabular-nums border whitespace-nowrap ${
+    size === 'md' ? 'px-2 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'
+  }`
+
+function OverallPill({ rate, size = 'sm' }: { rate: number | null; size?: 'sm' | 'md' }) {
+  const t = TIER_META[overallTier(rate)]
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md font-bold tabular-nums border whitespace-nowrap ${
-        size === 'md' ? 'px-2 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'
-      }`}
+      className={pillClass(size)}
       style={{ color: t.color, backgroundColor: t.bg, borderColor: t.border }}
-      title={rate === null ? '합격률 미발표 · 직접 입력' : `합격률 ${rate}%${adjusted ? ` · 합격기준 ${pass}점으로 인하` : ''}`}
+      title={rate === null ? '전체 합격률 미발표 · 직접 입력' : `전체 합격률 ${rate}%`}
     >
       {rate === null ? '—' : `${rate}%`}
-      {adjusted && <span className="font-normal opacity-80">{pass}点</span>}
     </span>
   )
 }
 
-function RateLegend() {
+function SubjectPill({ rate, pass, median, nendo, size = 'sm' }: {
+  rate: number | null
+  pass: number | null
+  median: number | null
+  nendo?: string
+  size?: 'sm' | 'md'
+}) {
+  const t = TIER_META[subjectTier(rate, pass, median, nendo)]
+  const adjusted = isAdjusted(pass)
+  const signal = isAdjustSignal(pass, nendo)
+  const ratio = ratioOf(rate, median)
+  const title = rate === null
+    ? '합격률 미발표 · 직접 입력'
+    : [
+        `합격률 ${rate}%`,
+        ratio !== null ? `중앙값 ${median}% 대비 ${ratio}배` : null,
+        adjusted ? `합격기준 ${pass}점으로 인하${signal ? ' → 난회차 확정' : ' (당시엔 상시 조정)'}` : null,
+      ].filter(Boolean).join(' · ')
   return (
-    <div className="flex items-center gap-3 flex-wrap text-[10px] text-gray-500">
-      {(['hard', 'mid', 'easy', 'none'] as const).map(k => (
-        <span key={k} className="inline-flex items-center gap-1">
-          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TIER_META[k].color }} />
-          {TIER_META[k].label}
-          {k === 'hard' && ` ≤${RATE_THRESHOLD.hard}%`}
-          {k === 'mid' && ` ≤${RATE_THRESHOLD.mid}%`}
-          {k === 'easy' && ` >${RATE_THRESHOLD.mid}%`}
+    <span
+      className={pillClass(size)}
+      style={{ color: t.color, backgroundColor: t.bg, borderColor: t.border }}
+      title={title}
+    >
+      {rate === null ? '—' : `${rate}%`}
+      {adjusted && (
+        <span className={signal ? 'font-normal opacity-80' : 'font-normal text-gray-500'}>{pass}点</span>
+      )}
+    </span>
+  )
+}
+
+function RateLegend({ medians }: { medians?: SubjectMedians }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-3 flex-wrap text-[10px] text-gray-500">
+        <span className="text-gray-600">과목별</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TIER_META.hard.color }} />
+          중앙값 ×{RATIO_THRESHOLD.hard} 이하
         </span>
-      ))}
-      <span className="text-gray-700">·</span>
-      <span>숫자 옆 <span className="text-gray-400">55点</span> = 합격기준 인하 회차</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TIER_META.mid.color }} />
+          ×{RATIO_THRESHOLD.hard}~{RATIO_THRESHOLD.mid}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TIER_META.easy.color }} />
+          ×{RATIO_THRESHOLD.mid} 초과
+        </span>
+        <span className="text-gray-700">·</span>
+        <span>2020年度 이후 기준점 인하(<span className="text-gray-400">55点</span>)는 난회차 확정</span>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap text-[10px] text-gray-500">
+        <span className="text-gray-600">전체</span>
+        <span>절대 기준 ≤{OVERALL_THRESHOLD.hard}% / ≤{OVERALL_THRESHOLD.mid}% / 초과</span>
+        {medians && (
+          <>
+            <span className="text-gray-700">·</span>
+            <span className="text-gray-600">
+              중앙값 {SUBJECTS.map(x => `${x} ${medians[x] ?? '—'}%`).join(' · ')}
+            </span>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -357,10 +407,8 @@ export default function DenkenHub() {
     [rateList],
   )
 
-  const rateAverages = useMemo(
-    () => SUBJECTS.map(sub => ({ sub, avg: subjectAverage(rateList, sub) })),
-    [rateList],
-  )
+  // 난이도 판정 기준선 = 과목별 합격률 중앙값 (표를 고치면 기준선도 따라 움직인다)
+  const medians = useMemo(() => computeMedians(rateList), [rateList])
 
   const startRateEdit = (e: ExamRate) => {
     if (rateEditId === e.examId) { setRateEditId(null); return }
@@ -543,7 +591,7 @@ export default function DenkenHub() {
 
               {/* 난이도 범례 */}
               <div className="mb-4">
-                <RateLegend />
+                <RateLegend medians={medians} />
               </div>
 
               {/* 기출 목록 */}
@@ -563,7 +611,7 @@ export default function DenkenHub() {
                                 <span className="text-[10px] text-gray-600">{r.nendo}</span>
                                 <span className="ml-auto flex items-center gap-1.5">
                                   <span className="text-[10px] text-gray-600">전체</span>
-                                  <RatePill rate={r.overall} />
+                                  <OverallPill rate={r.overall} />
                                 </span>
                               </>
                             )
@@ -595,11 +643,15 @@ export default function DenkenHub() {
                                       />
                                       <span className="text-xs text-gray-500">{sub}</span>
                                       {(() => {
-                                        const sr = rateMap.get(exam.id)?.subjects[sub]
-                                        if (!sr) return null
+                                        const er = rateMap.get(exam.id)
+                                        if (!er) return null
+                                        const sr = er.subjects[sub]
                                         return (
                                           <span className="ml-auto shrink-0">
-                                            <RatePill rate={sr.rate} pass={sr.pass} />
+                                            <SubjectPill
+                                              rate={sr.rate} pass={sr.pass}
+                                              median={medians[sub]} nendo={er.nendo}
+                                            />
                                           </span>
                                         )
                                       })()}
@@ -769,26 +821,27 @@ export default function DenkenHub() {
           {/* ── 회차 난이도 탭 ── */}
           {activeTab === 'rates' && (
             <div>
-              {/* 과목별 평균 */}
+              {/* 과목별 중앙값 = 판정 기준선 */}
               <div className="grid grid-cols-4 gap-2 mb-4">
-                {rateAverages.map(({ sub, avg }) => (
+                {SUBJECTS.map(sub => (
                   <div key={sub} className="bg-gray-900 rounded-xl p-3 text-center">
                     <div className="flex items-center justify-center gap-1 mb-1">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[sub] }} />
                       <span className="text-[10px] text-gray-500">{sub}</span>
                     </div>
-                    <p className="text-lg font-bold tabular-nums" style={{ color: TIER_META[rateTier(avg)].color }}>
-                      {avg === null ? '—' : `${avg}%`}
+                    <p className="text-lg font-bold tabular-nums text-gray-200">
+                      {medians[sub] === null ? '—' : `${medians[sub]}%`}
                     </p>
-                    <p className="text-[9px] text-gray-700 mt-0.5">평균 합격률</p>
+                    <p className="text-[9px] text-gray-700 mt-0.5">중앙값 · 기준선</p>
                   </div>
                 ))}
               </div>
 
               <div className="mb-4 space-y-2">
-                <RateLegend />
+                <RateLegend medians={medians} />
                 <p className="text-[10px] text-gray-600 leading-relaxed">
                   출처: 電気技術者試験センター 발표치 · 왼쪽은 실시 연월(앱 표기), 오른쪽 회색은 일본식 年度 표기.
+                  과목 색은 절대 합격률이 아니라 그 과목 중앙값 대비 배율로 매긴다 — 과목끼리 비교되는 색이다.
                   값을 누르면 직접 고칠 수 있고, 비우면 기본값으로 되돌아간다.
                 </p>
                 {ratesTableMissing && (
@@ -833,14 +886,17 @@ export default function DenkenHub() {
                           )}
                           <span className="ml-auto flex items-center gap-1.5">
                             <span className="text-[10px] text-gray-600">전체</span>
-                            <RatePill rate={e.overall} size="md" />
+                            <OverallPill rate={e.overall} size="md" />
                           </span>
                         </div>
                         <div className="grid grid-cols-4 gap-1.5">
                           {SUBJECTS.map(sub => (
                             <div key={sub} className="flex flex-col items-center gap-1 bg-gray-950 rounded-lg py-2">
                               <span className="text-[10px] text-gray-600">{sub}</span>
-                              <RatePill rate={e.subjects[sub].rate} pass={e.subjects[sub].pass} />
+                              <SubjectPill
+                                rate={e.subjects[sub].rate} pass={e.subjects[sub].pass}
+                                median={medians[sub]} nendo={e.nendo}
+                              />
                             </div>
                           ))}
                         </div>

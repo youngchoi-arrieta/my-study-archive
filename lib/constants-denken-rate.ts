@@ -93,15 +93,65 @@ export const DENKEN_RATE_MAP = new Map<string, ExamRate>(
 )
 
 // ── 난이도 등급 ─────────────────────────────────────────────────────
-// 합격률 10% 이하 = 난회차(빨강) / 15% 이하 = 보통(노랑) / 15% 초과 = 순회차(초록)
+// 과목별 합격률은 절대값으로 비교하면 안 된다.
+//   · 과목차: 機械 중앙값 13.8% vs 理論 16.7% → 같은 15% 기준을 대면 機械만 붉어진다
+//   · 시대차: 2022년도 2회화 이후 모집단이 바뀌어 전반적으로 합격률이 올랐다
+// 그래서 과목별 합격률은 "그 과목의 중앙값 대비 몇 배인가"로 판정한다.
+// 평균이 아니라 중앙값을 쓰는 이유: 法規 36.3%(2008年度) 같은 극단값이 평균을 끌어올린다.
 export type RateTier = 'hard' | 'mid' | 'easy' | 'none'
 
-export const RATE_THRESHOLD = { hard: 10, mid: 15 } as const
+// 과목별 상대 기준 (중앙값 대비 배율)
+export const RATIO_THRESHOLD = { hard: 0.75, mid: 1.15 } as const
 
-export function rateTier(rate: number | null | undefined): RateTier {
+// 회차 전체 합격률용 절대 기준 (과목 비교가 아니라 시대 흐름을 보는 지표라 절대값이 맞다)
+export const OVERALL_THRESHOLD = { hard: 10, mid: 15 } as const
+
+export function overallTier(rate: number | null | undefined): RateTier {
   if (rate === null || rate === undefined) return 'none'
-  if (rate <= RATE_THRESHOLD.hard) return 'hard'
-  if (rate <= RATE_THRESHOLD.mid) return 'mid'
+  if (rate <= OVERALL_THRESHOLD.hard) return 'hard'
+  if (rate <= OVERALL_THRESHOLD.mid) return 'mid'
+  return 'easy'
+}
+
+// 합격기준점 60점 미만 = 시험센터가 난이도를 인정하고 인하한 회차 (표시용 판정)
+export function isAdjusted(pass: number | null | undefined): boolean {
+  return pass !== null && pass !== undefined && pass < 60
+}
+
+// ⚠ 기준점 인하를 "난이도 신호"로 쓸 수 있는 건 60점이 표준이 된 2020年度 이후뿐이다.
+//   그 이전에는 55점 안팎의 인하가 사실상 상시라 신호가 되지 못한다.
+//   (예: 2008年度 機械는 합격률 21.9%로 역대 최고인데 기준점은 55점이었다)
+export const PASS_SIGNAL_FROM_NENDO = 2020
+
+export function nendoYear(nendo: string): number {
+  const m = /^(\d{4})/.exec(nendo)
+  return m ? Number(m[1]) : 0
+}
+
+export function isAdjustSignal(pass: number | null | undefined, nendo?: string): boolean {
+  if (!isAdjusted(pass)) return false
+  if (!nendo) return false
+  return nendoYear(nendo) >= PASS_SIGNAL_FROM_NENDO
+}
+
+export function ratioOf(rate: number | null | undefined, median: number | null | undefined): number | null {
+  if (rate === null || rate === undefined) return null
+  if (median === null || median === undefined || median <= 0) return null
+  return Math.round((rate / median) * 100) / 100
+}
+
+export function subjectTier(
+  rate: number | null | undefined,
+  pass: number | null | undefined,
+  median: number | null | undefined,
+  nendo?: string,
+): RateTier {
+  if (rate === null || rate === undefined) return 'none'
+  if (isAdjustSignal(pass, nendo)) return 'hard'   // 2020年度 이후의 기준점 인하 = 난회차 확정
+  const ratio = ratioOf(rate, median)
+  if (ratio === null) return 'none'
+  if (ratio <= RATIO_THRESHOLD.hard) return 'hard'
+  if (ratio <= RATIO_THRESHOLD.mid) return 'mid'
   return 'easy'
 }
 
@@ -112,11 +162,6 @@ export const TIER_META: Record<RateTier, {
   mid:  { label: '보통',   color: '#facc15', bg: 'rgba(234,179,8,0.14)',  border: 'rgba(234,179,8,0.35)' },
   easy: { label: '순회차', color: '#4ade80', bg: 'rgba(34,197,94,0.14)',  border: 'rgba(34,197,94,0.35)' },
   none: { label: '미발표', color: '#6b7280', bg: 'rgba(107,114,128,0.10)', border: 'rgba(107,114,128,0.28)' },
-}
-
-// 합격기준점 60점 미만 = 시험센터가 난이도를 인정하고 인하한 회차
-export function isAdjusted(pass: number | null | undefined): boolean {
-  return pass !== null && pass !== undefined && pass < 60
 }
 
 // ── Supabase 덮어쓰기 병합 ──────────────────────────────────────────
@@ -166,9 +211,26 @@ export function mergeRate(base: ExamRate | undefined, ov: RateOverrideRow | unde
   return merged
 }
 
-// 과목별 평균 합격률 (값이 있는 회차만)
-export function subjectAverage(list: ExamRate[], subject: DenkenSubject): number | null {
-  const vals = list.map(e => e.subjects[subject].rate).filter((v): v is number => v !== null)
+// ── 과목별 중앙값 (난이도 판정 기준선) ─────────────────────────────
+// 값이 있는 회차만 사용. 덮어쓴 값이 반영되므로 표를 고치면 기준선도 따라 움직인다.
+export function subjectMedian(list: ExamRate[], subject: DenkenSubject): number | null {
+  const vals = list
+    .map(e => e.subjects[subject].rate)
+    .filter((v): v is number => v !== null)
+    .sort((a, b) => a - b)
   if (vals.length === 0) return null
-  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+  const mid = Math.floor(vals.length / 2)
+  const m = vals.length % 2 === 1 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2
+  return Math.round(m * 10) / 10
+}
+
+export type SubjectMedians = Record<DenkenSubject, number | null>
+
+export function computeMedians(list: ExamRate[]): SubjectMedians {
+  return {
+    '理論': subjectMedian(list, '理論'),
+    '電力': subjectMedian(list, '電力'),
+    '機械': subjectMedian(list, '機械'),
+    '法規': subjectMedian(list, '法規'),
+  }
 }
