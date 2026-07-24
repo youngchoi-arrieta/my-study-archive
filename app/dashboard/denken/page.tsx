@@ -5,6 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { scoreDenken, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
+import {
+  DENKEN_RATE_BASELINE, DENKEN_RATE_MAP, TIER_META, RATE_THRESHOLD,
+  rateTier, isAdjusted, mergeRate, subjectAverage,
+  type ExamRate, type RateOverrideRow,
+} from '@/lib/constants-denken-rate'
 
 // ── 과거문 메타데이터 (20개년) ───────────────────────────────────
 const SUBJECTS = ['理論', '電力', '機械', '法規'] as const
@@ -71,6 +76,47 @@ const scoreColor = (s: number | null) => {
   if (s >= 60) return 'text-green-400'
   if (s >= 40) return 'text-yellow-400'
   return 'text-red-400'
+}
+
+// ── 난이도 표시 ──────────────────────────────────────────────────
+// 합격률 10% 이하 빨강 · 15% 이하 노랑 · 15% 초과 초록
+function RatePill({ rate, pass, size = 'sm' }: {
+  rate: number | null
+  pass?: number | null
+  size?: 'sm' | 'md'
+}) {
+  const t = TIER_META[rateTier(rate)]
+  const adjusted = isAdjusted(pass)
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md font-bold tabular-nums border whitespace-nowrap ${
+        size === 'md' ? 'px-2 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'
+      }`}
+      style={{ color: t.color, backgroundColor: t.bg, borderColor: t.border }}
+      title={rate === null ? '합격률 미발표 · 직접 입력' : `합격률 ${rate}%${adjusted ? ` · 합격기준 ${pass}점으로 인하` : ''}`}
+    >
+      {rate === null ? '—' : `${rate}%`}
+      {adjusted && <span className="font-normal opacity-80">{pass}点</span>}
+    </span>
+  )
+}
+
+function RateLegend() {
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-[10px] text-gray-500">
+      {(['hard', 'mid', 'easy', 'none'] as const).map(k => (
+        <span key={k} className="inline-flex items-center gap-1">
+          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TIER_META[k].color }} />
+          {TIER_META[k].label}
+          {k === 'hard' && ` ≤${RATE_THRESHOLD.hard}%`}
+          {k === 'mid' && ` ≤${RATE_THRESHOLD.mid}%`}
+          {k === 'easy' && ` >${RATE_THRESHOLD.mid}%`}
+        </span>
+      ))}
+      <span className="text-gray-700">·</span>
+      <span>숫자 옆 <span className="text-gray-400">55点</span> = 합격기준 인하 회차</span>
+    </div>
+  )
 }
 
 // ── PDF 뷰어 모달 ────────────────────────────────────────────────
@@ -155,7 +201,12 @@ function PdfModal({
 // ── 메인 ────────────────────────────────────────────────────────
 export default function DenkenHub() {
   const router = useRouter()
-  const [activeTab, setActiveTab]   = useState<'scores' | 'analysis'>('scores')
+  const [activeTab, setActiveTab]   = useState<'scores' | 'analysis' | 'rates'>('scores')
+  const [rateOverrides, setRateOverrides] = useState<RateOverrideRow[]>([])
+  const [ratesTableMissing, setRatesTableMissing] = useState(false)
+  const [rateEditId, setRateEditId] = useState<string | null>(null)
+  const [rateForm, setRateForm]     = useState<Record<string, string>>({})
+  const [rateSaving, setRateSaving] = useState(false)
   const [sessions, setSessions]     = useState<DenkenSession[]>([])
   const [loading, setLoading]       = useState(true)
   const [editKey, setEditKey]       = useState<string | null>(null)
@@ -212,7 +263,18 @@ export default function DenkenHub() {
     setGeneralMap(map)
   }, [])
 
-  useEffect(() => { fetchSessions(); fetchKikai(); fetchGeneral() }, [fetchSessions, fetchKikai, fetchGeneral])
+  // 난이도 덮어쓰기 값 (테이블이 아직 없어도 기본표로 동작하도록 실패 허용)
+  const fetchRates = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('denken_exam_rates')
+      .select('exam_id, overall_rate, applicants, rate_riron, rate_denryoku, rate_kikai, rate_hoki, pass_riron, pass_denryoku, pass_kikai, pass_hoki, note')
+    if (error) { setRatesTableMissing(true); return }
+    setRatesTableMissing(false)
+    setRateOverrides((data || []) as RateOverrideRow[])
+  }, [])
+
+  useEffect(() => { fetchSessions(); fetchKikai(); fetchGeneral(); fetchRates() },
+    [fetchSessions, fetchKikai, fetchGeneral, fetchRates])
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, DenkenSession>()
@@ -272,6 +334,91 @@ export default function DenkenHub() {
     const passed = subs.filter(s => (s.my_score ?? 0) >= 60).length
     return { sub, count: subs.length, avg, best, passed }
   }), [sessions])
+
+  // ── 회차 난이도 ────────────────────────────────────────────────
+  const overrideMap = useMemo(
+    () => new Map(rateOverrides.map(o => [o.exam_id, o])),
+    [rateOverrides],
+  )
+
+  // 기본표 + 덮어쓰기 병합. 기본표에 없는 회차(직접 추가분)도 함께 노출.
+  const rateList: ExamRate[] = useMemo(() => {
+    const ids = new Set<string>([
+      ...DENKEN_RATE_BASELINE.map(e => e.examId),
+      ...rateOverrides.map(o => o.exam_id),
+    ])
+    return [...ids]
+      .map(id => mergeRate(DENKEN_RATE_MAP.get(id), overrideMap.get(id), id))
+      .sort((a, b) => denkenHeldKey(b.examId) - denkenHeldKey(a.examId))
+  }, [rateOverrides, overrideMap])
+
+  const rateMap = useMemo(
+    () => new Map(rateList.map(e => [e.examId, e])),
+    [rateList],
+  )
+
+  const rateAverages = useMemo(
+    () => SUBJECTS.map(sub => ({ sub, avg: subjectAverage(rateList, sub) })),
+    [rateList],
+  )
+
+  const startRateEdit = (e: ExamRate) => {
+    if (rateEditId === e.examId) { setRateEditId(null); return }
+    const ov = overrideMap.get(e.examId)
+    const v = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n))
+    setRateEditId(e.examId)
+    setRateForm({
+      overall_rate:  v(e.overall),
+      applicants:    v(e.applicants),
+      rate_riron:    v(e.subjects['理論'].rate),
+      rate_denryoku: v(e.subjects['電力'].rate),
+      rate_kikai:    v(e.subjects['機械'].rate),
+      rate_hoki:     v(e.subjects['法規'].rate),
+      pass_riron:    v(e.subjects['理論'].pass),
+      pass_denryoku: v(e.subjects['電力'].pass),
+      pass_kikai:    v(e.subjects['機械'].pass),
+      pass_hoki:     v(e.subjects['法規'].pass),
+      note:          ov?.note ?? '',
+    })
+  }
+
+  const handleRateSave = async () => {
+    if (!rateEditId) return
+    setRateSaving(true)
+    const num = (k: string) => {
+      const raw = (rateForm[k] ?? '').trim()
+      if (raw === '') return null
+      const n = parseFloat(raw)
+      return Number.isFinite(n) ? n : null
+    }
+    await supabase.from('denken_exam_rates').upsert({
+      exam_id: rateEditId,
+      overall_rate:  num('overall_rate'),
+      applicants:    num('applicants'),
+      rate_riron:    num('rate_riron'),
+      rate_denryoku: num('rate_denryoku'),
+      rate_kikai:    num('rate_kikai'),
+      rate_hoki:     num('rate_hoki'),
+      pass_riron:    num('pass_riron'),
+      pass_denryoku: num('pass_denryoku'),
+      pass_kikai:    num('pass_kikai'),
+      pass_hoki:     num('pass_hoki'),
+      note: (rateForm.note ?? '').trim() || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'exam_id' })
+    await fetchRates()
+    setRateEditId(null)
+    setRateSaving(false)
+  }
+
+  // 덮어쓴 값을 지우고 기본표 값으로 되돌린다
+  const handleRateReset = async (examId: string) => {
+    setRateSaving(true)
+    await supabase.from('denken_exam_rates').delete().eq('exam_id', examId)
+    await fetchRates()
+    setRateEditId(null)
+    setRateSaving(false)
+  }
 
   // PDF 모달용 데이터
   const pdfExam = pdfModal ? PAST_EXAMS.find(e => e.id === pdfModal.examId) : null
@@ -333,11 +480,12 @@ export default function DenkenHub() {
             {([
               { key: 'scores',   label: '📋 기출 풀이 현황' },
               { key: 'analysis', label: '📊 과목별 분석' },
+              { key: 'rates',    label: '📉 회차 난이도' },
             ] as const).map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                className={`flex-1 px-1 py-2 rounded-lg text-[11px] md:text-sm font-medium transition whitespace-nowrap ${
                   activeTab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
@@ -393,6 +541,11 @@ export default function DenkenHub() {
                 ))}
               </div>
 
+              {/* 난이도 범례 */}
+              <div className="mb-4">
+                <RateLegend />
+              </div>
+
               {/* 기출 목록 */}
               {loading ? (
                 <p className="text-gray-500 text-sm">불러오는 중...</p>
@@ -400,8 +553,21 @@ export default function DenkenHub() {
                 <div className="space-y-2">
                   {SORTED_EXAMS.map(exam => (
                       <div key={exam.id} className="bg-gray-900 rounded-xl overflow-hidden">
-                        <div className="px-4 py-3 border-b border-gray-800">
+                        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800">
                           <p className="text-sm font-semibold text-gray-300">{exam.label}</p>
+                          {(() => {
+                            const r = rateMap.get(exam.id)
+                            if (!r) return null
+                            return (
+                              <>
+                                <span className="text-[10px] text-gray-600">{r.nendo}</span>
+                                <span className="ml-auto flex items-center gap-1.5">
+                                  <span className="text-[10px] text-gray-600">전체</span>
+                                  <RatePill rate={r.overall} />
+                                </span>
+                              </>
+                            )
+                          })()}
                         </div>
                         <div className={`grid gap-px bg-gray-800 ${
                           filterSubject ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-4'
@@ -422,12 +588,21 @@ export default function DenkenHub() {
                                     onClick={() => startEdit(exam.id, sub)}
                                     className="flex-1 text-left hover:bg-gray-900 rounded-lg p-1 transition"
                                   >
-                                    <div className="flex items-center gap-1.5 mb-1">
+                                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                                       <span
                                         className="w-2 h-2 rounded-full shrink-0"
                                         style={{ backgroundColor: SUBJECT_COLORS[sub] }}
                                       />
                                       <span className="text-xs text-gray-500">{sub}</span>
+                                      {(() => {
+                                        const sr = rateMap.get(exam.id)?.subjects[sub]
+                                        if (!sr) return null
+                                        return (
+                                          <span className="ml-auto shrink-0">
+                                            <RatePill rate={sr.rate} pass={sr.pass} />
+                                          </span>
+                                        )
+                                      })()}
                                     </div>
                                     <p className={`text-lg font-bold tabular-nums ${scoreColor(s?.my_score ?? null)}`}>
                                       {s?.my_score != null ? `${s.my_score}点` : '—'}
@@ -588,6 +763,154 @@ export default function DenkenHub() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── 회차 난이도 탭 ── */}
+          {activeTab === 'rates' && (
+            <div>
+              {/* 과목별 평균 */}
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                {rateAverages.map(({ sub, avg }) => (
+                  <div key={sub} className="bg-gray-900 rounded-xl p-3 text-center">
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[sub] }} />
+                      <span className="text-[10px] text-gray-500">{sub}</span>
+                    </div>
+                    <p className="text-lg font-bold tabular-nums" style={{ color: TIER_META[rateTier(avg)].color }}>
+                      {avg === null ? '—' : `${avg}%`}
+                    </p>
+                    <p className="text-[9px] text-gray-700 mt-0.5">평균 합격률</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mb-4 space-y-2">
+                <RateLegend />
+                <p className="text-[10px] text-gray-600 leading-relaxed">
+                  출처: 電気技術者試験センター 발표치 · 왼쪽은 실시 연월(앱 표기), 오른쪽 회색은 일본식 年度 표기.
+                  값을 누르면 직접 고칠 수 있고, 비우면 기본값으로 되돌아간다.
+                </p>
+                {ratesTableMissing && (
+                  <p className="text-[11px] text-yellow-500/90 bg-yellow-900/15 border border-yellow-700/25 rounded-lg px-3 py-2 leading-relaxed">
+                    수정 기능이 꺼져 있다. Supabase에서 <span className="font-mono">supabase/denken_exam_rates_migration.sql</span> 을 한 번 실행하면 켜진다.
+                    (그 전까지는 기본표 값만 표시)
+                  </p>
+                )}
+              </div>
+
+              {/* 회차 목록 */}
+              <div className="space-y-2">
+                {rateList.map(e => {
+                  const isEdit   = rateEditId === e.examId
+                  const hasPast  = PAST_EXAMS.some(p => p.id === e.examId)
+                  const label    = examLabelFromId(e.examId)
+                  const field = (key: string, ph: string) => (
+                    <input
+                      type="number" step="0.01"
+                      value={rateForm[key] ?? ''}
+                      onChange={ev => setRateForm(f => ({ ...f, [key]: ev.target.value }))}
+                      placeholder={ph}
+                      className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-white text-xs tabular-nums outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  )
+
+                  return (
+                    <div key={e.examId} className="bg-gray-900 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => startRateEdit(e)}
+                        disabled={ratesTableMissing}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-800/60 disabled:hover:bg-transparent transition"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-semibold text-gray-300">{label}</span>
+                          <span className="text-[10px] text-gray-600">{e.nendo}</span>
+                          {!hasPast && (
+                            <span className="text-[9px] text-gray-700 border border-gray-800 rounded px-1">기출 미등록</span>
+                          )}
+                          {e.source === 'override' && (
+                            <span className="text-[9px] text-blue-500/80 border border-blue-900/60 rounded px-1">직접 입력</span>
+                          )}
+                          <span className="ml-auto flex items-center gap-1.5">
+                            <span className="text-[10px] text-gray-600">전체</span>
+                            <RatePill rate={e.overall} size="md" />
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {SUBJECTS.map(sub => (
+                            <div key={sub} className="flex flex-col items-center gap-1 bg-gray-950 rounded-lg py-2">
+                              <span className="text-[10px] text-gray-600">{sub}</span>
+                              <RatePill rate={e.subjects[sub].rate} pass={e.subjects[sub].pass} />
+                            </div>
+                          ))}
+                        </div>
+                        {e.note && (
+                          <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">{e.note}</p>
+                        )}
+                      </button>
+
+                      {/* 편집 패널 */}
+                      {isEdit && (
+                        <div className="border-t border-gray-800 p-3 bg-gray-950/60 space-y-3">
+                          <div>
+                            <p className="text-[10px] text-gray-600 mb-1.5">전체 합격률 (%) · 수험자 수</p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {field('overall_rate', '12.9')}
+                              {field('applicants', '24766')}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-600 mb-1.5">과목별 합격률 (%) — 理 · 電 · 機 · 法</p>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {field('rate_riron', '理')}
+                              {field('rate_denryoku', '電')}
+                              {field('rate_kikai', '機')}
+                              {field('rate_hoki', '法')}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-600 mb-1.5">합격기준점 (원칙 60, 인하 시 그 값)</p>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {field('pass_riron', '60')}
+                              {field('pass_denryoku', '60')}
+                              {field('pass_kikai', '60')}
+                              {field('pass_hoki', '60')}
+                            </div>
+                          </div>
+                          <input
+                            type="text"
+                            value={rateForm.note ?? ''}
+                            onChange={ev => setRateForm(f => ({ ...f, note: ev.target.value }))}
+                            placeholder="메모 (출처·조정 사유 등)"
+                            className="w-full bg-gray-800 rounded-lg px-2 py-1.5 text-white text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={handleRateSave} disabled={rateSaving}
+                              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-1.5 rounded-lg text-xs font-semibold transition"
+                            >
+                              {rateSaving ? '…' : '저장'}
+                            </button>
+                            <button
+                              onClick={() => handleRateReset(e.examId)} disabled={rateSaving}
+                              className="px-3 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 py-1.5 rounded-lg text-xs transition"
+                              title="직접 입력한 값을 지우고 기본표 값으로 되돌린다"
+                            >
+                              기본값
+                            </button>
+                            <button
+                              onClick={() => setRateEditId(null)}
+                              className="px-3 bg-gray-800 hover:bg-gray-700 py-1.5 rounded-lg text-xs transition"
+                            >
+                              닫기
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
