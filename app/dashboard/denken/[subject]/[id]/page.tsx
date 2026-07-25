@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
   DENKEN_STRUCTURE,
   SUBJECT_ACCENT,
@@ -26,7 +27,7 @@ function asSubject(s: string): DenkenSubject {
     ? (s as DenkenSubject) : FALLBACK
 }
 
-type Answer = { q_num: number; result: Result; result_a: Result; result_b: Result; memo: string }
+type Answer = { q_num: number; result: Result; result_a: Result; result_b: Result; memo: string; review: ReviewState }
 
 // 문제 단위 정오 (목록/헤더 색상용): B문제는 (a)(b) 합산
 function problemStatus(subject: DenkenSubject, a: Answer): Result {
@@ -46,12 +47,14 @@ function toPreviewUrl(url: string): string | null {
   return null
 }
 
-function ScoreCell({ subject, qNum, answer, isSelectPair, isExcluded, isActive, onResultToggle, onSubToggle, onClick }: {
+function ScoreCell({ subject, qNum, answer, isSelectPair, isExcluded, isActive, onResultToggle, onSubToggle, onReviewToggle, onClick }: {
   subject: DenkenSubject; qNum: number; answer: Answer; isSelectPair: boolean; isExcluded: boolean; isActive: boolean
-  onResultToggle: () => void; onSubToggle: (sub: Sub) => void; onClick: () => void
+  onResultToggle: () => void; onSubToggle: (sub: Sub) => void; onReviewToggle: () => void; onClick: () => void
 }) {
   const isB = isBArea(subject, qNum)
   let cellBg = 'bg-[#0f1c2e]'
+  if (answer.review === 'todo') cellBg = 'bg-[#2a2411] ring-1 ring-amber-500/50'
+  if (answer.review === 'done') cellBg = 'bg-[#102a20]'
   if (isActive) cellBg = 'bg-[#1a2e47] ring-1 ring-blue-500/60'
   if (isExcluded) cellBg = 'bg-[#0a1220] opacity-40'
   return (
@@ -63,6 +66,15 @@ function ScoreCell({ subject, qNum, answer, isSelectPair, isExcluded, isActive, 
         {isSelectPair && <span className="text-[8px] text-yellow-500 font-bold">選</span>}
         {answer.memo && <span className="w-1 h-1 rounded-full bg-blue-400 ml-0.5" />}
       </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); if (!isExcluded) onReviewToggle() }}
+        disabled={isExcluded}
+        className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] leading-none transition"
+        style={answer.review ? { color: REVIEW_META[answer.review].color, backgroundColor: REVIEW_META[answer.review].bg } : {}}
+        title={answer.review ? REVIEW_META[answer.review].label : '복습 표시 (클릭: 필요 → 완료 → 해제)'}>
+        {answer.review === 'todo' ? '🔖' : answer.review === 'done' ? '✓'
+          : <span className="text-gray-700 hover:text-amber-500 transition">🔖</span>}
+      </button>
       {isB ? (
         <div className="flex gap-0.5">
           {(['a', 'b'] as Sub[]).map(sub => {
@@ -106,13 +118,14 @@ export default function GeneralSubjectPage() {
 
   const [session, setSession]               = useState<Session | null>(null)
   const [answers, setAnswers]               = useState<Answer[]>(() =>
-    Array.from({ length: struct.totalQ }, (_, i) => ({ q_num: i + 1, result: null, result_a: null, result_b: null, memo: '' }))
+    Array.from({ length: struct.totalQ }, (_, i) => ({ q_num: i + 1, result: null, result_a: null, result_b: null, memo: '', review: null }))
   )
   const [selectedQ, setSelectedQ]           = useState<number | null>(null)
   const [previewUrl, setPreviewUrl]         = useState<string | null>(null)
   const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
   const [pdfTab, setPdfTab]                 = useState<'question' | 'answer'>('question')
   const [activeQ, setActiveQ]               = useState<number>(1)
+  const [listMode, setListMode]             = useState<'review' | 'memo'>('review')
   const [saving, setSaving]                 = useState(false)
   const [urlInput, setUrlInput]             = useState('')
   const [answerUrl, setAnswerUrl]           = useState('')
@@ -140,7 +153,7 @@ export default function GeneralSubjectPage() {
       if (sess.selected_q) setSelectedQ(sess.selected_q)
       const { data: ans } = await supabase
         .from('denken_general_answers')
-        .select('q_num, result, result_a, result_b, memo')
+        .select('q_num, result, result_a, result_b, memo, review')
         .eq('exam_id', examId).eq('subject', subject)
       if (ans && ans.length > 0) {
         setAnswers(prev => prev.map(a => {
@@ -151,6 +164,7 @@ export default function GeneralSubjectPage() {
             result_a: (f.result_a as Result) ?? null,
             result_b: (f.result_b as Result) ?? null,
             memo: f.memo ?? '',
+            review: (f.review as ReviewState) ?? null,
           } : a
         }))
       }
@@ -174,7 +188,7 @@ export default function GeneralSubjectPage() {
   const saveAnswer = useCallback(async (a: Answer) => {
     const sid = await ensureSession()
     await supabase.from('denken_general_answers').upsert(
-      { session_id: sid, exam_id: examId, subject, q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b, memo: a.memo || null },
+      { session_id: sid, exam_id: examId, subject, q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b, memo: a.memo || null, review: a.review, review_at: a.review ? new Date().toISOString() : null },
       { onConflict: 'exam_id,subject,q_num' }
     )
   }, [ensureSession, examId, subject])
@@ -185,6 +199,15 @@ export default function GeneralSubjectPage() {
     setAnswers(prev => prev.map(a => {
       if (a.q_num !== qNum) return a
       const newA = { ...a, result: cycle(a.result) }
+      saveAnswer(newA)
+      return newA
+    }))
+  }, [saveAnswer])
+
+  const handleReviewToggle = useCallback((qNum: number) => {
+    setAnswers(prev => prev.map(a => {
+      if (a.q_num !== qNum) return a
+      const newA = { ...a, review: cycleReview(a.review) }
       saveAnswer(newA)
       return newA
     }))
@@ -249,6 +272,12 @@ export default function GeneralSubjectPage() {
   const score     = scoreDenken(subject, answers, selectedQ)
   const answered  = gradedCount(subject, answers, selectedQ)
   const totalQ    = answerableCount(subject, selectedQ)
+  const reviewTodo = answers.filter(a => a.review === 'todo')
+  const reviewDone = answers.filter(a => a.review === 'done')
+  const listRows = listMode === 'review'
+    ? answers.filter(a => a.review !== null)
+    : answers.filter(a => a.memo.trim())
+
   const activeAnswer = answers.find(a => a.q_num === activeQ)!
 
   return (
@@ -262,6 +291,16 @@ export default function GeneralSubjectPage() {
             <span className={`text-lg font-black tabular-nums ${score >= 60 ? 'text-emerald-400' : score >= 40 ? 'text-yellow-400' : 'text-white'}`}>{score}점</span>
             <span className="text-xs text-gray-600">{answered}/{totalQ}문</span>
             {score >= 60 && <span className="text-[10px] bg-emerald-600/30 text-emerald-400 px-1.5 py-0.5 rounded-full font-bold">합격</span>}
+            {reviewTodo.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold border"
+                style={{ color: REVIEW_META.todo.color, backgroundColor: REVIEW_META.todo.bg, borderColor: REVIEW_META.todo.border }}
+                title="복습 대기 문항">🔖 {reviewTodo.length}</span>
+            )}
+            {reviewDone.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                style={{ color: REVIEW_META.done.color, backgroundColor: REVIEW_META.done.bg }}
+                title="복습 완료 문항">✓ {reviewDone.length}</span>
+            )}
           </div>
         </div>
         <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
@@ -269,7 +308,7 @@ export default function GeneralSubjectPage() {
             const isPair = isSelectQ(subject, a.q_num)
             const isExcluded = isDimmedSelect(subject, a.q_num, selectedQ)
             return <ScoreCell key={a.q_num} subject={subject} qNum={a.q_num} answer={a} isSelectPair={isPair} isExcluded={isExcluded}
-              isActive={activeQ === a.q_num} onResultToggle={() => handleResultToggle(a.q_num)} onSubToggle={(sub) => handleSubToggle(a.q_num, sub)} onClick={() => setActiveQ(a.q_num)} />
+              isActive={activeQ === a.q_num} onResultToggle={() => handleResultToggle(a.q_num)} onSubToggle={(sub) => handleSubToggle(a.q_num, sub)} onReviewToggle={() => handleReviewToggle(a.q_num)} onClick={() => setActiveQ(a.q_num)} />
           })}
           {selectPair.length > 0 && (
             <div className="flex flex-col justify-center ml-2 shrink-0 gap-1">
@@ -334,6 +373,19 @@ export default function GeneralSubjectPage() {
         <div className="shrink-0 flex flex-col bg-[#080f1e] border-l border-white/5" style={{ width: panelWidth, minWidth: 200 }}>
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
             <span className="text-sm font-bold text-white">{activeQ}번 메모</span>
+            <button
+              onClick={() => handleReviewToggle(activeQ)}
+              className="px-2 py-0.5 rounded-md text-[10px] font-bold transition border"
+              style={activeAnswer?.review ? {
+                color: REVIEW_META[activeAnswer.review].color,
+                backgroundColor: REVIEW_META[activeAnswer.review].bg,
+                borderColor: REVIEW_META[activeAnswer.review].border,
+              } : { color: '#4b5563', borderColor: 'rgba(255,255,255,0.08)' }}
+              title="정오와 별개로 다시 볼 문제를 표시한다">
+              {activeAnswer?.review
+                ? `${REVIEW_META[activeAnswer.review].icon} ${REVIEW_META[activeAnswer.review].short}`
+                : '🔖 복습'}
+            </button>
             {isBArea(subject, activeQ) ? (
               <span className="ml-auto flex items-center gap-2 text-xs font-bold">
                 {(['a', 'b'] as Sub[]).map(sub => {
@@ -358,14 +410,32 @@ export default function GeneralSubjectPage() {
               className="flex-1 bg-[#0f1c2e] rounded-xl px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-700 resize-none leading-relaxed" />
           </div>
           <div className="border-t border-white/5 px-3 py-3 overflow-y-auto max-h-48">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">메모 있는 문제</p>
-            {answers.filter(a => a.memo.trim()).length === 0
-              ? <p className="text-[11px] text-gray-700">아직 없음</p>
-              : <div className="space-y-1.5">{answers.filter(a => a.memo.trim()).map(a => (
+            <div className="flex items-center gap-1.5 mb-2">
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest">
+                {listMode === 'review' ? '복습 대상' : '메모 있는 문제'}
+              </p>
+              <div className="ml-auto flex bg-[#0f1c2e] rounded-md p-0.5">
+                {([['review', `🔖 ${reviewTodo.length}`], ['memo', '메모']] as const).map(([k, lab]) => (
+                  <button key={k} onClick={() => setListMode(k)}
+                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition ${
+                      listMode === k ? 'bg-[#1e3048] text-white' : 'text-gray-600 hover:text-gray-400'}`}>{lab}</button>
+                ))}
+              </div>
+            </div>
+            {listRows.length === 0
+              ? <p className="text-[11px] text-gray-700">{listMode === 'review' ? '복습 표시한 문제 없음' : '아직 없음'}</p>
+              : <div className="space-y-1.5">{listRows.map(a => (
                   <button key={a.q_num} onClick={() => setActiveQ(a.q_num)}
                     className={`w-full text-left flex items-start gap-2 rounded-lg px-2 py-1.5 transition ${activeQ === a.q_num ? 'bg-blue-900/40' : 'hover:bg-[#0f1c2e]'}`}>
                     <span className={`text-[10px] font-bold mt-0.5 shrink-0 ${problemStatus(subject, a) === 'correct' ? 'text-emerald-400' : problemStatus(subject, a) === 'wrong' ? 'text-red-400' : 'text-gray-600'}`}>Q{a.q_num}</span>
-                    <span className="text-[11px] text-gray-400 truncate">{a.memo}</span>
+                    <span className="text-[11px] text-gray-400 truncate">
+                      {a.memo.trim() || <span className="text-gray-700">메모 없음</span>}
+                    </span>
+                    {a.review && (
+                      <span className="text-[9px] shrink-0" style={{ color: REVIEW_META[a.review].color }}>
+                        {REVIEW_META[a.review].icon}
+                      </span>
+                    )}
                   </button>
                 ))}</div>
             }

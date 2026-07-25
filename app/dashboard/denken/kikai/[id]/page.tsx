@@ -11,6 +11,9 @@ import {
   KIKAI_TAG_MAP,
 } from '@/lib/constants-denken-kikai'
 import {
+  cycleReview, REVIEW_META, type ReviewState,
+} from '@/lib/constants-denken-review'
+import {
   DENKEN_STRUCTURE,
   isBArea,
   isSelectQ,
@@ -36,6 +39,7 @@ type Answer = {
   tag_id: number | null
   ptype: ProblemType | null
   memo: string
+  review: ReviewState   // 정오와 독립된 축: 다시 볼 문제 표시
 }
 
 type Session = {
@@ -81,6 +85,23 @@ function TagBadge({ tagId, small }: { tagId: number | null; small?: boolean }) {
       style={{ backgroundColor: tag.accent }}
     >
       {tag.ko}
+    </span>
+  )
+}
+
+// ── 복습 배지 ──────────────────────────────────────────────────────
+function ReviewBadge({ review, small }: { review: ReviewState; small?: boolean }) {
+  if (!review) return null
+  const m = REVIEW_META[review]
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded font-bold whitespace-nowrap border ${
+        small ? 'px-1 py-0 text-[9px]' : 'px-1.5 py-0.5 text-[10px]'
+      }`}
+      style={{ color: m.color, backgroundColor: m.bg, borderColor: m.border }}
+      title={m.label}
+    >
+      {m.icon}{!small && m.short}
     </span>
   )
 }
@@ -132,6 +153,7 @@ function ScoreCell({
   onResultToggle,
   onSubToggle,
   onTagChange,
+  onReviewToggle,
   onClick,
 }: {
   qNum: number
@@ -142,6 +164,7 @@ function ScoreCell({
   onResultToggle: () => void
   onSubToggle: (sub: Sub) => void
   onTagChange: (id: number | null) => void
+  onReviewToggle: () => void
   onClick: () => void
 }) {
   const [tagOpen, setTagOpen] = useState(false)
@@ -162,6 +185,8 @@ function ScoreCell({
 
   // 배경색
   let cellBg = 'bg-[#0f1c2e]'
+  if (answer.review === 'todo') cellBg = 'bg-[#2a2411] ring-1 ring-amber-500/50'
+  if (answer.review === 'done') cellBg = 'bg-[#102a20]'
   if (isActive) cellBg = 'bg-[#1a2e47] ring-1 ring-blue-500/60'
   if (isExcluded) cellBg = 'bg-[#0a1220] opacity-40'
 
@@ -184,6 +209,22 @@ function ScoreCell({
           <span className="w-1 h-1 rounded-full bg-blue-400 ml-0.5" />
         )}
       </div>
+
+      {/* 복습 플래그 (정오와 독립) */}
+      <button
+        onClick={(e) => { e.stopPropagation(); if (!isExcluded) onReviewToggle() }}
+        disabled={isExcluded}
+        className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] leading-none transition"
+        style={answer.review ? {
+          color: REVIEW_META[answer.review].color,
+          backgroundColor: REVIEW_META[answer.review].bg,
+        } : {}}
+        title={answer.review ? REVIEW_META[answer.review].label : '복습 표시 (클릭: 필요 → 완료 → 해제)'}
+      >
+        {answer.review === 'todo' ? '🔖' : answer.review === 'done' ? '✓' : (
+          <span className="text-gray-700 hover:text-amber-500 transition">🔖</span>
+        )}
+      </button>
 
       {/* O / X 토글: B문제는 (a)(b) 소문항, A문제는 단일 */}
       {isB ? (
@@ -276,6 +317,7 @@ export default function KikaiExamPage() {
       tag_id: null,
       ptype: null,
       memo: '',
+      review: null,
     }))
   )
   const [selectedQ, setSelectedQ] = useState<number | null>(null)
@@ -285,6 +327,7 @@ export default function KikaiExamPage() {
   const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
   const [pdfTab, setPdfTab]               = useState<'question' | 'answer'>('question')
   const [activeQ, setActiveQ] = useState<number>(1)
+  const [listMode, setListMode] = useState<'review' | 'memo'>('review')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [urlInput, setUrlInput] = useState('')
@@ -318,7 +361,7 @@ export default function KikaiExamPage() {
 
       const { data: ans } = await supabase
         .from('denken_kikai_answers')
-        .select('q_num, result, result_a, result_b, tag_id, ptype, memo')
+        .select('q_num, result, result_a, result_b, tag_id, ptype, memo, review')
         .eq('exam_id', examId)
 
       if (ans && ans.length > 0) {
@@ -333,6 +376,7 @@ export default function KikaiExamPage() {
             tag_id: found.tag_id ?? null,
             ptype: (found.ptype as ProblemType) ?? null,
             memo: found.memo ?? '',
+            review: (found.review as ReviewState) ?? null,
           }
         }))
       }
@@ -376,6 +420,8 @@ export default function KikaiExamPage() {
         tag_id: a.tag_id,
         ptype: a.ptype,
         memo: a.memo || null,
+        review: a.review,
+        review_at: a.review ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'exam_id,q_num' }
@@ -424,6 +470,16 @@ export default function KikaiExamPage() {
     setAnswers(prev => prev.map(a => {
       if (a.q_num !== qNum) return a
       const newA = { ...a, ptype: a.ptype === ptype ? null : ptype }
+      saveAnswer(newA)
+      return newA
+    }))
+  }, [saveAnswer])
+
+  // ── 복습 플래그 토글 (없음 → 필요 → 완료 → 없음) ──────────────
+  const handleReviewToggle = useCallback((qNum: number) => {
+    setAnswers(prev => prev.map(a => {
+      if (a.q_num !== qNum) return a
+      const newA = { ...a, review: cycleReview(a.review) }
       saveAnswer(newA)
       return newA
     }))
@@ -510,6 +566,12 @@ export default function KikaiExamPage() {
     return { tag, total: tagged.length, correct }
   }).filter(s => s.total > 0)
 
+  const reviewTodo = answers.filter(a => a.review === 'todo')
+  const reviewDone = answers.filter(a => a.review === 'done')
+  const listRows = listMode === 'review'
+    ? answers.filter(a => a.review !== null)
+    : answers.filter(a => a.memo.trim())
+
   const activeAnswer = answers.find(a => a.q_num === activeQ)!
 
   if (!exam) {
@@ -552,6 +614,20 @@ export default function KikaiExamPage() {
               {score >= 60 && (
                 <span className="text-[10px] bg-emerald-600/30 text-emerald-400 px-1.5 py-0.5 rounded-full font-bold">합격</span>
               )}
+              {reviewTodo.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold border"
+                  style={{ color: REVIEW_META.todo.color, backgroundColor: REVIEW_META.todo.bg, borderColor: REVIEW_META.todo.border }}
+                  title="복습 대기 문항">
+                  🔖 {reviewTodo.length}
+                </span>
+              )}
+              {reviewDone.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                  style={{ color: REVIEW_META.done.color, backgroundColor: REVIEW_META.done.bg }}
+                  title="복습 완료 문항">
+                  ✓ {reviewDone.length}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -573,6 +649,7 @@ export default function KikaiExamPage() {
                 onResultToggle={() => handleResultToggle(a.q_num)}
                 onSubToggle={(sub) => handleSubToggle(a.q_num, sub)}
                 onTagChange={(id) => handleTagChange(a.q_num, id)}
+                onReviewToggle={() => handleReviewToggle(a.q_num)}
                 onClick={() => setActiveQ(a.q_num)}
               />
             )
@@ -750,7 +827,7 @@ export default function KikaiExamPage() {
             )}
           </div>
 
-          {/* 유형 태그 */}
+          {/* 유형 태그 + 복습 플래그 */}
           <div className="px-4 py-2 border-b border-white/5 flex items-center gap-1">
             <span className="text-[10px] text-gray-600 mr-1">유형</span>
             {PROBLEM_TYPE_ORDER.map(pt => (
@@ -760,6 +837,20 @@ export default function KikaiExamPage() {
                 {PROBLEM_TYPE_META[pt].ko}
               </button>
             ))}
+            <button
+              onClick={() => handleReviewToggle(activeQ)}
+              className="ml-auto px-2 py-1 rounded-md text-[10px] font-bold transition border"
+              style={activeAnswer?.review ? {
+                color: REVIEW_META[activeAnswer.review].color,
+                backgroundColor: REVIEW_META[activeAnswer.review].bg,
+                borderColor: REVIEW_META[activeAnswer.review].border,
+              } : { color: '#4b5563', borderColor: 'rgba(255,255,255,0.08)' }}
+              title="정오와 별개로 다시 볼 문제를 표시한다"
+            >
+              {activeAnswer?.review
+                ? `${REVIEW_META[activeAnswer.review].icon} ${REVIEW_META[activeAnswer.review].label}`
+                : '🔖 복습 표시'}
+            </button>
           </div>
 
           {/* 메모 입력 */}
@@ -775,14 +866,28 @@ export default function KikaiExamPage() {
             />
           </div>
 
-          {/* 메모 있는 문제 목록 */}
+          {/* 복습 · 메모 목록 */}
           <div className="border-t border-white/5 px-3 py-3 overflow-y-auto max-h-60">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">메모 있는 문제</p>
-            {answers.filter(a => a.memo.trim()).length === 0 ? (
-              <p className="text-[11px] text-gray-700">아직 없음</p>
+            <div className="flex items-center gap-1.5 mb-2">
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest">
+                {listMode === 'review' ? '복습 대상' : '메모 있는 문제'}
+              </p>
+              <div className="ml-auto flex bg-[#0f1c2e] rounded-md p-0.5">
+                {([['review', `🔖 ${reviewTodo.length}`], ['memo', '메모']] as const).map(([k, lab]) => (
+                  <button key={k} onClick={() => setListMode(k)}
+                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition ${
+                      listMode === k ? 'bg-[#1e3048] text-white' : 'text-gray-600 hover:text-gray-400'
+                    }`}>{lab}</button>
+                ))}
+              </div>
+            </div>
+            {listRows.length === 0 ? (
+              <p className="text-[11px] text-gray-700">
+                {listMode === 'review' ? '복습 표시한 문제 없음' : '아직 없음'}
+              </p>
             ) : (
               <div className="space-y-1.5">
-                {answers.filter(a => a.memo.trim()).map(a => (
+                {listRows.map(a => (
                   <button
                     key={a.q_num}
                     onClick={() => setActiveQ(a.q_num)}
@@ -796,7 +901,10 @@ export default function KikaiExamPage() {
                     }`}>
                       Q{a.q_num}
                     </span>
-                    <span className="text-[11px] text-gray-400 truncate leading-relaxed">{a.memo}</span>
+                    <span className="text-[11px] text-gray-400 truncate leading-relaxed">
+                      {a.memo.trim() || <span className="text-gray-700">메모 없음</span>}
+                    </span>
+                    {a.review && <ReviewBadge review={a.review} small />}
                     {a.tag_id && <TagBadge tagId={a.tag_id} small />}
                   </button>
                 ))}

@@ -5,6 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { scoreDenken, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
+import { KIKAI_TAG_MAP, type KikaiTag } from '@/lib/constants-denken-kikai'
+import {
+  REVIEW_META, reviewHeatStyle, EMPTY_REVIEW_COUNT, addReview,
+  type ReviewState, type ReviewCount,
+} from '@/lib/constants-denken-review'
 import {
   DENKEN_RATE_BASELINE, DENKEN_RATE_MAP, TIER_META,
   RATIO_THRESHOLD, OVERALL_THRESHOLD,
@@ -55,6 +60,15 @@ type DenkenSession = {
   memo: string | null
   drive_url: string | null
   updated_at: string
+}
+
+type ReviewRow = {
+  examId: string
+  subject: Subject
+  qNum: number
+  review: ReviewState
+  tagId: number | null
+  memo: string
 }
 
 type KikaiSummary = {
@@ -251,7 +265,7 @@ function PdfModal({
 // ── 메인 ────────────────────────────────────────────────────────
 export default function DenkenHub() {
   const router = useRouter()
-  const [activeTab, setActiveTab]   = useState<'scores' | 'analysis' | 'rates'>('scores')
+  const [activeTab, setActiveTab]   = useState<'scores' | 'analysis' | 'rates' | 'review'>('scores')
   const [rateOverrides, setRateOverrides] = useState<RateOverrideRow[]>([])
   const [ratesTableMissing, setRatesTableMissing] = useState(false)
   const [rateEditId, setRateEditId] = useState<string | null>(null)
@@ -268,6 +282,11 @@ export default function DenkenHub() {
   const [pdfModal, setPdfModal]     = useState<{ examId: string; subject: Subject } | null>(null)
   const [kikaiMap, setKikaiMap]     = useState<Map<string, KikaiSummary>>(new Map())
   const [generalMap, setGeneralMap] = useState<Map<string, boolean>>(new Map())  // key: examId__subject, value: hasPdf
+  // 복습 태깅 집계: key = examId__subject
+  const [reviewMap, setReviewMap] = useState<Map<string, ReviewCount>>(new Map())
+  const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
+  const [reviewTableMissing, setReviewTableMissing] = useState(false)
+  const [reviewOnlyTodo, setReviewOnlyTodo] = useState(true)
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
@@ -313,6 +332,37 @@ export default function DenkenHub() {
     setGeneralMap(map)
   }, [])
 
+  // 복습 태깅 (機械 전용 테이블 + 나머지 3과목 공용 테이블을 하나로 합친다)
+  const fetchReview = useCallback(async () => {
+    const [k, g] = await Promise.all([
+      supabase.from('denken_kikai_answers').select('exam_id, q_num, review, tag_id, memo').not('review', 'is', null),
+      supabase.from('denken_general_answers').select('exam_id, subject, q_num, review, memo').not('review', 'is', null),
+    ])
+    if (k.error || g.error) { setReviewTableMissing(true); return }
+    setReviewTableMissing(false)
+
+    const rows: ReviewRow[] = [
+      ...((k.data || []) as { exam_id: string; q_num: number; review: string; tag_id: number | null; memo: string | null }[])
+        .map(r => ({
+          examId: r.exam_id, subject: '機械' as Subject, qNum: r.q_num,
+          review: r.review as ReviewState, tagId: r.tag_id, memo: r.memo ?? '',
+        })),
+      ...((g.data || []) as { exam_id: string; subject: string; q_num: number; review: string; memo: string | null }[])
+        .map(r => ({
+          examId: r.exam_id, subject: r.subject as Subject, qNum: r.q_num,
+          review: r.review as ReviewState, tagId: null, memo: r.memo ?? '',
+        })),
+    ]
+    setReviewRows(rows)
+
+    const map = new Map<string, ReviewCount>()
+    for (const r of rows) {
+      const key = `${r.examId}__${r.subject}`
+      map.set(key, addReview(map.get(key) ?? EMPTY_REVIEW_COUNT, r.review))
+    }
+    setReviewMap(map)
+  }, [])
+
   // 난이도 덮어쓰기 값 (테이블이 아직 없어도 기본표로 동작하도록 실패 허용)
   const fetchRates = useCallback(async () => {
     const { data, error } = await supabase
@@ -323,8 +373,8 @@ export default function DenkenHub() {
     setRateOverrides((data || []) as RateOverrideRow[])
   }, [])
 
-  useEffect(() => { fetchSessions(); fetchKikai(); fetchGeneral(); fetchRates() },
-    [fetchSessions, fetchKikai, fetchGeneral, fetchRates])
+  useEffect(() => { fetchSessions(); fetchKikai(); fetchGeneral(); fetchRates(); fetchReview() },
+    [fetchSessions, fetchKikai, fetchGeneral, fetchRates, fetchReview])
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, DenkenSession>()
@@ -409,6 +459,40 @@ export default function DenkenHub() {
 
   // 난이도 판정 기준선 = 과목별 합격률 중앙값 (표를 고치면 기준선도 따라 움직인다)
   const medians = useMemo(() => computeMedians(rateList), [rateList])
+
+  // ── 복습 집계 ──────────────────────────────────────────────────
+  const reviewTotals = useMemo(() => {
+    let todo = 0, done = 0
+    for (const c of reviewMap.values()) { todo += c.todo; done += c.done }
+    return { todo, done }
+  }, [reviewMap])
+
+  // 대기 문항이 하나라도 있는 회차만 (많은 순)
+  const reviewExams = useMemo(() => {
+    return SORTED_EXAMS
+      .map(e => {
+        const per = SUBJECTS.map(sub => ({
+          sub, count: reviewMap.get(`${e.id}__${sub}`) ?? EMPTY_REVIEW_COUNT,
+        }))
+        const todo = per.reduce((n, x) => n + x.count.todo, 0)
+        const done = per.reduce((n, x) => n + x.count.done, 0)
+        return { exam: e, per, todo, done }
+      })
+      .filter(r => (reviewOnlyTodo ? r.todo > 0 : r.todo + r.done > 0))
+  }, [reviewMap, reviewOnlyTodo])
+
+  // 機械 단원별 복습 대기 (어느 단원이 약한지)
+  const reviewByTag = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const r of reviewRows) {
+      if (r.review !== 'todo' || r.tagId === null) continue
+      m.set(r.tagId, (m.get(r.tagId) ?? 0) + 1)
+    }
+    return [...m.entries()]
+      .map(([id, n]) => ({ tag: KIKAI_TAG_MAP.get(id), n }))
+      .filter((x): x is { tag: KikaiTag; n: number } => !!x.tag)
+      .sort((a, b) => b.n - a.n)
+  }, [reviewRows])
 
   const startRateEdit = (e: ExamRate) => {
     if (rateEditId === e.examId) { setRateEditId(null); return }
@@ -529,6 +613,7 @@ export default function DenkenHub() {
               { key: 'scores',   label: '📋 기출 풀이 현황' },
               { key: 'analysis', label: '📊 과목별 분석' },
               { key: 'rates',    label: '📉 회차 난이도' },
+              { key: 'review',   label: '🔖 복습' },
             ] as const).map(({ key, label }) => (
               <button
                 key={key}
@@ -642,6 +727,17 @@ export default function DenkenHub() {
                                         style={{ backgroundColor: SUBJECT_COLORS[sub] }}
                                       />
                                       <span className="text-xs text-gray-500">{sub}</span>
+                                      {(() => {
+                                        const rc = reviewMap.get(`${exam.id}__${sub}`)
+                                        if (!rc || rc.todo === 0) return null
+                                        return (
+                                          <span className="text-[9px] font-bold px-1 rounded shrink-0"
+                                            style={{ color: REVIEW_META.todo.color, backgroundColor: REVIEW_META.todo.bg }}
+                                            title={`복습 대기 ${rc.todo}문`}>
+                                            🔖{rc.todo}
+                                          </span>
+                                        )
+                                      })()}
                                       {(() => {
                                         const er = rateMap.get(exam.id)
                                         if (!er) return null
@@ -967,6 +1063,135 @@ export default function DenkenHub() {
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── 복습 탭 ── */}
+          {activeTab === 'review' && (
+            <div>
+              {/* 요약 */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="bg-gray-900 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-black tabular-nums" style={{ color: REVIEW_META.todo.color }}>
+                    {reviewTotals.todo}
+                  </p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">복습 대기</p>
+                </div>
+                <div className="bg-gray-900 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-black tabular-nums" style={{ color: REVIEW_META.done.color }}>
+                    {reviewTotals.done}
+                  </p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">복습 완료</p>
+                </div>
+                <div className="bg-gray-900 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-black tabular-nums text-gray-300">{reviewExams.length}</p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">해당 회차</p>
+                </div>
+              </div>
+
+              {reviewTableMissing && (
+                <p className="text-[11px] text-yellow-500/90 bg-yellow-900/15 border border-yellow-700/25 rounded-lg px-3 py-2 leading-relaxed mb-4">
+                  복습 태깅이 아직 꺼져 있다. Supabase에서 <span className="font-mono">supabase/denken_review_migration.sql</span> 을 한 번 실행하면 켜진다.
+                </p>
+              )}
+
+              {/* 機械 단원별 대기 */}
+              {reviewByTag.length > 0 && (
+                <div className="bg-gray-900 rounded-xl p-3 mb-4">
+                  <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">機械 단원별 대기</p>
+                  <div className="space-y-1.5">
+                    {reviewByTag.map(({ tag, n }) => (
+                      <div key={tag.id} className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded shrink-0 w-16 text-center"
+                          style={{ backgroundColor: tag.accent }}>{tag.ko}</span>
+                        <div className="flex-1 h-2 bg-gray-950 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full"
+                            style={{
+                              width: `${(n / Math.max(...reviewByTag.map(x => x.n))) * 100}%`,
+                              backgroundColor: tag.accent,
+                            }} />
+                        </div>
+                        <span className="text-[10px] text-gray-500 tabular-nums w-6 text-right">{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 필터 */}
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-[10px] text-gray-600">
+                  회차 × 과목 — 진할수록 대기가 많다. 셀을 누르면 그 과목 풀이 화면으로 간다.
+                </p>
+                <button
+                  onClick={() => setReviewOnlyTodo(v => !v)}
+                  className={`ml-auto px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                    reviewOnlyTodo ? 'bg-amber-600/25 text-amber-400' : 'bg-gray-800 text-gray-500'
+                  }`}>
+                  {reviewOnlyTodo ? '대기만' : '완료 포함'}
+                </button>
+              </div>
+
+              {/* 히트맵 */}
+              {reviewExams.length === 0 ? (
+                <div className="bg-gray-900 rounded-xl p-8 text-center">
+                  <p className="text-3xl opacity-25 mb-2">🔖</p>
+                  <p className="text-sm text-gray-500">복습 표시한 문제가 없다.</p>
+                  <p className="text-[11px] text-gray-700 mt-1 leading-relaxed">
+                    풀이 화면에서 문제 칸 오른쪽 위 북마크를 누르면 여기에 쌓인다.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* 헤더 행 */}
+                  <div className="flex items-center gap-1.5 px-1">
+                    <span className="w-16 shrink-0" />
+                    {SUBJECTS.map(sub => (
+                      <span key={sub} className="flex-1 text-center text-[10px] text-gray-600">{sub}</span>
+                    ))}
+                  </div>
+                  {reviewExams.map(({ exam, per, todo, done }) => {
+                    const nendo = rateMap.get(exam.id)?.nendo
+                    return (
+                      <div key={exam.id} className="flex items-center gap-1.5">
+                        <div className="w-16 shrink-0">
+                          <p className="text-xs font-bold text-gray-300 leading-tight">{examLabelFromId(exam.id)}</p>
+                          {nendo && <p className="text-[8px] text-gray-700 leading-tight">{nendo}</p>}
+                        </div>
+                        {per.map(({ sub, count }) => {
+                          const href = sub === '機械'
+                            ? `/dashboard/denken/kikai/${exam.id}`
+                            : `/dashboard/denken/${encodeURIComponent(sub)}/${exam.id}`
+                          return (
+                            <Link key={sub} href={href}
+                              className="flex-1 rounded-lg border py-2 flex flex-col items-center justify-center transition hover:brightness-125"
+                              style={reviewHeatStyle(count.todo)}
+                              title={`${sub} — 대기 ${count.todo} · 완료 ${count.done}`}>
+                              <span className="text-sm font-black tabular-nums"
+                                style={{ color: count.todo > 0 ? REVIEW_META.todo.color : '#374151' }}>
+                                {count.todo > 0 ? count.todo : '·'}
+                              </span>
+                              {count.done > 0 && (
+                                <span className="text-[8px] tabular-nums" style={{ color: REVIEW_META.done.color }}>
+                                  ✓{count.done}
+                                </span>
+                              )}
+                            </Link>
+                          )
+                        })}
+                        <div className="w-10 shrink-0 text-right">
+                          <span className="text-[10px] font-bold tabular-nums" style={{ color: REVIEW_META.todo.color }}>
+                            {todo}
+                          </span>
+                          {done > 0 && (
+                            <span className="text-[9px] text-gray-700 tabular-nums ml-1">/{todo + done}</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
