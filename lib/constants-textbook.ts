@@ -45,6 +45,18 @@ const KIKAI_CHAPTERS: TextbookChapter[] = [
   { slug: 'electrochem', name: '전기화학', start: 147, end: 157, accent: '#4d7c0f' },
 ]
 
+// ── 法規 단원 ──────────────────────────────────────────────────
+// 法規는 같은 '전기설비기술기준'이라도 암기형(조문 수치)과 계산형(수요율·
+// 절연저항·풍압하중 등)이 성격이 완전히 달라서, 교재 구성대로 분리해 둔다.
+const HOKI_CHAPTERS: TextbookChapter[] = [
+  { slug: 'jigyoho',      name: '전기사업법',                start: 1,  end: 15,  accent: '#b45309' },
+  { slug: 'other-laws',   name: '그 외의 전기관련법규',      start: 16, end: 20,  accent: '#a16207' },
+  { slug: 'gijutsu-memo', name: '전기설비기술기준 (암기형)', start: 21, end: 43,  accent: '#c2410c' },
+  { slug: 'gijutsu-calc', name: '전기설비기술기준 (계산형)', start: 44, end: 66,  accent: '#7c3aed' },
+  { slug: 'wind-solar',   name: '풍력발전과 태양전지발전기준', start: 67, end: 69, accent: '#0f766e' },
+  { slug: 'facility',     name: '전기시설관리',              start: 70, end: 103, accent: '#0369a1' },
+]
+
 export const TEXTBOOK_SUBJECTS: TextbookSubject[] = [
   {
     slug: 'kikai',
@@ -54,7 +66,15 @@ export const TEXTBOOK_SUBJECTS: TextbookSubject[] = [
     accent: '#6d28d9',
     chapters: KIKAI_CHAPTERS,
   },
-  // 추후: 理論 / 電力 / 法規 동일 패턴으로 추가
+  {
+    slug: 'hoki',
+    name: '法規',
+    emoji: '⚖️',
+    desc: '전기사업법·기타법규·기술기준(암기/계산)·풍력태양전지·전기시설관리',
+    accent: '#b45309',
+    chapters: HOKI_CHAPTERS,
+  },
+  // 추후: 理論 / 電力 동일 패턴으로 추가
 ]
 
 export const TB_SUBJECT_MAP = new Map<string, TextbookSubject>(
