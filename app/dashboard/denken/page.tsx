@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { scoreDenken, examLabelFromId, denkenHeldKey, DENKEN_EXAMS, type Result } from '@/lib/constants-denken'
+import {
+  scoreDenken, gradedCount, answerableCount, examLabelFromId, denkenHeldKey,
+  DENKEN_EXAMS, type Result,
+} from '@/lib/constants-denken'
 import { KIKAI_TAG_MAP, type KikaiTag } from '@/lib/constants-denken-kikai'
 import {
   REVIEW_META, reviewHeatStyle, EMPTY_REVIEW_COUNT, addReview,
@@ -66,9 +69,21 @@ type ReviewRow = {
 type KikaiSummary = {
   exam_id: string
   score: number
+  graded: number
+  total: number
   tagCount: number
   hasDriveUrl: boolean
   memoCount: number
+}
+
+// 풀이 UI에서 채점한 결과 요약 (4과목 공통, key = examId__subject)
+// 허브에 따로 점수를 입력할 필요가 없도록 여기서 자동 반영한다.
+type AutoSummary = {
+  score: number
+  graded: number      // 채점 완료 문항 수
+  total: number       // 채점 대상 문항 수 (미선택 선택문제 제외)
+  hasPdf: boolean
+  tagCount: number    // 機械 단원 태그 수 (나머지 과목은 0)
 }
 
 const SUBJECT_COLORS: Record<Subject, string> = {
@@ -274,6 +289,7 @@ export default function DenkenHub() {
   const [pdfModal, setPdfModal]     = useState<{ examId: string; subject: Subject } | null>(null)
   const [kikaiMap, setKikaiMap]     = useState<Map<string, KikaiSummary>>(new Map())
   const [generalMap, setGeneralMap] = useState<Map<string, boolean>>(new Map())  // key: examId__subject, value: hasPdf
+  const [generalAuto, setGeneralAuto] = useState<Map<string, AutoSummary>>(new Map())
   // 복습 태깅 집계: key = examId__subject
   const [reviewMap, setReviewMap] = useState<Map<string, ReviewCount>>(new Map())
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
@@ -302,9 +318,14 @@ export default function DenkenHub() {
       const score = scoreDenken('機械', (ans as {q_num:number;result:Result;result_a:Result;result_b:Result}[]).map(a => ({
         q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b,
       })), selectedQ)
+      const scorable = (ans as {q_num:number;result:Result;result_a:Result;result_b:Result}[]).map(a => ({
+        q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b,
+      }))
       map.set(s.exam_id, {
         exam_id: s.exam_id,
         score,
+        graded: gradedCount('機械', scorable, selectedQ),
+        total: answerableCount('機械', selectedQ),
         tagCount: ans.filter((a: {tag_id:number|null}) => a.tag_id !== null).length,
         hasDriveUrl: !!s.drive_url,
         memoCount: ans.filter((a: {memo:string|null}) => a.memo).length,
@@ -313,15 +334,36 @@ export default function DenkenHub() {
     setKikaiMap(map)
   }, [])
 
+  // 理論·電力·法規: 세션(PDF·선택문제) + 답안을 함께 읽어 점수까지 계산한다.
+  // 機械만 점수가 뜨고 나머지는 안 뜨던 원인이 여기서 답안을 안 읽었기 때문.
   const fetchGeneral = useCallback(async () => {
-    const { data } = await supabase
-      .from('denken_general_sessions')
-      .select('exam_id, subject, drive_url')
-    const map = new Map<string, boolean>()
-    for (const s of (data || [])) {
-      map.set(`${s.exam_id}__${s.subject}`, !!s.drive_url)
+    const [{ data: sess }, { data: ans }] = await Promise.all([
+      supabase.from('denken_general_sessions').select('exam_id, subject, drive_url, selected_q'),
+      supabase.from('denken_general_answers').select('exam_id, subject, q_num, result, result_a, result_b'),
+    ])
+
+    const pdfMap = new Map<string, boolean>()
+    const autoMap = new Map<string, AutoSummary>()
+
+    for (const row of (sess || []) as { exam_id: string; subject: string; drive_url: string | null; selected_q: number | null }[]) {
+      const subject = row.subject as Subject
+      const key = `${row.exam_id}__${subject}`
+      pdfMap.set(key, !!row.drive_url)
+
+      const rows = ((ans || []) as { exam_id: string; subject: string; q_num: number; result: Result; result_a: Result; result_b: Result }[])
+        .filter(a => a.exam_id === row.exam_id && a.subject === subject)
+        .map(a => ({ q_num: a.q_num, result: a.result, result_a: a.result_a, result_b: a.result_b }))
+
+      autoMap.set(key, {
+        score: scoreDenken(subject, rows, row.selected_q),
+        graded: gradedCount(subject, rows, row.selected_q),
+        total: answerableCount(subject, row.selected_q),
+        hasPdf: !!row.drive_url,
+        tagCount: 0,
+      })
     }
-    setGeneralMap(map)
+    setGeneralMap(pdfMap)
+    setGeneralAuto(autoMap)
   }, [])
 
   // 복습 태깅 (機械 전용 테이블 + 나머지 3과목 공용 테이블을 하나로 합친다)
@@ -374,6 +416,16 @@ export default function DenkenHub() {
     return map
   }, [sessions])
 
+  // 과목 구분 없이 자동채점 결과를 꺼내는 단일 창구
+  const getAuto = useCallback((examId: string, sub: Subject): AutoSummary | null => {
+    if (sub === '機械') {
+      const k = kikaiMap.get(examId)
+      if (!k) return null
+      return { score: k.score, graded: k.graded, total: k.total, hasPdf: k.hasDriveUrl, tagCount: k.tagCount }
+    }
+    return generalAuto.get(`${examId}__${sub}`) ?? null
+  }, [kikaiMap, generalAuto])
+
   const getSession = (examId: string, subject: Subject) =>
     sessionMap.get(`${examId}__${subject}`) ?? null
 
@@ -416,16 +468,35 @@ export default function DenkenHub() {
   }, [fetchSessions])
 
   // 통계
-  const totalAttempts  = sessions.filter(s => s.my_score !== null).length
-  const passedAttempts = sessions.filter(s => (s.my_score ?? 0) >= 60).length
+  // ── 유효 점수 (자동채점 우선, 없으면 수동 입력) ───────────────
+  // 요약·과목별 분석이 모두 여기서 나오므로, 풀이 UI에서 채점만 하면
+  // 허브에 따로 점수를 입력하지 않아도 전부 반영된다.
+  const effectiveScores = useMemo(() => {
+    const out: { examId: string; sub: Subject; score: number; auto: boolean }[] = []
+    for (const e of PAST_EXAMS) {
+      for (const sub of SUBJECTS) {
+        const a = getAuto(e.id, sub)
+        if (a && a.graded > 0) {
+          out.push({ examId: e.id, sub, score: a.score, auto: true })
+          continue
+        }
+        const m = sessionMap.get(`${e.id}__${sub}`)
+        if (m?.my_score != null) out.push({ examId: e.id, sub, score: m.my_score, auto: false })
+      }
+    }
+    return out
+  }, [getAuto, sessionMap])
+
+  const totalAttempts  = effectiveScores.length
+  const passedAttempts = effectiveScores.filter(x => x.score >= 60).length
 
   const subjectStats = useMemo(() => SUBJECTS.map(sub => {
-    const subs   = sessions.filter(s => s.subject === sub && s.my_score !== null)
-    const avg    = subs.length === 0 ? null : Math.round(subs.reduce((a, s) => a + (s.my_score ?? 0), 0) / subs.length)
-    const best   = subs.length === 0 ? null : Math.max(...subs.map(s => s.my_score ?? 0))
-    const passed = subs.filter(s => (s.my_score ?? 0) >= 60).length
+    const subs   = effectiveScores.filter(x => x.sub === sub)
+    const avg    = subs.length === 0 ? null : Math.round(subs.reduce((a, x) => a + x.score, 0) / subs.length)
+    const best   = subs.length === 0 ? null : Math.max(...subs.map(x => x.score))
+    const passed = subs.filter(x => x.score >= 60).length
     return { sub, count: subs.length, avg, best, passed }
-  }), [sessions])
+  }), [effectiveScores])
 
   // ── 회차 난이도 ────────────────────────────────────────────────
   const overrideMap = useMemo(
@@ -451,6 +522,20 @@ export default function DenkenHub() {
 
   // 난이도 판정 기준선 = 과목별 합격률 중앙값 (표를 고치면 기준선도 따라 움직인다)
   const medians = useMemo(() => computeMedians(rateList), [rateList])
+
+  // 복습 태깅한 문항 번호 (허브 셀에 그대로 보여준다)
+  const reviewQMap = useMemo(() => {
+    const m = new Map<string, number[]>()
+    for (const r of reviewRows) {
+      if (r.review !== 'todo') continue
+      const key = `${r.examId}__${r.subject}`
+      const arr = m.get(key) ?? []
+      arr.push(r.qNum)
+      m.set(key, arr)
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a - b)
+    return m
+  }, [reviewRows])
 
   // ── 복습 집계 ──────────────────────────────────────────────────
   const reviewTotals = useMemo(() => {
@@ -744,48 +829,81 @@ export default function DenkenHub() {
                                         )
                                       })()}
                                     </div>
-                                    <p className={`text-lg font-bold tabular-nums ${scoreColor(s?.my_score ?? null)}`}>
-                                      {s?.my_score != null ? `${s.my_score}点` : '—'}
-                                    </p>
-                                    {s?.memo && (
-                                      <p className="text-[10px] text-blue-500 mt-0.5 truncate">메모 있음</p>
-                                    )}
+                                    {(() => {
+                                      const auto = getAuto(exam.id, sub)
+                                      // 풀이 UI에서 채점한 게 있으면 그 값을 쓴다 (허브에 따로 입력할 필요 없음)
+                                      const hasAuto = !!auto && auto.graded > 0
+                                      const shown = hasAuto ? auto!.score : (s?.my_score ?? null)
+                                      const partial = hasAuto && auto!.graded < auto!.total
+                                      return (
+                                        <>
+                                          <p className={`text-lg font-bold tabular-nums ${scoreColor(shown)}`}>
+                                            {shown != null ? `${shown}点` : '—'}
+                                          </p>
+                                          {hasAuto && (
+                                            <p className="text-[9px] text-gray-600 -mt-0.5">
+                                              {partial
+                                                ? `채점중 ${auto!.graded}/${auto!.total}문`
+                                                : `자동 · ${auto!.total}문`}
+                                            </p>
+                                          )}
+                                          {!hasAuto && s?.my_score != null && (
+                                            <p className="text-[9px] text-gray-600 -mt-0.5">수동 입력</p>
+                                          )}
+                                        </>
+                                      )
+                                    })()}
+                                    {(() => {
+                                      // 메모 유무 대신, 복습 태깅한 문항을 그대로 보여준다
+                                      const qs = reviewQMap.get(`${exam.id}__${sub}`)
+                                      if (!qs || qs.length === 0) {
+                                        return s?.memo
+                                          ? <p className="text-[10px] text-blue-500 mt-0.5 truncate">메모 있음</p>
+                                          : null
+                                      }
+                                      return (
+                                        <p className="text-[10px] mt-0.5 truncate"
+                                          style={{ color: REVIEW_META.todo.color }}
+                                          title={`복습 대기: ${qs.map(q => `Q${q}`).join(', ')}`}>
+                                          🔖 {qs.slice(0, 5).map(q => `Q${q}`).join(' ')}
+                                          {qs.length > 5 && ` +${qs.length - 5}`}
+                                        </p>
+                                      )
+                                    })()}
                                   </button>
                                   {/* PDF 버튼: 機械는 전용 풀이 UI, 나머지는 모달 */}
-                                  {sub === '機械' ? (() => {
-                                    const ki = kikaiMap.get(exam.id)
+                                  {(() => {
+                                    const isKikai = sub === '機械'
+                                    const auto = getAuto(exam.id, sub)
+                                    const href = isKikai
+                                      ? `/dashboard/denken/kikai/${exam.id}`
+                                      : `/dashboard/denken/${encodeURIComponent(sub)}/${exam.id}`
+                                    const graded = auto && auto.graded > 0
                                     return (
                                       <button
-                                        onClick={() => router.push(`/dashboard/denken/kikai/${exam.id}`)}
-                                        className="flex flex-col items-end gap-0.5 shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition bg-violet-900/20 hover:bg-violet-900/40 text-violet-400"
-                                        title="機械 풀이 UI로 이동"
+                                        onClick={() => router.push(href)}
+                                        className={`flex flex-col items-end gap-0.5 shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                          isKikai
+                                            ? 'bg-violet-900/20 hover:bg-violet-900/40 text-violet-400'
+                                            : hasPdf
+                                            ? 'bg-blue-900/20 hover:bg-blue-900/40 text-blue-400'
+                                            : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
+                                        }`}
+                                        title="풀이 UI로 이동"
                                       >
                                         <span>풀기 →</span>
-                                        {ki && ki.score > 0 && (
-                                          <span className={ki.score >= 60 ? 'text-emerald-400' : 'text-yellow-400'}>{ki.score}점</span>
+                                        {graded && (
+                                          <span className={auto!.score >= 60 ? 'text-emerald-400' : 'text-yellow-400'}>
+                                            {auto!.score}점
+                                          </span>
                                         )}
-                                        {ki && ki.tagCount > 0 && (
-                                          <span className="text-violet-500 font-normal">{ki.tagCount}태그</span>
+                                        {isKikai && auto && auto.tagCount > 0 && (
+                                          <span className="text-violet-500 font-normal">{auto.tagCount}태그</span>
                                         )}
-                                        {ki?.hasDriveUrl && (
-                                          <span className="text-gray-600 font-normal">PDF✓</span>
-                                        )}
+                                        {hasPdf && <span className="text-gray-600 font-normal">PDF✓</span>}
                                       </button>
                                     )
-                                  })() : (
-                                    <button
-                                      onClick={() => router.push(`/dashboard/denken/${encodeURIComponent(sub)}/${exam.id}`)}
-                                      className={`flex flex-col items-end gap-0.5 shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                        hasPdf
-                                          ? 'bg-blue-900/20 hover:bg-blue-900/40 text-blue-400'
-                                          : 'bg-gray-800 text-gray-600 hover:bg-gray-700 hover:text-gray-400'
-                                      }`}
-                                      title="풀이 UI로 이동"
-                                    >
-                                      <span>풀기 →</span>
-                                      {hasPdf && <span className="text-gray-600 font-normal">PDF✓</span>}
-                                    </button>
-                                  )}
+                                  })()}
                                 </div>
 
                                 {/* 인라인 편집 패널 */}
