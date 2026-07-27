@@ -17,6 +17,7 @@ import {
   DENKEN_RATE_BASELINE, DENKEN_RATE_MAP, TIER_META,
   RATIO_THRESHOLD, OVERALL_THRESHOLD,
   overallTier, subjectTier, ratioOf, isAdjusted, isAdjustSignal, mergeRate, computeMedians,
+  type RateTier,
   type ExamRate, type RateOverrideRow, type SubjectMedians,
 } from '@/lib/constants-denken-rate'
 
@@ -523,6 +524,43 @@ export default function DenkenHub() {
   // 난이도 판정 기준선 = 과목별 합격률 중앙값 (표를 고치면 기준선도 따라 움직인다)
   const medians = useMemo(() => computeMedians(rateList), [rateList])
 
+  // ── 난이도 존별 성적 ───────────────────────────────────────────
+  // 전체 평균만 보면 "쉬운 회차를 많이 풀어서 평균이 높은 것"과
+  // "어려운 회차에서도 버티는 것"이 구분되지 않는다.
+  // 그래서 각 회차를 그 과목의 난이도 존(난/보통/순)으로 나눠 따로 낸다.
+  //   존 판정은 회차 난이도 탭과 동일한 기준(과목 중앙값 대비 배율 + 기준점 인하).
+  const zoneStats = useMemo(() => {
+    const out = new Map<Subject, Record<RateTier, { scores: number[]; mean: number | null; sd: number | null; pass: number }>>()
+    for (const sub of SUBJECTS) {
+      const buckets: Record<RateTier, number[]> = { hard: [], mid: [], easy: [], none: [] }
+      for (const x of effectiveScores) {
+        if (x.sub !== sub) continue
+        const er = rateMap.get(x.examId)
+        const sr = er?.subjects[sub]
+        const tier = subjectTier(sr?.rate ?? null, sr?.pass ?? null, medians[sub], er?.nendo)
+        buckets[tier].push(x.score)
+      }
+      const rec = {} as Record<RateTier, { scores: number[]; mean: number | null; sd: number | null; pass: number }>
+      for (const t of ['hard', 'mid', 'easy', 'none'] as RateTier[]) {
+        const v = buckets[t]
+        const mean = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
+        // 표본표준편차(n-1). 2회 미만이면 정의되지 않으므로 null.
+        const sd = v.length >= 2
+          ? Math.sqrt(v.reduce((a, b) => a + (b - mean!) ** 2, 0) / (v.length - 1))
+          : null
+        rec[t] = {
+          scores: v,
+          mean: mean === null ? null : Math.round(mean * 10) / 10,
+          sd: sd === null ? null : Math.round(sd * 10) / 10,
+          pass: v.filter(x => x >= 60).length,
+        }
+      }
+      out.set(sub, rec)
+    }
+    return out
+  }, [effectiveScores, rateMap, medians])
+
+
   // 복습 태깅한 문항 번호 (허브 셀에 그대로 보여준다)
   const reviewQMap = useMemo(() => {
     const m = new Map<string, number[]>()
@@ -999,6 +1037,71 @@ export default function DenkenHub() {
                         <span className="text-[10px] text-gray-600">합격 60点</span>
                         <span className="text-[10px] text-gray-700">100</span>
                       </div>
+
+                      {/* 난이도 존별 성적 */}
+                      {(() => {
+                        const z = zoneStats.get(sub)
+                        if (!z) return null
+                        const tiers: RateTier[] = ['hard', 'mid', 'easy']
+                        const shown = tiers.filter(t => z[t].scores.length > 0)
+                        if (shown.length === 0) return null
+                        const thin = shown.some(t => z[t].scores.length < 3)
+                        const hard = z.hard.mean, easy = z.easy.mean
+                        const gap = hard !== null && easy !== null ? Math.round((easy - hard) * 10) / 10 : null
+                        return (
+                          <div className="mt-4 border-t border-gray-800 pt-3">
+                            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">
+                              난이도 존별
+                            </p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {tiers.map(t => {
+                                const d = z[t]
+                                const meta = TIER_META[t]
+                                return (
+                                  <div key={t} className="rounded-lg border p-2 text-center"
+                                    style={{ backgroundColor: meta.bg, borderColor: meta.border }}>
+                                    <p className="text-[9px] mb-1" style={{ color: meta.color }}>
+                                      {meta.label}
+                                    </p>
+                                    {d.scores.length === 0 ? (
+                                      <p className="text-sm text-gray-700">—</p>
+                                    ) : (
+                                      <>
+                                        <p className="text-lg font-black tabular-nums"
+                                          style={{ color: meta.color }}>
+                                          {d.mean}
+                                        </p>
+                                        <p className="text-[9px] text-gray-500 tabular-nums">
+                                          {d.sd === null ? '편차 —' : `±${d.sd}`}
+                                        </p>
+                                        <p className="text-[9px] text-gray-600 mt-0.5">
+                                          {d.scores.length}회 · 합격 {d.pass}
+                                        </p>
+                                      </>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            {gap !== null && (
+                              <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                                순회차 − 난회차 = <span className="tabular-nums font-bold text-gray-300">{gap > 0 ? '+' : ''}{gap}点</span>
+                                {' — '}
+                                {Math.abs(gap) <= 5
+                                  ? '회차 난이도에 거의 흔들리지 않는다.'
+                                  : gap > 0
+                                  ? '난회차에서 점수가 떨어진다. 그만큼이 뽑기 리스크다.'
+                                  : '난회차 쪽이 오히려 높다 — 표본이 적거나 최근 실력이 오른 것.'}
+                              </p>
+                            )}
+                            {thin && (
+                              <p className="text-[10px] text-gray-700 mt-1 leading-relaxed">
+                                존별 표본이 3회 미만인 곳이 있다. 편차는 참고만.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </>
                   )}
                   {sessions.filter(s => s.subject === sub && s.memo).length > 0 && (
