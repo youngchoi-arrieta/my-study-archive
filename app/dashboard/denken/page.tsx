@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { scoreDenken, examLabelFromId, denkenHeldKey, type Result } from '@/lib/constants-denken'
+import { scoreDenken, examLabelFromId, denkenHeldKey, DENKEN_EXAMS, type Result } from '@/lib/constants-denken'
 import { KIKAI_TAG_MAP, type KikaiTag } from '@/lib/constants-denken-kikai'
 import {
   REVIEW_META, reviewHeatStyle, EMPTY_REVIEW_COUNT, addReview,
@@ -27,19 +27,11 @@ type DenkenExam = {
   label: string
 }
 
-// 시험 라벨은 lib/constants-denken 의 examLabelFromId(id) 로 생성 → 시험지 원문과 일치
-const PAST_EXAMS: DenkenExam[] = [
-  ...([2026, 2025, 2024, 2023].flatMap(y => {
-    const mk = (id: string, calYear: number): DenkenExam =>
-      ({ id, year: calYear, label: examLabelFromId(id) })
-    const exams: DenkenExam[] = [ mk(`dk_${y}_1`, y) ]
-    if (y !== 2026) exams.push(mk(`dk_${y}_2`, y))
-    return exams
-  })),
-  ...[2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010,2009].map(y => ({
-    id: `dk_${y}_0`, year: y, label: examLabelFromId(`dk_${y}_0`),
-  })),
-]
+// 목록은 lib/constants-denken 의 DENKEN_EXAMS 단일 소스에서 그대로 파생한다.
+// (여기서 따로 만들면 상세 화면의 목록과 어긋나 "눌러 들어가면 없다"가 된다)
+const PAST_EXAMS: DenkenExam[] = DENKEN_EXAMS.map(e => ({
+  id: e.id, year: e.year, label: examLabelFromId(e.id),
+}))
 
 // 실시일(시행월) 기준 내림차순: 2026.3 → 2025.8 → 2025.3 → 2024.8 → 2024.3 → …
 const SORTED_EXAMS = [...PAST_EXAMS].sort((a, b) => denkenHeldKey(b.id) - denkenHeldKey(a.id))

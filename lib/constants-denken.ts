@@ -151,10 +151,18 @@ export function denkenHeldKey(id: string): number {
 // ── 시험 목록 (단일 소스) ───────────────────────────────────────────
 export type DenkenExam = { id: string; year: number; month: number | null }
 
+// ⚠ 이 배열이 앱 전체의 기출 목록 단일 소스다.
+//   허브 목록 · 機械 상세 · 理論/電力/法規 상세가 모두 여기서 파생된다.
+//   따로 목록을 복사해두면 화면마다 있는 회차/없는 회차가 갈려서
+//   "허브에는 보이는데 눌러 들어가면 없다"는 상태가 된다.
 // id 값은 절대 변경 금지(사용자 저장 데이터와 연결). year/month는 ID에서 유도.
-const DENKEN_EXAM_IDS = [
+export const DENKEN_EXAM_IDS = [
+  // 연 2회 체제 (앱 라벨 기준: _1 = 3월, _2 = 8월)
   'dk_2026_1', 'dk_2025_2', 'dk_2025_1', 'dk_2024_2', 'dk_2024_1', 'dk_2023_2', 'dk_2023_1',
-  'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0', 'dk_2016_0', 'dk_2015_0', 'dk_2014_0',
+  // 연 1회 체제
+  'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0',
+  'dk_2016_0', 'dk_2015_0', 'dk_2014_0', 'dk_2013_0', 'dk_2012_0', 'dk_2011_0',
+  'dk_2010_0', 'dk_2009_0', 'dk_2008_0',
 ]
 
 export const DENKEN_EXAMS: DenkenExam[] = DENKEN_EXAM_IDS.map(id => ({ id, ...deriveDenkenExam(id) }))

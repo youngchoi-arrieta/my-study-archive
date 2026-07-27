@@ -1,6 +1,6 @@
 // 電験三種 機械 과목 전용 constants (태그 · 유형)
 // 시험 구조/채점/연호 라벨은 lib/constants-denken.ts 로 일원화됨
-import { examLabelFromId, deriveDenkenExam } from './constants-denken'
+import { examLabelFromId, deriveDenkenExam, DENKEN_EXAM_IDS } from './constants-denken'
 
 export type KikaiTag = {
   id: number
@@ -37,14 +37,9 @@ export type KikaiExam = {
   totalQ: 18   // A문제 14 + B문제 4 = 18문제 (17/18번은 선택)
 }
 
-// 라벨은 ID에서 유도: dk_{Y}_1 → Y.3, dk_{Y}_2 → Y.8, dk_{Y}_0 → Y (연호 미사용)
-// id 값은 절대 변경 금지(저장 데이터와 연결).
-const KIKAI_EXAM_IDS = [
-  'dk_2026_1', 'dk_2025_2', 'dk_2025_1', 'dk_2024_2', 'dk_2024_1', 'dk_2023_2', 'dk_2023_1',
-  'dk_2022_0', 'dk_2021_0', 'dk_2020_0', 'dk_2019_0', 'dk_2018_0', 'dk_2017_0', 'dk_2016_0', 'dk_2015_0', 'dk_2014_0',
-]
-
-export const KIKAI_EXAMS: KikaiExam[] = KIKAI_EXAM_IDS.map(id => {
+// 목록은 constants-denken 의 DENKEN_EXAM_IDS 를 그대로 따른다.
+// (여기에 목록을 복사해두면 허브와 어긋나서 "목록엔 있는데 열면 없다"가 된다)
+export const KIKAI_EXAMS: KikaiExam[] = DENKEN_EXAM_IDS.map(id => {
   const { year } = deriveDenkenExam(id)
   return { id, year, label: examLabelFromId(id), totalQ: 18 as const }
 })
