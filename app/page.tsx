@@ -11,8 +11,11 @@ function ExamCard({
   badge?: string
 }) {
   const acquired = badge === '취득'
+  const longTerm = badge === '장기'
   const badgeCls = acquired
     ? 'bg-green-600/30 text-green-400'
+    : longTerm
+    ? 'bg-gray-700/50 text-gray-400'
     : 'bg-blue-600/30 text-blue-400'
   return (
     <Link href={href} className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition h-full flex flex-col">
@@ -102,6 +105,14 @@ export default function Home() {
             title="電験三種"
             desc="20개년 기출 · 과목별 오답메모"
             badge="준비 중"
+          />
+          <ExamCard
+            href="/dashboard/denken12"
+            emoji="🗼"
+            org="일본 경제산업성 · 연 1회"
+            title="電験一種・二種"
+            desc="一次 4과목 · 二次 記述式 · 1·2종 통합"
+            badge="장기"
           />
           {/* 하단 행 — 취득 완료 */}
           <ExamCard
