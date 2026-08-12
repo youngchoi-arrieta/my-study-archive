@@ -84,12 +84,26 @@ export default function DashboardHome() {
         {/* 다른 시험 */}
         <div className="border-t border-gray-800 pt-6">
           <p className="text-xs text-gray-600 mb-3">다른 시험</p>
-          <Link
-            href="/dashboard/denkoshi"
-            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition"
-          >
-            🗾 第二種電気工事士 →
-          </Link>
+          <div className="flex flex-col gap-2">
+            <Link
+              href="/dashboard/denkoshi"
+              className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition"
+            >
+              🗾 第二種電気工事士 →
+            </Link>
+            <Link
+              href="/dashboard/denken"
+              className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition"
+            >
+              🏭 電験三種 →
+            </Link>
+            <Link
+              href="/dashboard/denken12"
+              className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition"
+            >
+              🗼 電験一種・二種 <span className="text-[10px] text-gray-700">연 1회 · 一次/二次</span> →
+            </Link>
+          </div>
         </div>
         <div className="border-t border-gray-800 pt-6">
           <p className="text-xs text-gray-600 mb-3">진로 계획</p>
