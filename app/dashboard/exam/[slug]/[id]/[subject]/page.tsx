@@ -13,9 +13,10 @@ import { supabase } from '@/lib/supabase'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
-  EXAM_MAP, getSubjectSpec, parseYear,
+  EXAM_MAP, getSubjectSpec, parseExamRound,
   cycleResult, normalizeSubs, round1,
   markGroupScore, markSubjectScore, markGradedCount, markAnswerable,
+  cutChecks, isPassed,
   essayScore, essayPicked, clampEssayScore,
   type Result, type EssayAnswer,
 } from '@/lib/constants-exams'
@@ -41,7 +42,9 @@ export default function ExamSolvePage() {
 
   const spec = EXAM_MAP.get(slug)
   const sp = spec ? getSubjectSpec(spec, subjectSlug) : undefined
-  const year = spec ? parseYear(spec, examId) : null
+  const parsed = spec ? parseExamRound(spec, examId) : null
+  const year = parsed?.year ?? null
+  const roundNo = parsed?.round ?? null
   const isEssay = sp?.mode === 'essay'
 
   // ── 공통 세션(PDF/메모) ───────────────────────────────────────────
@@ -216,7 +219,8 @@ export default function ExamSolvePage() {
   if (!spec || !sp || year === null) { notFound(); return null }
 
   const score = isEssay ? eScore : markScore
-  const passed = score >= sp.passMark
+  const cuts = isEssay ? [] : cutChecks(slug, sp, mark)
+  const passed = isEssay ? score >= sp.passMark : isPassed(slug, sp, score, mark)
   const accent = sp.accent
 
   const activeRow = rows.find(r => r.q_num === activeQ)
@@ -229,7 +233,9 @@ export default function ExamSolvePage() {
           <Link href={`/dashboard/exam/${slug}`} className="text-gray-500 hover:text-white text-xs transition">
             ← {spec.name}
           </Link>
-          <span className="text-sm font-bold text-white">{spec.yearLabel(year)}</span>
+          <span className="text-sm font-bold text-white">
+            {spec.yearLabel(year)}{roundNo ? ` 제${roundNo}회` : ''}
+          </span>
           <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>
             {sp.name}
           </span>
@@ -408,6 +414,17 @@ export default function ExamSolvePage() {
                 style={{ width: `${Math.min(100, (score / sp.fullMark) * 100)}%`,
                   backgroundColor: passed ? '#10b981' : score > 0 ? '#eab308' : '#6b7280' }} />
             </div>
+            {cuts.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {cuts.map(c => (
+                  <p key={c.label} className="text-[10px] flex items-center gap-1">
+                    <span className={c.ok ? 'text-emerald-400' : 'text-red-400'}>{c.ok ? '✓' : '✕'}</span>
+                    <span className="text-gray-500">{c.label} 足切り {c.got}/{c.need}문</span>
+                    {!c.ok && <span className="text-red-400">미달</span>}
+                  </p>
+                ))}
+              </div>
+            )}
             {sp.note && <p className="text-[10px] text-gray-700 mt-2">{sp.note}</p>}
           </div>
         </div>

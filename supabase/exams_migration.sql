@@ -1,9 +1,10 @@
 -- 범용 시험 프레임 (에너지관리사 전기 · 기술사 1차 · 한국 기술고시)
 -- ===================================================================
 -- 세 시험이 한 벌의 테이블을 공유한다. exam_slug 로 구분.
---   exam_slug ∈ { 'enekan', 'gijutsushi', 'gosi' }
---   exam_id   = {prefix}_{year}   예) enk_2024, gjs_2023, gosi_2022
---   subject   = SubjectSpec.slug  예) kamoku2, senmon, jagi
+--   exam_slug ∈ { 'enekan', 'gijutsushi', 'gosi', 'sekokan1', 'dentsu-shunin', 'koutan' }
+--   exam_id   = {prefix}_{year}        (연 1회)  예) enk_2024, sk1_2023
+--             = {prefix}_{year}_{회}   (연 2회)  예) dts_2025_2, ktn_2024_1
+--   subject   = SubjectSpec.slug  예) kamoku2, senmon, jagi, ichiji, setsubi
 --
 -- 채점 모델은 lib/constants-exams.ts 참고:
 --   marksheet 과목 → 블록별 小問 정오 배열(subs_json)

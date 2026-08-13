@@ -130,6 +130,30 @@ export default function Home() {
             desc="基礎·適性·専門 · 각 과목 50%"
             badge="장기"
           />
+          <ExamCard
+            href="/dashboard/exam/sekokan1"
+            emoji="🏗"
+            org="建設業振興基金"
+            title="1級電気工事施工管理技士"
+            desc="一次 선택해답+応用能力 足切り · 二次 経験記述 · 9년치"
+            badge="장기"
+          />
+          <ExamCard
+            href="/dashboard/exam/dentsu-shunin"
+            emoji="📡"
+            org="日本データ通信協会 · 연 2회"
+            title="電気通信主任技術者 (伝送交換)"
+            desc="システム·設備·法規 · 設備는 150점중 90점"
+            badge="장기"
+          />
+          <ExamCard
+            href="/dashboard/exam/koutan"
+            emoji="🔗"
+            org="日本データ通信協会 · 연 2회"
+            title="工事担任者 (総合通信)"
+            desc="基礎·技術及び理論·法規 · 각 100점중 60점"
+            badge="장기"
+          />
           {/* 하단 행 — 취득 완료 */}
           <ExamCard
             href="/dashboard/denkoshi/jitsugi"

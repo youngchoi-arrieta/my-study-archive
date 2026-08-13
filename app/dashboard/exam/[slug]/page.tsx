@@ -11,10 +11,10 @@ import Link from 'next/link'
 import { useParams, useRouter, notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import {
-  EXAM_MAP, getSubjectSpec, makeExamId,
-  markSubjectScore, markGradedCount, markAnswerable,
+  EXAM_MAP, getSubjectSpec, examRounds,
+  markSubjectScore, markGradedCount, markAnswerable, isPassed,
   essayScore, essayPicked, normalizeSubs,
-  type SubjectSpec, type Result, type EssayAnswer,
+  type SubjectSpec, type Result, type EssayAnswer, type ExamRound,
 } from '@/lib/constants-exams'
 import {
   buildRate, TIER_META, medianOf, ratioOf, tierOf,
@@ -71,10 +71,8 @@ export default function ExamHub() {
   const [loading, setLoading] = useState(true)
   const [reviewMissing, setReviewMissing] = useState(false)
 
-  const examIds = useMemo(
-    () => (spec ? spec.years.map(y => makeExamId(spec, y)) : []),
-    [spec],
-  )
+  const rounds: ExamRound[] = useMemo(() => (spec ? examRounds(spec) : []), [spec])
+  const examIds = useMemo(() => rounds.map(r => r.id), [rounds])
 
   const load = useCallback(async () => {
     if (!spec) return
@@ -100,11 +98,8 @@ export default function ExamHub() {
   const ovMap = useMemo(() => new Map(overrides.map(o => [o.exam_id, o])), [overrides])
   const rates: ExamRate[] = useMemo(() => {
     if (!spec) return []
-    return spec.years.map(y => {
-      const id = makeExamId(spec, y)
-      return buildRate(spec.examIdPrefix, id, y, ovMap.get(id))
-    })
-  }, [spec, ovMap])
+    return rounds.map(r => buildRate(spec.examIdPrefix, r.id, r.year, ovMap.get(r.id)))
+  }, [spec, rounds, ovMap])
   const rateMap = useMemo(() => new Map(rates.map(r => [r.examId, r])), [rates])
   const median = useMemo(() => medianOf(rates.map(r => r.rate)), [rates])
 
@@ -142,7 +137,7 @@ export default function ExamHub() {
         const graded = markGradedCount(sp, groups)
         subjScore.set(k, {
           score, graded, total: markAnswerable(sp),
-          pass: score >= sp.passMark, started: graded > 0,
+          pass: isPassed(slug, sp, score, groups), started: graded > 0,
         })
       } else {
         const ea: EssayAnswer[] = rows.filter(r => r.q_num >= 1)
@@ -156,7 +151,7 @@ export default function ExamHub() {
       }
     }
     return { subjScore, reviewMap }
-  }, [answers, spec])
+  }, [answers, spec, slug])
 
   if (!spec) { notFound(); return null }
 
@@ -202,7 +197,7 @@ export default function ExamHub() {
               <div className="bg-gray-900 rounded-xl p-4 text-center">
                 <p className="text-xs text-gray-500 mb-1">풀이 (과목)</p>
                 <p className="text-2xl font-bold">{started.length}
-                  <span className="text-sm text-gray-500 ml-1">/ {spec.years.length * spec.subjects.length}</span></p>
+                  <span className="text-sm text-gray-500 ml-1">/ {rounds.length * spec.subjects.length}</span></p>
               </div>
               <div className="bg-gray-900 rounded-xl p-4 text-center">
                 <p className="text-xs text-gray-500 mb-1">합격 기준 도달</p>
@@ -218,13 +213,13 @@ export default function ExamHub() {
 
             {loading ? <p className="text-gray-500 text-sm">불러오는 중...</p> : (
               <div className="space-y-3">
-                {spec.years.map(y => {
-                  const examId = makeExamId(spec, y)
+                {rounds.map(rd => {
+                  const examId = rd.id
                   const r = rateMap.get(examId)
                   return (
                     <div key={examId} className="bg-gray-900 rounded-xl overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800">
-                        <p className="text-sm font-semibold text-gray-300">{spec.yearLabel(y)}</p>
+                        <p className="text-sm font-semibold text-gray-300">{rd.label}</p>
                         <span className="ml-auto"><RatePill rate={r?.rate ?? null} median={median} /></span>
                       </div>
                       <div className="grid gap-px bg-gray-800"
@@ -284,7 +279,9 @@ export default function ExamHub() {
             <div className="bg-gray-900 rounded-xl overflow-hidden">
               {rates.map(r => (
                 <div key={r.examId} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-800 last:border-0">
-                  <span className="text-sm text-gray-300 tabular-nums w-32">{spec.yearLabel(r.year)}</span>
+                  <span className="text-sm text-gray-300 tabular-nums w-40">
+                    {rounds.find(x => x.id === r.examId)?.label ?? spec.yearLabel(r.year)}
+                  </span>
                   <RatePill rate={r.rate} median={median} />
                   {r.note && <span className="text-[10px] text-gray-600">{r.note}</span>}
                 </div>
@@ -322,13 +319,11 @@ export default function ExamHub() {
                   {spec.subjects.map(s => (
                     <div key={s.slug} className="text-[9px] text-gray-500 text-center pb-1 truncate" title={s.name}>{s.short}</div>
                   ))}
-                  {spec.years.map(y => {
-                    const examId = makeExamId(spec, y)
-                    return (
-                      <FragmentRow key={examId} examId={examId} label={spec.yearLabel(y).split(' ')[0]}
-                        subjects={spec.subjects} reviewMap={reviewMap} />
-                    )
-                  })}
+                  {rounds.map(rd => (
+                    <FragmentRow key={rd.id} examId={rd.id}
+                      label={rd.round ? `${rd.year}-${rd.round}` : String(rd.year)}
+                      subjects={spec.subjects} reviewMap={reviewMap} />
+                  ))}
                 </div>
               </div>
             </div>

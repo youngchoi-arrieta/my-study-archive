@@ -32,6 +32,14 @@ const BASELINE: Record<string, Record<number, number>> = {
   },
   // 기술고시는 합격률 개념이 약해 baseline 없음 (전량 오버라이드/빈칸)
   gosi: {},
+  // 1級電気工事施工管理技士 — 一次 합격률 (二次는 60% 전후로 별도)
+  sk1: {
+    2024: 38.3, 2023: 40.6, 2022: 38.3, 2021: 53.3,
+    2020: 38.1, 2019: 40.7, 2018: 56.1,
+  },
+  // 전기통신 계열은 연 2회라 회차 단위 합격률이 필요 — baseline 없이 오버라이드로 채운다
+  dts: {},
+  ktn: {},
 }
 
 export function baselineRate(prefix: string, year: number): number | null {
