@@ -114,6 +114,22 @@ export default function Home() {
             desc="一次 4과목 · 二次 記述式 · 1·2종 통합"
             badge="장기"
           />
+          <ExamCard
+            href="/dashboard/exam/enekan"
+            emoji="⚡"
+            org="省エネルギーセンター"
+            title="エネルギー管理士 (전기)"
+            desc="必須 I + 選択(전기) II·III·IV · 각 과목 60%"
+            badge="장기"
+          />
+          <ExamCard
+            href="/dashboard/exam/gijutsushi"
+            emoji="🎌"
+            org="日本技術士会"
+            title="技術士 1차 (電気電子)"
+            desc="基礎·適性·専門 · 각 과목 50%"
+            badge="장기"
+          />
           {/* 하단 행 — 취득 완료 */}
           <ExamCard
             href="/dashboard/denkoshi/jitsugi"
@@ -133,22 +149,22 @@ export default function Home() {
           />
         </div>
 
-        {/* 심화 연구 */}
-        <p className="text-xs text-gray-700 mb-2 ml-1">🔬 심화 연구 (이해도 추적)</p>
-        <div className="grid grid-cols-1 gap-3 mb-6">
+        {/* 한국 — 진행 중 */}
+        <p className="text-xs text-gray-700 mb-2 ml-1">🇰🇷 한국</p>
+        <div className="grid grid-cols-2 gap-3 mb-6">
           <ExamCard
-            href="/dashboard/research"
-            emoji="🔬"
-            org="電験 1·2종 / 기술고시"
-            title="심화 연구"
-            desc="논술·심화 기출 · 솔루션 노트 · 미착수/연구중/이해완료"
-            badge="준비 중"
+            href="/dashboard/exam/gosi"
+            emoji="🎓"
+            org="인사혁신처 5급 공채"
+            title="기술고시 전기직"
+            desc="2차 논술 필수 3과목 · 자기채점 · 솔루션 노트"
+            badge="장기"
           />
         </div>
 
         {/* 한국 — 취득 완료 */}
         <p className="text-xs text-gray-700 mb-2 ml-1">🇰🇷 한국 (취득 완료)</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 mb-6">
           <ExamCard
             href="/dashboard"
             emoji="⚡"

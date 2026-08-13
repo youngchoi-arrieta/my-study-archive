@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
   GRADE_META, SUBJECT_ACCENT,
@@ -55,6 +56,15 @@ function toPreviewUrl(url: string): string | null {
 
 const ALL = [...ICHIJI_SUBJECTS, ...NIJI_SUBJECTS] as string[]
 
+// 리치 에디터 메모는 HTML로 저장된다 → 목록 미리보기용으로 태그를 벗겨 한 줄 텍스트만 뽑는다
+function stripHtml(html: string): string {
+  if (!html) return ''
+  if (typeof window === 'undefined') return html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim()
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim()
+}
+
 export default function Denken12SolvePage() {
   const params  = useParams()
   const examId  = params.id as string
@@ -95,7 +105,6 @@ export default function Denken12SolvePage() {
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
   )
 
-  const memoRef    = useRef<HTMLTextAreaElement>(null)
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartW = useRef(480)
@@ -138,7 +147,6 @@ export default function Denken12SolvePage() {
   }, [examId, subject])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { memoRef.current?.focus() }, [activeQ])
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (session?.id) return session.id
@@ -433,10 +441,13 @@ export default function Denken12SolvePage() {
           </div>
 
           <div className="flex-1 p-3 flex flex-col min-h-0">
-            <textarea ref={memoRef} key={activeQ} value={active?.memo ?? ''}
-              onChange={e => changeMemo(activeQ, e.target.value)} onBlur={() => blurMemo(activeQ)}
-              placeholder={`問${activeQ} — 오답 메모, 논점, 단어...`}
-              className="flex-1 bg-[#0f1c2e] rounded-xl px-3 py-3 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/40 placeholder-gray-700 resize-none leading-relaxed" />
+            <DenkenMemoEditor
+              key={activeQ}
+              content={active?.memo ?? ''}
+              onChange={val => changeMemo(activeQ, val)}
+              onBlur={() => blurMemo(activeQ)}
+              placeholder={`問${activeQ} — 풀이 과정·논점·막힌 부분 · 수식(Σ)·이미지 삽입 가능`}
+            />
           </div>
 
           {/* 복습 목록 */}
@@ -453,7 +464,7 @@ export default function Denken12SolvePage() {
                         activeQ === r.q_num ? 'bg-blue-900/40' : 'hover:bg-[#0f1c2e]'}`}>
                       <span className="text-[10px] font-bold mt-0.5 shrink-0 text-gray-400">問{r.q_num}</span>
                       <span className="text-[11px] text-gray-400 truncate">
-                        {r.memo.trim() || <span className="text-gray-700">메모 없음</span>}
+                        {stripHtml(r.memo) || <span className="text-gray-700">메모 없음</span>}
                       </span>
                       <span className="text-[9px] shrink-0 ml-auto" style={{ color: REVIEW_META[r.review!].color }}>
                         {REVIEW_META[r.review!].icon}
