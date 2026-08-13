@@ -14,7 +14,7 @@ import { compressToBase64 } from '@/lib/imageUtils'
 type CardType = 'basic' | 'multi' | 'cloze' | 'occlusion'
 type Field = { name: string; value: string; type: 'text' | 'rich' | 'image'; canBeGiven?: boolean }
 type Card = { id: string; deck_id: string; card_type: CardType; fields: Field[]; occlusion?: OcclusionData; created_at: string }
-type Deck = { id: string; name: string; description: string | null; exam_type: string | null }
+type Deck = { id: string; name: string; description: string | null; exam_type: string | null; book_id?: string | null }
 
 const TYPE_LABELS: Record<CardType, string> = {
   basic: '🔵 Basic', multi: '🟣 Multi-field', cloze: '🟠 Cloze', occlusion: '🔴 Occlusion',
@@ -249,7 +249,11 @@ export default function DeckEditPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-2xl mx-auto">
-        <button onClick={() => router.push(deck?.exam_type ? `/flashcard?exam=${deck.exam_type}` : '/flashcard')} className="text-gray-400 hover:text-white text-sm mb-4 block">← 덱 목록</button>
+        <button onClick={() => router.push(
+          deck?.exam_type
+            ? `/flashcard?exam=${deck.exam_type}${deck.book_id ? `&book=${deck.book_id}` : ''}`
+            : '/flashcard'
+        )} className="text-gray-400 hover:text-white text-sm mb-4 block">← 덱 목록</button>
         <div className="flex items-start justify-between mb-6">
           <div className="flex-1 mr-4">
             {editingDeck ? (
