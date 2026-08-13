@@ -18,6 +18,7 @@ import {
   ICHIJI_SUBJECTS, NIJI_SUBJECTS, SUBJECT_ACCENT,
   NIJI_STRUCTURE, NIJI_FULL_MARK, NIJI_PASS_MARK,
   ichijiStructure, examsOf, examLabel, scheduleNote,
+  PAST_PAPER_URL, PAST_PAPER_COVERAGE,
   scoreIchiji, gradedCount, answerableCount, normalizeSubs, defaultSubCount,
   scoreNiji, nijiPickedCount, round1,
   type Denken12Grade, type Denken12Subject, type IchijiSubject, type NijiSubject,
@@ -29,6 +30,7 @@ import {
   type Denken12Rate, type Denken12RateOverride,
 } from '@/lib/constants-denken12-rate'
 import { REVIEW_META, EMPTY_REVIEW_COUNT, addReview, reviewHeatStyle, type ReviewState, type ReviewCount } from '@/lib/constants-denken-review'
+import { PastPaperBar } from '@/app/components/PastPaperBar'
 
 type AnswerRow = {
   exam_id: string
@@ -95,6 +97,7 @@ export default function Denken12Hub() {
   const [loading, setLoading]     = useState(true)
   const [reviewMissing, setReviewMissing] = useState(false)
 
+  const gm     = GRADE_META[grade]
   const exams  = useMemo(() => examsOf(grade), [grade])
   const examIds = useMemo(() => exams.map(e => e.id), [exams])
 
@@ -298,6 +301,19 @@ export default function Denken12Hub() {
               합격 {NIJI_PASS_MARK}点 + 각 과목 평균점 이상(足切り) · 난회차엔 3点씩 인하
             </p>
           </div>
+        </div>
+
+        {/* 공식 과년도 배포 페이지 */}
+        <div className="mb-6">
+          <PastPaperBar
+            links={[{
+              label: `電気技術者試験センター · ${gm.ja} 問題と解答`,
+              url: PAST_PAPER_URL[grade],
+              coverage: PAST_PAPER_COVERAGE,
+              note: '과년도 사용에 허락·사용료 불필요 (출처 표기 필요)',
+            }]}
+            accent={gm.accent}
+          />
         </div>
 
         {/* 탭 */}

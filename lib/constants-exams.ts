@@ -74,6 +74,18 @@ export type ExamSpec = {
   subjects: SubjectSpec[]
   tableName: string      // supabase 테이블 접두
   intro: string
+  pastPapers?: PastPaperLink[]   // 공식 과년도 배포 페이지
+}
+
+// 공식 시험기관의 과년도 문제·정답 배포 페이지
+// coverage 는 "그 페이지에서 실제로 몇 년치를 받을 수 있는가".
+// 여기가 중요한 이유: 기관마다 공개 범위가 천차만별이라
+// 링크만 걸어두면 헛걸음한다. 시공관리는 공식이 최근분만 올린다.
+export type PastPaperLink = {
+  label: string
+  url: string
+  coverage: string
+  note?: string
 }
 
 // 서기 → 일본 연호
@@ -260,6 +272,12 @@ export const EXAM_SPECS: ExamSpec[] = [
     yearLabel: jpLabel, examIdPrefix: 'enk', years: yearsDesc(2026, 2010),
     subjects: ENEKAN_SUBJECTS, tableName: 'enekan',
     intro: '必須 課目I + 選択(전기) 課目II·III·IV · 마크시트 · 각 과목 60% 합격. 전기 分野 4과목만 다룬다.',
+    pastPapers: [{
+      label: '省エネルギーセンター · 過去の試験問題',
+      url: 'https://www.eccj.or.jp/mgr1/test_past/index.html',
+      coverage: '平成22년도 ~ 최신 (약 16년치)',
+      note: '課目별로 問題/解答 PDF가 따로. 개인 이용 범위 내 사용 가능',
+    }],
   },
   {
     slug: 'gijutsushi', name: '技術士 1차 (電気電子)', emoji: '🎌',
@@ -269,6 +287,19 @@ export const EXAM_SPECS: ExamSpec[] = [
     yearLabel: jpLabel, examIdPrefix: 'gjs', years: yearsDesc(2026, 2010),
     subjects: GIJUTSUSHI_SUBJECTS, tableName: 'gijutsushi',
     intro: '基礎·適性·専門(電気電子) 3과목 마크시트 · 각 과목 50% 합격. 専門은 35문 중 25문 선택.',
+    pastPapers: [
+      {
+        label: '日本技術士会 · 過去問題(第一次試験)',
+        url: 'https://www.engineer.or.jp/c_categories/index02021.html',
+        coverage: '令和元년도(再) ~ 최신',
+        note: '전 부문 한 PDF에 묶여 있음 · 저작권 문제로 일부 생략·개변된 문항 있음',
+      },
+      {
+        label: '日本技術士会 · 択一式問題の正答',
+        url: 'https://www.engineer.or.jp/c_categories/index02012.html',
+        coverage: '정답표 별도 페이지',
+      },
+    ],
   },
   {
     slug: 'gosi', name: '기술고시 전기직', emoji: '🎓',
@@ -278,6 +309,12 @@ export const EXAM_SPECS: ExamSpec[] = [
     yearLabel: krLabel, examIdPrefix: 'gosi', years: yearsDesc(2026, 2002),
     subjects: GOSI_SUBJECTS, tableName: 'gosi',
     intro: '2차 논술 필수 3과목(전기자기학·회로이론·전기기기) 자기채점. 구 체제 기출용 참고 과목 5개를 뒤에 유지.',
+    pastPapers: [{
+      label: '사이버국가고시센터 · 기출문제',
+      url: 'https://www.gosi.kr/',
+      coverage: '자료실 → 기출문제 (5급 공채 과목별)',
+      note: '유일하게 일본 기관이 아님 · 2차 논술은 정답 미공개',
+    }],
   },
   {
     slug: 'sekokan1', name: '1級電気工事施工管理技士', emoji: '🏗',
@@ -287,6 +324,12 @@ export const EXAM_SPECS: ExamSpec[] = [
     yearLabel: jpLabel, examIdPrefix: 'sk1', years: yearsDesc(2026, 2018),
     subjects: SEKOKAN1_SUBJECTS, tableName: 'sekokan1',
     intro: '一次(마크시트 선택해답 + 応用能力 足切り) → 二次(経験記述). 令和8~平成30 9년치.',
+    pastPapers: [{
+      label: '建設業振興基金 · 過去の検定問題・合格基準',
+      url: 'https://www.fcip-shiken.jp/about/kako.html',
+      coverage: '⚠ 공식은 최근 1~2년치만 상시 공개',
+      note: '9년치를 한 번에 받으려면 TAC 등 민간 정리 페이지를 병용해야 한다',
+    }],
   },
   {
     slug: 'dentsu-shunin', name: '電気通信主任技術者 (伝送交換)', emoji: '📡',
@@ -296,6 +339,12 @@ export const EXAM_SPECS: ExamSpec[] = [
     yearLabel: jpLabel, examIdPrefix: 'dts', years: yearsDesc(2026, 2021), rounds: 2,
     subjects: DENTSU_SHUNIN_SUBJECTS, tableName: 'dentsu',
     intro: '네트워크 공사·유지·운용의 감독책임자. 2021년도 専門科目 폐지 후 3과목 체제라 회차를 2021~로 잡았다.',
+    pastPapers: [{
+      label: '日本データ通信協会 · 試験問題・正答',
+      url: 'https://www.dekyo.or.jp/shiken/chief/exam',
+      coverage: '회차별(제1·2회) 과목별 問題/正答 PDF',
+      note: '수험 목적이면 다운로드·인쇄 자유 · 허락·사용료 불필요',
+    }],
   },
   {
     slug: 'koutan', name: '工事担任者 (総合通信)', emoji: '🔗',
@@ -305,6 +354,12 @@ export const EXAM_SPECS: ExamSpec[] = [
     yearLabel: jpLabel, examIdPrefix: 'ktn', years: yearsDesc(2026, 2021), rounds: 2,
     subjects: KOUTAN_SUBJECTS, tableName: 'koutan',
     intro: '基礎·技術及び理論·法規 3과목 마크시트. 総合通信은 아날로그·디지털 전 범위를 다루는 최상위 종별.',
+    pastPapers: [{
+      label: '日本データ通信協会 · 試験問題・正答',
+      url: 'https://www.dekyo.or.jp/shiken/charge/exam',
+      coverage: '회차별 · 種別(総合通信 등)마다 問題/正答 PDF',
+      note: '수험 목적이면 다운로드·인쇄 자유',
+    }],
   },
 ]
 

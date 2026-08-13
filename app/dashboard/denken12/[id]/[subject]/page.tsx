@@ -15,12 +15,14 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
+import { PastPaperChip } from '@/app/components/PastPaperBar'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
   GRADE_META, SUBJECT_ACCENT,
   ICHIJI_SUBJECTS, NIJI_SUBJECTS, NIJI_STRUCTURE, NIJI_PASS_MARK, NIJI_FULL_MARK,
   ichijiStructure, parseExamId, examLabel, wareki,
   isBArea, isSelectQ, isDimmedSelect, isExcludedSelect, pointOf, defaultSubCount,
+  PAST_PAPER_URL,
   clampSubCount, SUB_COUNT_MIN, SUB_COUNT_MAX,
   normalizeSubs, cycleResult, questionScore, questionStatus,
   scoreIchiji, gradedCount, answerableCount,
@@ -380,6 +382,7 @@ export default function Denken12SolvePage() {
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: accent }}>
                 {saving ? '…' : '불러오기'}
               </button>
+              <PastPaperChip url={PAST_PAPER_URL[grade]} label="공식 과년도" />
             </>) : (<>
               <input value={answerUrl} onChange={e => setAnswerUrl(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && saveUrl('answer')}
@@ -389,6 +392,7 @@ export default function Denken12SolvePage() {
                 className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">
                 {saving ? '…' : '불러오기'}
               </button>
+              <PastPaperChip url={PAST_PAPER_URL[grade]} label="공식 과년도" />
             </>)}
           </div>
           <div className="flex-1 relative">

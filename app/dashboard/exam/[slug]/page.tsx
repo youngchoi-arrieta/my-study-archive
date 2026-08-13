@@ -24,6 +24,7 @@ import {
   REVIEW_META, EMPTY_REVIEW_COUNT, addReview, reviewHeatStyle,
   type ReviewState, type ReviewCount,
 } from '@/lib/constants-denken-review'
+import { PastPaperBar } from '@/app/components/PastPaperBar'
 
 type AnswerRow = {
   exam_id: string
@@ -173,7 +174,14 @@ export default function ExamHub() {
           <h1 className="text-2xl font-bold">{spec.name}</h1>
         </div>
         <p className="text-gray-500 text-sm mb-2">{spec.org} · {spec.scheduleNote}</p>
-        <p className="text-gray-600 text-xs mb-5">{spec.intro}</p>
+        <p className="text-gray-600 text-xs mb-4">{spec.intro}</p>
+
+        {/* 공식 과년도 배포 페이지 */}
+        {spec.pastPapers && spec.pastPapers.length > 0 && (
+          <div className="mb-6">
+            <PastPaperBar links={spec.pastPapers} accent={spec.accent} />
+          </div>
+        )}
 
         {/* 탭 */}
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">

@@ -354,3 +354,13 @@ export function examsOf(grade: Denken12Grade): Denken12Exam[] {
 export function scheduleNote(phase: Denken12Phase): string {
   return phase === 'ichiji' ? '8월 하순 (일)' : '11월 중순 (일)'
 }
+
+// ── 공식 과년도 배포 페이지 ─────────────────────────────────────────
+// 電気技術者試験センター는 과년도 사용에 허락·사용료가 불필요하다고 명시하고 있다
+// (출처 표기만 요구). 1종·2종은 종별로 페이지가 갈린다.
+export const PAST_PAPER_URL: Record<Denken12Grade, string> = {
+  first:  'https://www.shiken.or.jp/chief/first/qa/',
+  second: 'https://www.shiken.or.jp/chief/second/qa/',
+}
+
+export const PAST_PAPER_COVERAGE = '一次·二次 과목별 問題/解答 PDF · 다년치'

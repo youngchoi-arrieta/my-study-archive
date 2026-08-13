@@ -11,6 +11,7 @@ import { useParams, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
+import { PastPaperChip } from '@/app/components/PastPaperBar'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
   EXAM_MAP, getSubjectSpec, parseExamRound,
@@ -326,6 +327,9 @@ export default function ExamSolvePage() {
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: accent }}>
                   {saving ? '…' : '불러오기'}
                 </button>
+                {spec.pastPapers?.[0] && (
+                  <PastPaperChip url={spec.pastPapers[0].url} label="공식 과년도" />
+                )}
               </>
             ) : (
               <>
@@ -337,6 +341,9 @@ export default function ExamSolvePage() {
                   className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">
                   {saving ? '…' : '불러오기'}
                 </button>
+                {spec.pastPapers?.[0] && (
+                  <PastPaperChip url={spec.pastPapers[0].url} label="공식 과년도" />
+                )}
               </>
             )}
           </div>

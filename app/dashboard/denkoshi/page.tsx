@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { PastPaperBar } from '@/app/components/PastPaperBar'
 import dynamic from 'next/dynamic'
 import type { ChartItem } from './DenkoshiChart'
 const DenkoshiChart = dynamic(
@@ -501,6 +502,15 @@ export default function DenkoshiHub() {
         <p className="text-gray-500 text-sm mb-5">일본 경제산업성 · 2025.5.28 CBT 시험</p>
 
         {/* 탭 */}
+        <div className="mb-5">
+          <PastPaperBar links={[{
+            label: '電気技術者試験センター · 第二種電気工事士 問題と解答',
+            url: 'https://www.shiken.or.jp/construction/second/qa/',
+            coverage: '上期/下期 학과·기능 問題·解答 PDF · 다년치',
+            note: '과년도 사용에 허락·사용료 불필요 (출처 표기 필요)',
+          }]} />
+        </div>
+
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">
           {([
             { key: 'scores', label: '📋 기출 현황' },

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { PastPaperBar } from '@/app/components/PastPaperBar'
 import {
   scoreDenken, gradedCount, answerableCount, examLabelFromId, denkenHeldKey,
   DENKEN_EXAMS, type Result,
@@ -721,6 +722,16 @@ export default function DenkenHub() {
             </div>
             <span className="text-blue-500 text-sm group-hover:translate-x-0.5 transition">→</span>
           </Link>
+
+          {/* 공식 과년도 배포 페이지 */}
+          <div className="mb-5">
+            <PastPaperBar links={[{
+              label: '電気技術者試験センター · 第三種 問題と解答',
+              url: 'https://www.shiken.or.jp/chief/third/qa/',
+              coverage: '上期/下期 과목별 問題·解答 PDF · 다년치',
+              note: '과년도 사용에 허락·사용료 불필요 (출처 표기 필요)',
+            }]} />
+          </div>
 
           {/* 탭 */}
           <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">

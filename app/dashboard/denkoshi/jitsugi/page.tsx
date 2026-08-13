@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { PastPaperBar } from '@/app/components/PastPaperBar'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
@@ -98,6 +99,19 @@ export default function DenkoshiJitsugiHub() {
           </div>
           <span className="text-gray-600 text-xs">→</span>
         </Link>
+        </div>
+
+        <div className="mb-5">
+          <PastPaperBar links={[{
+            label: '電気技術者試験センター · 技能試験 候補問題',
+            url: 'https://www.shiken.or.jp/construction/second/skill/',
+            coverage: '연도별 후보문제 13종 공표',
+            note: '欠陥의 판단기준도 같은 계열 페이지에서 공개된다',
+          }, {
+            label: '電気技術者試験センター · 問題と解答',
+            url: 'https://www.shiken.or.jp/construction/second/qa/',
+            coverage: '기능시험 問題·解答 포함 다년치',
+          }]} />
         </div>
 
         {/* 후보문제 */}
