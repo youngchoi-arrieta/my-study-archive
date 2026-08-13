@@ -105,8 +105,18 @@ function QuizPage() {
     try { return parseFloat(localStorage.getItem('quiz_speak_rate') ?? '0.75') } catch { return 0.75 }
   })
 
-  const speak = useCallback((text: string) => {
-    if (!text || typeof window === 'undefined' || !window.speechSynthesis) return
+  const speak = useCallback((raw: string) => {
+    if (!raw || typeof window === 'undefined' || !window.speechSynthesis) return
+    // 리치 에디터 필드는 HTML로 저장되므로 태그를 제거하고 텍스트만 읽힌다
+    const el = document.createElement('div')
+    el.innerHTML = raw
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
+    const text = (el.textContent ?? '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\n{2,}/g, '\n')
+      .trim()
+    if (!text) return
     window.speechSynthesis.cancel()
     const utter = new SpeechSynthesisUtterance(text)
     utter.lang = 'ja-JP'
