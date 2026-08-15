@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import {
   TrainerCard, TrainerLayout, QuizScreen, Panel, ChipRow, ModeGrid,
   CountRow, CheatBox, StartButton, shuffle, toggleIn,
+  RuleSheet, VoicePicker,
 } from '../_components/TrainerShell'
 
 // ═══════════════════════════════════════════════════════════════
@@ -190,6 +191,8 @@ export default function TransitivityPage() {
         <div className="max-w-xl mx-auto">
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-4">연습 범위 설정</p>
 
+          <RuleSheet slug="transitivity" />
+
           <Panel label="문제 유형">
             <ModeGrid items={ALL_M} labels={M_LABELS} descs={M_DESCS} active={modes}
               onToggle={v => toggleIn(modes, v, setModes)} />
@@ -226,6 +229,8 @@ export default function TransitivityPage() {
             </div>
           </CheatBox>
 
+          <VoicePicker />
+
           <Panel label="문제 수"><CountRow count={count} setCount={setCount} /></Panel>
 
           <StartButton disabled={!pool.length}
@@ -233,7 +238,7 @@ export default function TransitivityPage() {
             onClick={() => pool.length && setCards(shuffle(pool).slice(0, count === 0 ? pool.length : count))} />
         </div>
       ) : (
-        <QuizScreen cards={cards} onDone={() => setCards(null)} />
+        <QuizScreen cards={cards} onDone={() => setCards(null)} ruleSlug="transitivity" />
       )}
     </TrainerLayout>
   )

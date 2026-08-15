@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   TrainerLayout, Panel, ChipRow, ModeGrid, CheatBox, StartButton,
-  speak, shuffle, toggleIn,
+  speak, shuffle, toggleIn, RuleSheet, VoicePicker,
 } from '../_components/TrainerShell'
 
 // ═══════════════════════════════════════════════════════════════
@@ -527,6 +527,8 @@ export default function KatakanaFlashPage() {
         <div className="max-w-xl mx-auto">
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-4">훈련 설정</p>
 
+          <RuleSheet slug="katakana-flash" />
+
           <Panel label="노출 시간 — 이게 이 트레이너의 핵심">
             <ChipRow
               items={EXPOSURES.map(e => String(e.ms))}
@@ -593,6 +595,8 @@ export default function KatakanaFlashPage() {
               </p>
             </div>
           </CheatBox>
+
+          <VoicePicker />
 
           <Panel label="문제 수">
             <div className="flex gap-2">

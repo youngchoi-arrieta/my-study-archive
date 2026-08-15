@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { speak, hasVoice, RuleSheet, VoicePicker, RuleModal } from '../_components/TrainerShell'
 
 // ═══════════════════════════════════════════════════════════════
 //  数詞・助数詞練習
@@ -367,15 +368,6 @@ function makeWarekiCard(irregularOnly: boolean): Card {
   }
 }
 
-// ── TTS ──────────────────────────────────────────────────────────
-function speak(text: string, rate = 0.85) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return
-  window.speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance(text)
-  u.lang = 'ja-JP'
-  u.rate = rate
-  window.speechSynthesis.speak(u)
-}
 
 type Direction = 'read' | 'listen'
 
@@ -466,6 +458,8 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[], d: Direction) => voi
     <div className="max-w-xl mx-auto">
       <p className="text-xs text-gray-500 uppercase tracking-widest mb-4">연습 범위 설정</p>
 
+      <RuleSheet slug="number-practice" />
+
       <div className="bg-gray-900 rounded-xl p-4 mb-3">
         <p className="text-xs text-gray-500 mb-2">카테고리</p>
         <div className="grid grid-cols-2 gap-2">
@@ -521,6 +515,11 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[], d: Direction) => voi
         </div>
         <p className="text-[10px] text-gray-600 mt-2">
           숫자는 실전에서 대부분 귀로 들어옵니다. 한 바퀴 돈 뒤에는 음성 방향으로 뒤집어 보세요.
+          {direction === 'listen' && !hasVoice() && (
+            <span className="text-amber-500 block mt-1">
+              아래 「음성」에서 목소리를 먼저 고르세요. 고르기 전에는 소리가 나지 않습니다.
+            </span>
+          )}
         </p>
       </div>
 
@@ -540,6 +539,8 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[], d: Direction) => voi
       </button>
 
       <CheatSheet />
+
+      <VoicePicker />
 
       <div className="bg-gray-900 rounded-xl p-4 mb-5">
         <p className="text-xs text-gray-500 mb-2">문제 수</p>
@@ -575,7 +576,8 @@ function QuizScreen({ cards, direction, onDone }: { cards: Card[]; direction: Di
   const [revealed, setReveal] = useState(false)
   const [mastered, setMastered] = useState(0)
   const [total] = useState(cards.length)
-  const [autoSpeak, setAutoSpeak] = useState(true)
+  const [autoSpeak, setAutoSpeak] = useState(false)
+  const [showRule, setShowRule] = useState(false)
   const [speakRate, setSpeakRate] = useState(0.8)
 
   const current = queue[0]
@@ -600,14 +602,21 @@ function QuizScreen({ cards, direction, onDone }: { cards: Card[]; direction: Di
 
   return (
     <div className="max-w-xl mx-auto">
+      {showRule && <RuleModal slug="number-practice" onClose={() => setShowRule(false)} />}
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs text-gray-500">남은 {queue.length}장 · 숙지 {mastered}/{total}</p>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-gray-600">速</span>
           <input type="range" min="0.5" max="1.2" step="0.05" value={speakRate}
             onChange={e => setSpeakRate(parseFloat(e.target.value))} className="w-14 accent-blue-500" />
-          <button onClick={() => setAutoSpeak(v => !v)}
-            className={`text-lg transition ${autoSpeak ? 'opacity-100' : 'opacity-30'}`}>🔊</button>
+          <button onClick={() => setShowRule(true)}
+            className="text-[11px] px-2 py-1 rounded bg-gray-900 hover:bg-gray-800 text-blue-300 font-bold transition">
+            📘 규칙
+          </button>
+          {hasVoice() && (
+            <button onClick={() => setAutoSpeak(v => !v)}
+              className={`text-lg transition ${autoSpeak ? 'opacity-100' : 'opacity-30'}`}>🔊</button>
+          )}
         </div>
       </div>
 

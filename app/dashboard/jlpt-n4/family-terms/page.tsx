@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { speak, hasVoice, RuleSheet, VoicePicker, RuleModal } from '../_components/TrainerShell'
 
 // ═══════════════════════════════════════════════════════════════
 //  親族呼称練習
@@ -148,15 +149,6 @@ function buildCards(kins: Kin[], modes: Set<QMode>): Card[] {
   return out
 }
 
-// ── TTS ──────────────────────────────────────────────────────────
-function speak(text: string, rate = 0.85) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return
-  window.speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance(text)
-  u.lang = 'ja-JP'
-  u.rate = rate
-  window.speechSynthesis.speak(u)
-}
 
 // ── 치트시트 ─────────────────────────────────────────────────────
 function CheatSheet() {
@@ -219,6 +211,8 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[]) => void }) {
     <div className="max-w-xl mx-auto">
       <p className="text-xs text-gray-500 uppercase tracking-widest mb-4">연습 범위 설정</p>
 
+      <RuleSheet slug="family-terms" />
+
       <div className="bg-gray-900 rounded-xl p-4 mb-3">
         <p className="text-xs text-gray-500 mb-2">문제 유형</p>
         <div className="grid grid-cols-2 gap-2">
@@ -245,6 +239,8 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[]) => void }) {
       </div>
 
       <CheatSheet />
+
+      <VoicePicker />
 
       <div className="bg-gray-900 rounded-xl p-4 mb-5">
         <p className="text-xs text-gray-500 mb-2">문제 수</p>
@@ -281,6 +277,7 @@ function QuizScreen({ cards, onDone }: { cards: Card[]; onDone: () => void }) {
   const [mastered, setMastered] = useState(0)
   const [total] = useState(cards.length)
   const [autoSpeak, setAutoSpeak] = useState(false)
+  const [showRule, setShowRule] = useState(false)
   const [speakRate, setSpeakRate] = useState(0.85)
 
   const current = queue[0]
@@ -304,14 +301,21 @@ function QuizScreen({ cards, onDone }: { cards: Card[]; onDone: () => void }) {
 
   return (
     <div className="max-w-xl mx-auto">
+      {showRule && <RuleModal slug="family-terms" onClose={() => setShowRule(false)} />}
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs text-gray-500">남은 {queue.length}장 · 숙지 {mastered}/{total}</p>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-gray-600">速</span>
           <input type="range" min="0.5" max="1.2" step="0.05" value={speakRate}
             onChange={e => setSpeakRate(parseFloat(e.target.value))} className="w-14 accent-blue-500" />
-          <button onClick={() => setAutoSpeak(v => !v)}
-            className={`text-lg transition ${autoSpeak ? 'opacity-100' : 'opacity-30'}`}>🔊</button>
+          <button onClick={() => setShowRule(true)}
+            className="text-[11px] px-2 py-1 rounded bg-gray-900 hover:bg-gray-800 text-blue-300 font-bold transition">
+            📘 규칙
+          </button>
+          {hasVoice() && (
+            <button onClick={() => setAutoSpeak(v => !v)}
+              className={`text-lg transition ${autoSpeak ? 'opacity-100' : 'opacity-30'}`}>🔊</button>
+          )}
         </div>
       </div>
 
