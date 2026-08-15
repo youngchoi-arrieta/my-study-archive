@@ -189,6 +189,22 @@ export default function JlptHub() {
               </div>
               <span className="text-gray-600 text-xs">→</span>
             </Link>
+            <Link href="/dashboard/jlpt-n4/family-terms"
+              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
+              <div>
+                <p className="text-sm font-semibold">👨‍👩‍👧‍👦 親族呼称練習</p>
+                <p className="text-xs text-gray-500 mt-0.5">대가족 관계 호칭 · うち／そと 변환</p>
+              </div>
+              <span className="text-gray-600 text-xs">→</span>
+            </Link>
+            <Link href="/dashboard/jlpt-n4/business-titles"
+              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
+              <div>
+                <p className="text-sm font-semibold">🏢 役職・呼称練習</p>
+                <p className="text-xs text-gray-500 mt-0.5">회사 직급 서열 · 社内／社外 경어</p>
+              </div>
+              <span className="text-gray-600 text-xs">→</span>
+            </Link>
           </div>
         )}
 
