@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { TRAINERS, TRAINER_GROUPS } from '@/lib/constants-jlpt-trainers'
+import { MockRow, levelSpec, verdict } from '@/lib/constants-jlpt-mocks'
 
 // ───────────────────────────────────────────────────────────────
 // JLPT 허브 (목표: N2)
@@ -41,16 +42,20 @@ export default function JlptHub() {
   const [nodes, setNodes] = useState<Node[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [latestMock, setLatestMock] = useState<MockRow | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: bk }, { data: nd }] = await Promise.all([
+    const [{ data: bk }, { data: nd }, { data: mk }] = await Promise.all([
       supabase.from('jp_books').select('id, title, tag, color, sort_order')
         .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
       supabase.from('jp_nodes').select('id, book_id, parent_id, status'),
+      supabase.from('jlpt_mocks').select('*')
+        .order('taken_on', { ascending: false }).order('created_at', { ascending: false }).limit(1),
     ])
     setBooks((bk as Book[]) || [])
     setNodes((nd as Node[]) || [])
+    setLatestMock(((mk as MockRow[]) || [])[0] ?? null)
     setLoading(false)
   }, [])
 
@@ -95,6 +100,33 @@ export default function JlptHub() {
         <p className="text-gray-500 text-sm mb-5">
           독해·어휘 양치기 · 교재 자유 추가 · 채굴 예문 플래시카드
         </p>
+
+        <Link href="/dashboard/jlpt-n4/mocks"
+          className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3 mb-4 transition">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-lg shrink-0">📊</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">모의고사 기록</p>
+              <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                {latestMock
+                  ? `최근 ${levelSpec(latestMock.level).label} · ${latestMock.title} · ${latestMock.taken_on}`
+                  : 'N5 · N4 · N3 채점 결과 남기기'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {latestMock && (() => {
+              const spec = levelSpec(latestMock.level)
+              const v = verdict(latestMock, spec)
+              return (
+                <span className={`text-sm font-bold ${v.passed ? 'text-green-400' : 'text-amber-400'}`}>
+                  {v.total}<span className="text-[10px] text-gray-600">/180</span>
+                </span>
+              )
+            })()}
+            <span className="text-gray-600 text-xs">→</span>
+          </div>
+        </Link>
 
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-4">
           {([
