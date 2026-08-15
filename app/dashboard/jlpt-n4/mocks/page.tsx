@@ -5,20 +5,19 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
   Level, Area, AREAS, AREA_LABELS, AREA_JA, AREA_COLORS,
-  LEVELS, levelSpec, MockRow, areaScore, pct, verdict,
+  LEVELS, levelSpec, MockRow, areaScore, hasSure, pct, corrected, verdict,
 } from '@/lib/constants-jlpt-mocks'
 
 // ───────────────────────────────────────────────────────────────
 //  JLPT 모의고사 기록
-//  시험지도 메모도 없이 채점 결과만. 영역별 정답률과 得点区分
-//  기준점 통과 여부만 보이면 되는 화면.
+//
+//  「정답수」와 별개로 「확신 정답수」를 선택 입력할 수 있다.
+//  4지선다는 완전히 찍어도 25%가 나오기 때문에, 특히 청해에서는
+//  표면 정답률이 실력을 과대평가한다. 둘의 차이가 곧 찍맞이다.
 // ───────────────────────────────────────────────────────────────
 
-type Draft = {
-  title: string
-  taken_on: string
-  nums: Record<Area, { got: string; total: string }>
-}
+type Cell = { got: string; total: string; sure: string }
+type Draft = { title: string; taken_on: string; nums: Record<Area, Cell> }
 
 function emptyDraft(level: Level): Draft {
   const d = levelSpec(level).defaults
@@ -26,8 +25,19 @@ function emptyDraft(level: Level): Draft {
     title: '',
     taken_on: new Date().toISOString().slice(0, 10),
     nums: Object.fromEntries(
-      AREAS.map(a => [a, { got: '', total: String(d[a]) }]),
-    ) as Draft['nums'],
+      AREAS.map(a => [a, { got: '', total: String(d[a]), sure: '' }]),
+    ) as Record<Area, Cell>,
+  }
+}
+
+function draftFrom(r: MockRow): Draft {
+  return {
+    title: r.title,
+    taken_on: r.taken_on,
+    nums: Object.fromEntries(AREAS.map(a => {
+      const v = areaScore(r, a)
+      return [a, { got: String(v.got), total: String(v.total), sure: v.sure === null ? '' : String(v.sure) }]
+    })) as Record<Area, Cell>,
   }
 }
 
@@ -35,8 +45,11 @@ export default function JlptMocksPage() {
   const [level, setLevel] = useState<Level>('n5')
   const [rows, setRows] = useState<MockRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [adding, setAdding] = useState(false)
+
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(() => emptyDraft('n5'))
+  const [showSure, setShowSure] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const spec = levelSpec(level)
@@ -53,26 +66,49 @@ export default function JlptMocksPage() {
   }, [level])
 
   useEffect(() => { fetchRows() }, [fetchRows])
-  useEffect(() => { setDraft(emptyDraft(level)); setAdding(false) }, [level])
+  useEffect(() => { closeForm() }, [level]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const closeForm = () => {
+    setFormOpen(false); setEditingId(null)
+    setDraft(emptyDraft(level)); setShowSure(false)
+  }
+  const openAdd = () => {
+    setDraft(emptyDraft(level)); setEditingId(null)
+    setShowSure(false); setFormOpen(true)
+  }
+  const openEdit = (r: MockRow) => {
+    setDraft(draftFrom(r)); setEditingId(r.id)
+    setShowSure(hasSure(r)); setFormOpen(true)
+  }
 
   // ── 요약 ──
   const summary = useMemo(() => {
     if (!rows.length) return null
-    const avg = Object.fromEntries(AREAS.map(a => {
-      const vals = rows.map(r => pct(areaScore(r, a).got, areaScore(r, a).total))
-      return [a, vals.reduce((x, y) => x + y, 0) / vals.length]
-    })) as Record<Area, number>
-    const weakest = AREAS.reduce((w, a) => (avg[a] < avg[w] ? a : w), AREAS[0])
-    const latest = verdict(rows[0], spec)
-    return { avg, weakest, latest }
+    const avg = {} as Record<Area, number>
+    const avgSure = {} as Record<Area, number | null>
+    AREAS.forEach(a => {
+      const vs = rows.map(r => areaScore(r, a))
+      avg[a] = vs.reduce((x, v) => x + pct(v.got, v.total), 0) / vs.length
+      const withSure = vs.filter(v => v.sure !== null)
+      avgSure[a] = withSure.length
+        ? withSure.reduce((x, v) => x + pct(v.sure!, v.total), 0) / withSure.length
+        : null
+    })
+    const weakest = AREAS.reduce((w, a) => {
+      const cur = avgSure[a] ?? avg[a], best = avgSure[w] ?? avg[w]
+      return cur < best ? a : w
+    }, AREAS[0])
+    return { avg, avgSure, weakest, latest: verdict(rows[0], spec), anySure: rows.some(hasSure) }
   }, [rows, spec])
 
   // ── 저장 ──
-  const canSave = draft.title.trim().length > 0
-    && AREAS.every(a => {
-      const g = Number(draft.nums[a].got), t = Number(draft.nums[a].total)
-      return draft.nums[a].got !== '' && t > 0 && g >= 0 && g <= t
-    })
+  const cellBad = (c: Cell) => {
+    const g = Number(c.got), t = Number(c.total), s = c.sure === '' ? null : Number(c.sure)
+    if (c.got === '' || !(t > 0) || g < 0 || g > t) return true
+    if (s !== null && (s < 0 || s > g)) return true
+    return false
+  }
+  const canSave = draft.title.trim().length > 0 && AREAS.every(a => !cellBad(draft.nums[a]))
 
   const save = async () => {
     if (!canSave || saving) return
@@ -81,22 +117,56 @@ export default function JlptMocksPage() {
       level, title: draft.title.trim(), taken_on: draft.taken_on,
     }
     AREAS.forEach(a => {
-      payload[a] = Number(draft.nums[a].got)
-      payload[`${a}_total`] = Number(draft.nums[a].total)
+      const c = draft.nums[a]
+      payload[a] = Number(c.got)
+      payload[`${a}_total`] = Number(c.total)
+      payload[`${a}_sure`] = c.sure === '' ? null : Number(c.sure)
     })
-    const { error } = await supabase.from('jlpt_mocks').insert(payload)
+    const { error } = editingId
+      ? await supabase.from('jlpt_mocks')
+        .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId)
+      : await supabase.from('jlpt_mocks').insert(payload)
     setSaving(false)
-    if (!error) { setDraft(emptyDraft(level)); setAdding(false); fetchRows() }
+    if (!error) { closeForm(); fetchRows() }
   }
 
   const remove = async (id: string, title: string) => {
     if (!confirm(`"${title}" 기록을 지울까요?`)) return
     await supabase.from('jlpt_mocks').delete().eq('id', id)
+    if (editingId === id) closeForm()
     fetchRows()
   }
 
-  const setNum = (a: Area, k: 'got' | 'total', v: string) =>
+  const setNum = (a: Area, k: keyof Cell, v: string) =>
     setDraft(d => ({ ...d, nums: { ...d.nums, [a]: { ...d.nums[a], [k]: v.replace(/\D/g, '') } } }))
+
+  // ── 영역 막대 ──
+  const AreaBar = ({ a, got, total, sure, wide }: {
+    a: Area; got: number; total: number; sure: number | null; wide?: boolean
+  }) => {
+    const p = pct(got, total)
+    const ps = sure === null ? null : pct(sure, total)
+    return (
+      <div className="flex items-center gap-2">
+        <span className={`${wide ? 'w-16 text-[11px]' : 'w-14 text-[10px]'} shrink-0 ${
+          summary?.weakest === a ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+          {AREA_LABELS[a]}
+        </span>
+        <div className={`flex-1 ${wide ? 'h-2' : 'h-1.5'} bg-gray-800 rounded-full overflow-hidden relative`}>
+          <div className="absolute inset-y-0 left-0 rounded-full"
+            style={{ width: `${p}%`, backgroundColor: AREA_COLORS[a], opacity: ps === null ? 1 : 0.32 }} />
+          {ps !== null && (
+            <div className="absolute inset-y-0 left-0 rounded-full"
+              style={{ width: `${ps}%`, backgroundColor: AREA_COLORS[a] }} />
+          )}
+        </div>
+        <span className={`${wide ? 'w-24' : 'w-24'} text-right text-[10px] shrink-0`}>
+          <span className="text-gray-400">{total > 0 ? `${got}/${total}` : '—'} · {Math.round(p)}%</span>
+          {ps !== null && <span className="text-gray-600"> ({Math.round(ps)}%)</span>}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
@@ -135,36 +205,51 @@ export default function JlptMocksPage() {
               </span>
             </div>
             <div className="space-y-2.5">
-              {AREAS.map(a => (
-                <div key={a} className="flex items-center gap-3">
-                  <span className={`w-16 text-[11px] shrink-0 ${a === summary.weakest ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
-                    {AREA_LABELS[a]}
-                  </span>
-                  <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all"
-                      style={{ width: `${summary.avg[a]}%`, backgroundColor: AREA_COLORS[a] }} />
+              {AREAS.map(a => {
+                const p = summary.avg[a], ps = summary.avgSure[a]
+                return (
+                  <div key={a} className="flex items-center gap-3">
+                    <span className={`w-16 text-[11px] shrink-0 ${a === summary.weakest ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+                      {AREA_LABELS[a]}
+                    </span>
+                    <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden relative">
+                      <div className="absolute inset-y-0 left-0 rounded-full"
+                        style={{ width: `${p}%`, backgroundColor: AREA_COLORS[a], opacity: ps === null ? 1 : 0.32 }} />
+                      {ps !== null && (
+                        <div className="absolute inset-y-0 left-0 rounded-full"
+                          style={{ width: `${ps}%`, backgroundColor: AREA_COLORS[a] }} />
+                      )}
+                    </div>
+                    <span className="w-20 text-right text-[11px] shrink-0">
+                      <span className="text-gray-400">{Math.round(p)}%</span>
+                      {ps !== null && <span className="text-gray-600"> ({Math.round(ps)}%)</span>}
+                    </span>
                   </div>
-                  <span className="w-10 text-right text-[11px] text-gray-400 shrink-0">
-                    {Math.round(summary.avg[a])}%
-                  </span>
-                </div>
-              ))}
+                )
+              })}
             </div>
-            <p className="text-[10px] text-gray-600 mt-3">
+            <p className="text-[10px] text-gray-600 mt-3 leading-relaxed">
               가장 약한 영역은 <span className="text-red-400 font-bold">{AREA_JA[summary.weakest]}</span>.
               합격선 {spec.passTotal}/180 · 각 구분 기준점을 하나라도 못 넘으면 총점과 무관하게 불합격입니다.
+              {summary.anySure
+                ? ' 진한 막대와 괄호 안 숫자가 찍맞을 뺀 확신 정답률입니다.'
+                : ` 참고로 완전히 찍어도 문자·어휘/문법/독해는 25%, 청해는 약 29%가 나옵니다 — 지금 청해 ${Math.round(summary.avg.choukai)}%는 우연 보정하면 ${Math.round(corrected(summary.avg.choukai, 'choukai'))}% 수준입니다.`}
             </p>
           </div>
         )}
 
-        {/* 추가 */}
-        {!adding ? (
-          <button onClick={() => setAdding(true)}
+        {/* 폼 */}
+        {!formOpen ? (
+          <button onClick={openAdd}
             className="w-full border border-dashed border-gray-800 hover:border-gray-600 text-gray-500 hover:text-gray-300 rounded-xl py-3.5 text-sm font-semibold transition mb-5">
             + {spec.label} 채점 결과 추가
           </button>
         ) : (
-          <div className="bg-gray-900 rounded-2xl p-5 mb-5">
+          <div className="bg-gray-900 rounded-2xl p-5 mb-5 border border-gray-800">
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
+              {editingId ? '기록 수정' : `${spec.label} 채점 결과 추가`}
+            </p>
+
             <div className="flex gap-2 mb-4">
               <input
                 value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
@@ -178,31 +263,47 @@ export default function JlptMocksPage() {
               />
             </div>
 
+            <button onClick={() => setShowSure(v => !v)}
+              className={`w-full rounded-lg px-3 py-2 mb-3 text-left transition border ${
+                showSure ? 'bg-gray-950 border-gray-700' : 'bg-gray-950/50 border-gray-800 hover:border-gray-700'
+              }`}>
+              <span className="text-xs font-bold">{showSure ? '✓ ' : '+ '}확신 정답수도 입력</span>
+              <span className="text-[10px] text-gray-600 block mt-0.5">
+                찍어서 맞은 걸 빼고 실력만 보고 싶을 때. 비워두면 그냥 무시됩니다.
+              </span>
+            </button>
+
             <div className="space-y-2 mb-4">
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 text-[10px] text-gray-600 font-bold px-1">
-                <span>영역</span><span className="w-14 text-center">정답</span>
-                <span className="w-14 text-center">문항</span><span className="w-10 text-right">%</span>
+              <div className={`grid ${showSure ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-2 text-[10px] text-gray-600 font-bold px-1`}>
+                <span>영역</span>
+                <span className="w-14 text-center">정답</span>
+                {showSure && <span className="w-14 text-center text-amber-600">확신</span>}
+                <span className="w-14 text-center">문항</span>
+                <span className="w-10 text-right">%</span>
               </div>
               {AREAS.map(a => {
-                const g = Number(draft.nums[a].got || 0), t = Number(draft.nums[a].total || 0)
-                const bad = draft.nums[a].got !== '' && (t === 0 || g > t)
+                const c = draft.nums[a]
+                const g = Number(c.got || 0), t = Number(c.total || 0)
+                const bad = c.got !== '' && cellBad(c)
+                const sureBad = c.sure !== '' && Number(c.sure) > g
                 return (
-                  <div key={a} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
-                    <span className="text-xs" style={{ color: AREA_COLORS[a] }}>
+                  <div key={a} className={`grid ${showSure ? 'grid-cols-[1fr_auto_auto_auto_auto]' : 'grid-cols-[1fr_auto_auto_auto]'} gap-2 items-center`}>
+                    <span className="text-xs truncate" style={{ color: AREA_COLORS[a] }}>
                       {AREA_LABELS[a]} <span className="text-gray-600">{AREA_JA[a]}</span>
                     </span>
-                    <input
-                      inputMode="numeric" value={draft.nums[a].got}
-                      onChange={e => setNum(a, 'got', e.target.value)} placeholder="0"
-                      className={`w-14 bg-gray-950 border rounded-lg px-2 py-1.5 text-sm text-center outline-none transition ${bad ? 'border-red-800' : 'border-gray-800 focus:border-gray-600'}`}
-                    />
-                    <input
-                      inputMode="numeric" value={draft.nums[a].total}
+                    <input inputMode="numeric" value={c.got} placeholder="0"
+                      onChange={e => setNum(a, 'got', e.target.value)}
+                      className={`w-14 bg-gray-950 border rounded-lg px-2 py-1.5 text-sm text-center outline-none transition ${bad && !sureBad ? 'border-red-800' : 'border-gray-800 focus:border-gray-600'}`} />
+                    {showSure && (
+                      <input inputMode="numeric" value={c.sure} placeholder="—"
+                        onChange={e => setNum(a, 'sure', e.target.value)}
+                        className={`w-14 bg-gray-950 border rounded-lg px-2 py-1.5 text-sm text-center outline-none transition text-amber-300 ${sureBad ? 'border-red-800' : 'border-gray-800 focus:border-gray-600'}`} />
+                    )}
+                    <input inputMode="numeric" value={c.total}
                       onChange={e => setNum(a, 'total', e.target.value)}
-                      className="w-14 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center outline-none transition text-gray-400"
-                    />
+                      className="w-14 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center outline-none transition text-gray-400" />
                     <span className="w-10 text-right text-xs text-gray-500">
-                      {t > 0 && draft.nums[a].got !== '' ? `${Math.round(pct(g, t))}%` : '—'}
+                      {t > 0 && c.got !== '' ? `${Math.round(pct(g, t))}%` : '—'}
                     </span>
                   </div>
                 )
@@ -210,13 +311,13 @@ export default function JlptMocksPage() {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => { setAdding(false); setDraft(emptyDraft(level)) }}
+              <button onClick={closeForm}
                 className="px-4 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-semibold transition">
                 취소
               </button>
               <button onClick={save} disabled={!canSave || saving}
                 className="flex-1 py-2.5 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 text-sm font-bold transition">
-                {saving ? '저장 중...' : '저장'}
+                {saving ? '저장 중...' : editingId ? '수정 저장' : '저장'}
               </button>
             </div>
           </div>
@@ -226,15 +327,15 @@ export default function JlptMocksPage() {
         {loading ? (
           <p className="text-gray-500 text-sm">불러오는 중...</p>
         ) : rows.length === 0 ? (
-          <p className="text-gray-600 text-sm text-center py-10">
-            아직 {spec.label} 기록이 없어요.
-          </p>
+          <p className="text-gray-600 text-sm text-center py-10">아직 {spec.label} 기록이 없어요.</p>
         ) : (
           <div className="space-y-3">
             {rows.map(r => {
               const v = verdict(r, spec)
+              const vs = hasSure(r) ? verdict(r, spec, true) : null
               return (
-                <div key={r.id} className="bg-gray-900 rounded-2xl p-5">
+                <div key={r.id}
+                  className={`bg-gray-900 rounded-2xl p-5 transition ${editingId === r.id ? 'ring-1 ring-blue-700' : ''}`}>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="min-w-0">
                       <p className="font-bold text-sm truncate">{r.title}</p>
@@ -248,38 +349,25 @@ export default function JlptMocksPage() {
                       }`}>
                         {v.passed ? '합격권' : !v.allMin ? '기준점 미달' : '총점 부족'}
                       </span>
+                      <button onClick={() => openEdit(r)}
+                        className="text-gray-600 hover:text-blue-400 text-xs transition">✎</button>
                       <button onClick={() => remove(r.id, r.title)}
                         className="text-gray-700 hover:text-red-400 text-xs transition">✕</button>
                     </div>
                   </div>
 
-                  {/* 영역별 */}
                   <div className="space-y-1.5 mb-3">
                     {AREAS.map(a => {
-                      const { got, total } = areaScore(r, a)
-                      const p = pct(got, total)
-                      return (
-                        <div key={a} className="flex items-center gap-2">
-                          <span className="w-14 text-[10px] text-gray-500 shrink-0">{AREA_LABELS[a]}</span>
-                          <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${p}%`, backgroundColor: AREA_COLORS[a] }} />
-                          </div>
-                          <span className="w-16 text-right text-[10px] text-gray-500 shrink-0">
-                            {got}/{total} · {Math.round(p)}%
-                          </span>
-                        </div>
-                      )
+                      const { got, total, sure } = areaScore(r, a)
+                      return <AreaBar key={a} a={a} got={got} total={total} sure={sure} />
                     })}
                   </div>
 
-                  {/* 得点区分 */}
-                  <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-800">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-3 border-t border-gray-800">
                     {v.secs.map(s => (
                       <div key={s.label} className="flex items-baseline gap-1.5">
                         <span className="text-[10px] text-gray-600">{s.label}</span>
-                        <span className={`text-xs font-bold ${s.passed ? 'text-gray-200' : 'text-red-400'}`}>
-                          {s.score}
-                        </span>
+                        <span className={`text-xs font-bold ${s.passed ? 'text-gray-200' : 'text-red-400'}`}>{s.score}</span>
                         <span className="text-[10px] text-gray-700">/{s.max}</span>
                         {!s.passed && <span className="text-[9px] text-red-500">기준 {s.min}</span>}
                       </div>
@@ -292,6 +380,18 @@ export default function JlptMocksPage() {
                       <span className="text-[10px] text-gray-700">/180 (합격 {spec.passTotal})</span>
                     </div>
                   </div>
+
+                  {vs && (
+                    <div className="flex items-baseline justify-between mt-2 pt-2 border-t border-gray-800">
+                      <span className="text-[10px] text-amber-600/80">찍맞 제외 (확신 정답만)</span>
+                      <span className="text-[11px]">
+                        <span className={`font-bold ${vs.total >= spec.passTotal ? 'text-green-400' : 'text-amber-500'}`}>
+                          {vs.total}
+                        </span>
+                        <span className="text-gray-700">/180 · 차이 {v.total - vs.total}점</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               )
             })}
