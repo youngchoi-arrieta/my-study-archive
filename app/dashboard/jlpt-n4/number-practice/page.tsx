@@ -167,10 +167,10 @@ function readMinute(m: number): string {
 }
 
 // ── 카드 ─────────────────────────────────────────────────────────
-type CatKey = 'counter' | 'wago' | 'number' | 'money' | 'date' | 'time'
+type CatKey = 'counter' | 'wago' | 'number' | 'money' | 'date' | 'time' | 'wareki'
 
 const CAT_LABELS: Record<CatKey, string> = {
-  counter: '助数詞', wago: '和語数詞', number: '数字', money: '金額', date: '日付', time: '時刻',
+  counter: '助数詞', wago: '和語数詞', number: '数字', money: '金額', date: '日付', time: '時刻', wareki: '和暦',
 }
 const CAT_DESC: Record<CatKey, string> = {
   counter: '조수사 × 숫자 음변화',
@@ -179,6 +179,7 @@ const CAT_DESC: Record<CatKey, string> = {
   money: '〜円 가격 읽기',
   date: '〜月〜日',
   time: '〜時〜分',
+  wareki: '西暦 ↔ 令和·平成·昭和',
 }
 const ALL_CATS = Object.keys(CAT_LABELS) as CatKey[]
 
@@ -318,6 +319,54 @@ function makeTimeCard(irregularOnly: boolean): Card {
   return { key: `t-fb-${Math.random()}`, cat: 'time', prompt: '4時8分', sub: '시각', answer: 'よじはっぷん', irregular: true }
 }
 
+// ── 和暦 ─────────────────────────────────────────────────────────
+const ERAS = [
+  { name: '令和', kana: 'れいわ', from: 2019, base: 2018 },
+  { name: '平成', kana: 'へいせい', from: 1989, base: 1988 },
+  { name: '昭和', kana: 'しょうわ', from: 1926, base: 1925 },
+  { name: '大正', kana: 'たいしょう', from: 1912, base: 1911 },
+  { name: '明治', kana: 'めいじ', from: 1868, base: 1867 },
+]
+const BOUNDARY = new Set(ERAS.map(e => e.from))
+
+function toWareki(y: number) {
+  const e = ERAS.find(x => y >= x.from) ?? ERAS[ERAS.length - 1]
+  const n = y - e.base
+  const label = n === 1 ? `${e.name}元年` : `${e.name}${n}年`
+  const reading = n === 1 ? `${e.kana}がんねん` : `${e.kana}${readNumber(n)}ねん`
+  return { e, n, label, reading }
+}
+
+function makeWarekiCard(irregularOnly: boolean): Card {
+  for (let i = 0; i < 60; i++) {
+    const y = rand(1926, 2026)
+    const w = toWareki(y)
+    const irr = w.n === 1 || BOUNDARY.has(y)
+    if (irregularOnly && !irr) continue
+    const reverse = Math.random() < 0.5
+    const note = BOUNDARY.has(y)
+      ? `${y}년은 연호가 바뀐 해 — 앞부분은 이전 연호로도 셈 (${w.e.name}는 ${w.e.from}년부터)`
+      : `${w.e.name} = 西暦 − ${w.e.base}`
+    return reverse
+      ? {
+        key: `wa-r-${y}-${Math.random()}`, cat: 'wareki',
+        prompt: w.label, sub: '西暦으로는?',
+        answer: `${y}年（${readNumber(y)}ねん）`, irregular: irr, note,
+      }
+      : {
+        key: `wa-${y}-${Math.random()}`, cat: 'wareki',
+        prompt: `西暦 ${y}年`, sub: '和暦으로는?',
+        answer: `${w.label}（${w.reading}）`, irregular: irr, note,
+      }
+  }
+  const w = toWareki(2019)
+  return {
+    key: `wa-fb-${Math.random()}`, cat: 'wareki', prompt: '西暦 2019年', sub: '和暦으로는?',
+    answer: `${w.label}（${w.reading}）`, irregular: true,
+    note: '2019년은 平成31년이자 令和元年',
+  }
+}
+
 // ── TTS ──────────────────────────────────────────────────────────
 function speak(text: string, rate = 0.85) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return
@@ -387,7 +436,8 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[], d: Direction) => voi
     return irregularOnly ? p.filter(c => c.irregular) : p
   }, [cats, rows, irregularOnly])
 
-  const hasGenerative = cats.has('number') || cats.has('money') || cats.has('date') || cats.has('time')
+  const hasGenerative = cats.has('number') || cats.has('money') || cats.has('date')
+    || cats.has('time') || cats.has('wareki')
   const ready = cats.size > 0
     && (!needsRows || rows.size > 0)
     && (!needsDigits || digits.size > 0)
@@ -402,6 +452,7 @@ function SettingsScreen({ onStart }: { onStart: (c: Card[], d: Direction) => voi
     if (cats.has('money') && digitArr.length) gen.push(() => makeMoneyCard(digitArr, irregularOnly))
     if (cats.has('date')) gen.push(() => makeDateCard(irregularOnly))
     if (cats.has('time')) gen.push(() => makeTimeCard(irregularOnly))
+    if (cats.has('wareki')) gen.push(() => makeWarekiCard(irregularOnly))
     if (gen.length) {
       const need = Math.max(target - pool.length, gen.length * 8)
       for (let i = 0; i < need; i++) pool.push(gen[i % gen.length]())

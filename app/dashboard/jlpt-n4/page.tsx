@@ -3,12 +3,19 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { TRAINERS, TRAINER_GROUPS } from '@/lib/constants-jlpt-trainers'
 
 // ───────────────────────────────────────────────────────────────
 // JLPT 허브 (목표: N2)
-//   탭: 📚 교재  /  🃏 플래시카드
+//   탭: 📚 교재  /  🃏 덱  /  🎯 트레이닝
+//
+//   덱은 교재에서 채굴한 것이라 교재 수만큼 늘어나고,
+//   트레이닝은 규칙 단위라 주제 수만큼 늘어난다.
+//   증가 축이 다르니 한 리스트에 섞지 않고 탭을 나눈다.
+//   트레이닝 목록은 lib/constants-jlpt-trainers.ts에서 자동 생성.
 // ───────────────────────────────────────────────────────────────
 
+type Tab = 'books' | 'decks' | 'train'
 type Book = { id: string; title: string; tag: string | null; color: string; sort_order: number }
 type Node = { id: string; book_id: string; parent_id: string | null; status: 0 | 1 | 2 }
 
@@ -29,10 +36,11 @@ function bookProgress(nodes: Node[], bookId: string): { done: number; total: num
 }
 
 export default function JlptHub() {
-  const [activeTab, setActiveTab] = useState<'books' | 'cards'>('books')
+  const [activeTab, setActiveTab] = useState<Tab>('books')
   const [books, setBooks] = useState<Book[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
   const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -56,6 +64,22 @@ export default function JlptHub() {
   }, [books, nodes])
   const overallPct = overall.total === 0 ? 0 : Math.round((overall.done / overall.total) * 100)
 
+  const needle = q.trim().toLowerCase()
+  const filteredBooks = useMemo(
+    () => needle ? books.filter(b => b.title.toLowerCase().includes(needle)) : books,
+    [books, needle],
+  )
+  const filteredTrainers = useMemo(() => {
+    if (!needle) return TRAINERS
+    return TRAINERS.filter(t =>
+      t.ja.toLowerCase().includes(needle) ||
+      t.ko.toLowerCase().includes(needle) ||
+      t.tags.some(g => g.toLowerCase().includes(needle)),
+    )
+  }, [needle])
+
+  const showSearch = (activeTab === 'decks' && books.length > 5) || activeTab === 'train'
+
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-3xl mx-auto">
@@ -72,14 +96,15 @@ export default function JlptHub() {
           독해·어휘 양치기 · 교재 자유 추가 · 채굴 예문 플래시카드
         </p>
 
-        <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-6">
+        <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-4">
           {([
             { key: 'books', label: '📚 교재' },
-            { key: 'cards', label: '🃏 플래시카드' },
+            { key: 'decks', label: `🃏 덱${books.length ? ` ${books.length}` : ''}` },
+            { key: 'train', label: `🎯 트레이닝 ${TRAINERS.length}` },
           ] as const).map(({ key, label }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
+              onClick={() => { setActiveTab(key); setQ('') }}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
                 activeTab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
               }`}
@@ -89,6 +114,16 @@ export default function JlptHub() {
           ))}
         </div>
 
+        {showSearch && (
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder={activeTab === 'train' ? '조수사, 경어, 한자음…' : '교재 이름으로 찾기'}
+            className="w-full bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-xl px-4 py-2.5 text-sm mb-4 outline-none transition placeholder:text-gray-600"
+          />
+        )}
+
+        {/* ── 교재 ── */}
         {activeTab === 'books' && (
           <div>
             <div className="bg-gray-900 rounded-xl p-4 mb-5">
@@ -149,10 +184,13 @@ export default function JlptHub() {
           </div>
         )}
 
-        {activeTab === 'cards' && (
+        {/* ── 덱 ── */}
+        {activeTab === 'decks' && (
           <div className="space-y-2">
-            <p className="text-xs text-gray-500 mb-1">교재를 골라 들어가면 그 교재의 덱만 모여요. 덱 안에서는 어휘·문법·문형 태그로 분류됩니다.</p>
-            {books.map(b => (
+            <p className="text-xs text-gray-500 mb-1">
+              교재에서 채굴한 카드. 덱 안에서는 어휘·문법·문형 태그로 분류됩니다.
+            </p>
+            {filteredBooks.map(b => (
               <Link key={b.id} href={`/flashcard?exam=jlpt-n4&book=${b.id}`}
                 className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
                 <div className="flex items-center gap-2 min-w-0">
@@ -165,46 +203,55 @@ export default function JlptHub() {
                 <span className="text-gray-600 text-xs shrink-0">→</span>
               </Link>
             ))}
-            <Link href="/flashcard?exam=jlpt-n4&book=none"
-              className="flex items-center justify-between bg-gray-900/60 hover:bg-gray-800 rounded-xl px-4 py-3 transition">
-              <div>
-                <p className="text-sm font-semibold text-gray-300">🗂 미분류 카드</p>
-                <p className="text-xs text-gray-600 mt-0.5">교재에 묶이지 않은 기존 덱</p>
-              </div>
-              <span className="text-gray-600 text-xs">→</span>
-            </Link>
-            <Link href="/dashboard/jlpt-n4/verb-practice"
-              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
-              <div>
-                <p className="text-sm font-semibold">⚡ 動詞活用練習</p>
-                <p className="text-xs text-gray-500 mt-0.5">동사 활용형 반사신경 트레이닝</p>
-              </div>
-              <span className="text-gray-600 text-xs">→</span>
-            </Link>
-            <Link href="/dashboard/jlpt-n4/number-practice"
-              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
-              <div>
-                <p className="text-sm font-semibold">🔢 数詞・助数詞練習</p>
-                <p className="text-xs text-gray-500 mt-0.5">숫자·조수사·날짜·시간·금액 반사신경 트레이닝</p>
-              </div>
-              <span className="text-gray-600 text-xs">→</span>
-            </Link>
-            <Link href="/dashboard/jlpt-n4/family-terms"
-              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
-              <div>
-                <p className="text-sm font-semibold">👨‍👩‍👧‍👦 親族呼称練習</p>
-                <p className="text-xs text-gray-500 mt-0.5">대가족 관계 호칭 · うち／そと 변환</p>
-              </div>
-              <span className="text-gray-600 text-xs">→</span>
-            </Link>
-            <Link href="/dashboard/jlpt-n4/business-titles"
-              className="flex items-center justify-between bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-4 transition">
-              <div>
-                <p className="text-sm font-semibold">🏢 役職・呼称練習</p>
-                <p className="text-xs text-gray-500 mt-0.5">회사 직급 서열 · 社内／社外 경어</p>
-              </div>
-              <span className="text-gray-600 text-xs">→</span>
-            </Link>
+            {needle && filteredBooks.length === 0 && (
+              <p className="text-gray-600 text-sm text-center py-8">일치하는 교재가 없어요.</p>
+            )}
+            {!needle && (
+              <Link href="/flashcard?exam=jlpt-n4&book=none"
+                className="flex items-center justify-between bg-gray-900/60 hover:bg-gray-800 rounded-xl px-4 py-3 transition">
+                <div>
+                  <p className="text-sm font-semibold text-gray-300">🗂 미분류 카드</p>
+                  <p className="text-xs text-gray-600 mt-0.5">교재에 묶이지 않은 기존 덱</p>
+                </div>
+                <span className="text-gray-600 text-xs">→</span>
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* ── 트레이닝 ── */}
+        {activeTab === 'train' && (
+          <div>
+            <p className="text-xs text-gray-500 mb-3">
+              규칙으로 문제를 만들어내는 훈련. 교재와 무관하게 언제든 돌릴 수 있어요.
+            </p>
+            {TRAINER_GROUPS.map(g => {
+              const items = filteredTrainers.filter(t => t.group === g.key)
+              if (!items.length) return null
+              return (
+                <div key={g.key} className="mb-5">
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{g.label}</h2>
+                    <span className="text-[10px] text-gray-700">{g.hint}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {items.map(t => (
+                      <Link key={t.slug} href={`/dashboard/jlpt-n4/${t.slug}`}
+                        className="flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl px-4 py-3.5 transition">
+                        <span className="text-xl shrink-0">{t.icon}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{t.ja}</p>
+                          <p className="text-[11px] text-gray-500 truncate mt-0.5">{t.ko}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+            {filteredTrainers.length === 0 && (
+              <p className="text-gray-600 text-sm text-center py-8">일치하는 트레이닝이 없어요.</p>
+            )}
           </div>
         )}
 
