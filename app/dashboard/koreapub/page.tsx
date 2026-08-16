@@ -4,107 +4,102 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
-  CertDef, CertKind, ALL_KINDS, KIND_LABELS, CERT_CATALOG, certLabel,
-  Company, RuleGroup, COMPANIES,
-  SpecRow, SpecMap, toSpecMap, scoreCompany, CompanyResult,
-  MockRow, MOCK_PARTS, pct,
+  CertDef, CertKind, ALL_KINDS, KIND_LABELS, CERT_CATALOG, MY_CERTS,
+  Company, RuleGroup, RuleTier, COMPANIES,
+  SpecRow, SpecMap, toSpecMap, langSources, bestToeic,
+  scoreCompany, CompanyResult, tierMet,
+  MockRow, MOCK_PARTS, EssayRow, pct,
 } from '@/lib/constants-koreapub'
 
 // ───────────────────────────────────────────────────────────────
-//  한국 공기업 채용 준비
-//    기업   내 스펙으로 기업별 가점이 몇 점 나오는지 · 뭘 더 따면 오르는지
-//    내 스펙 보유 자격증 · 어학 체크
-//    모의고사 NCS / 전공 / 법령 성적 로깅
-//
-//  배점은 lib/constants-koreapub.ts 의 기본값에서 출발하고,
-//  공고를 보고 고친 값은 kp_rubrics 에 저장되어 그쪽이 우선한다.
+//  한국 공기업 전기직
+//    기업    서류 표준배점표를 그대로 놓고 내가 몇 점인지
+//    내 스펙  현실적으로 딸 수 있는 것만
+//    자소서   기업별 문항 + 답안
+//    모의고사 NCS / 전공 / 법령
 // ───────────────────────────────────────────────────────────────
 
-type Tab = 'companies' | 'spec' | 'mocks'
+type Tab = 'companies' | 'spec' | 'essay' | 'mocks'
 
-interface RubricRow { company_id: string; bonus_max: number | null; groups: RuleGroup[]; memo: string | null }
+interface RubricRow { company_id: string; groups: RuleGroup[]; memo: string | null }
 
 export default function KoreaPubPage() {
   const [tab, setTab] = useState<Tab>('companies')
   const [specs, setSpecs] = useState<SpecRow[]>([])
   const [rubrics, setRubrics] = useState<RubricRow[]>([])
   const [mocks, setMocks] = useState<MockRow[]>([])
+  const [essays, setEssays] = useState<EssayRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: sp }, { data: rb }, { data: mk }] = await Promise.all([
+    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }] = await Promise.all([
       supabase.from('kp_specs').select('cert_key, has, value'),
-      supabase.from('kp_rubrics').select('company_id, bonus_max, groups, memo'),
+      supabase.from('kp_rubrics').select('company_id, groups, memo'),
       supabase.from('kp_mocks').select('*').order('taken_on', { ascending: false }),
+      supabase.from('kp_essays').select('*').order('idx', { ascending: true }),
     ])
     setSpecs((sp as SpecRow[]) || [])
     setRubrics((rb as RubricRow[]) || [])
     setMocks((mk as MockRow[]) || [])
+    setEssays((es as EssayRow[]) || [])
     setLoading(false)
   }, [])
-
   useEffect(() => { fetchAll() }, [fetchAll])
 
   const spec: SpecMap = useMemo(() => toSpecMap(specs), [specs])
 
-  /** 기본 정의 + kp_rubrics 덮어쓰기 */
   const companies: Company[] = useMemo(() => COMPANIES.map(c => {
     const r = rubrics.find(x => x.company_id === c.id)
-    return r ? { ...c, bonusMax: r.bonus_max ?? c.bonusMax, groups: r.groups } : c
+    return r?.groups?.length ? { ...c, groups: r.groups } : c
   }), [rubrics])
 
-  const results: CompanyResult[] = useMemo(
-    () => companies.map(c => scoreCompany(c, spec)),
-    [companies, spec],
-  )
+  const results = useMemo(() => companies.map(c => scoreCompany(c, spec)), [companies, spec])
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-3xl mx-auto">
-
         <div className="mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
         </div>
-        <div className="flex items-center gap-3 mb-1">
-          <span className="text-2xl">🏛</span>
-          <h1 className="text-2xl font-bold">한국 공기업 전기직</h1>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🏛</span>
+            <h1 className="text-2xl font-bold">한국 공기업 전기직</h1>
+          </div>
+          <Link href="/dashboard/timeline"
+            className="text-xs px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white transition shrink-0">
+            🗓 일정
+          </Link>
         </div>
-        <p className="text-gray-500 text-sm mb-5">
-          기업별 가점 구조 · 내 스펙 서류점수 · NCS / 전공 모의고사
-        </p>
+        <p className="text-gray-500 text-sm mb-5">서류 배점표 · 내 점수 · 자소서 · NCS/전공 모의고사</p>
 
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-5">
           {([
             { key: 'companies', label: `🏢 기업 ${companies.length}` },
             { key: 'spec', label: `🎫 내 스펙 ${Object.keys(spec).length}` },
-            { key: 'mocks', label: `📊 모의고사 ${mocks.length}` },
+            { key: 'essay', label: '✍️ 자소서' },
+            { key: 'mocks', label: `📊 모의 ${mocks.length}` },
           ] as const).map(({ key, label }) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+              className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
                 tab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
-              }`}>
-              {label}
-            </button>
+              }`}>{label}</button>
           ))}
         </div>
 
         {loading && <p className="text-gray-500 text-sm">불러오는 중...</p>}
-
-        {!loading && tab === 'companies' && (
-          <CompaniesTab results={results} spec={spec} onSaved={fetchAll}
-            rubrics={rubrics} />
-        )}
-        {!loading && tab === 'spec' && <SpecTab specs={specs} onSaved={fetchAll} />}
+        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} onSaved={fetchAll} />}
+        {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={fetchAll} />}
+        {!loading && tab === 'essay' && <EssayTab essays={essays} onSaved={fetchAll} />}
         {!loading && tab === 'mocks' && <MocksTab mocks={mocks} onSaved={fetchAll} />}
-
       </div>
     </main>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  기업 탭
+//  기업
 // ═══════════════════════════════════════════════════════════════
 function CompaniesTab({ results, spec, rubrics, onSaved }: {
   results: CompanyResult[]; spec: SpecMap; rubrics: RubricRow[]; onSaved: () => void
@@ -113,54 +108,36 @@ function CompaniesTab({ results, spec, rubrics, onSaved }: {
   const targets = results.filter(r => r.company.target)
   const refs = results.filter(r => !r.company.target)
 
-  const specCount = Object.keys(spec).length
+  const render = (list: CompanyResult[]) => list.map(r => (
+    <CompanyCard key={r.company.id} r={r} spec={spec}
+      open={openId === r.company.id}
+      onToggle={() => setOpenId(openId === r.company.id ? null : r.company.id)}
+      rubric={rubrics.find(x => x.company_id === r.company.id)} onSaved={onSaved} />
+  ))
 
   return (
     <div>
-      {specCount === 0 && (
+      {Object.keys(spec).length === 0 && (
         <div className="bg-amber-950/40 border border-amber-900 rounded-xl p-4 mb-4">
-          <p className="text-sm font-bold text-amber-300 mb-1">먼저 내 스펙을 넣어주세요</p>
-          <p className="text-xs text-amber-200/70 leading-relaxed">
-            「내 스펙」 탭에서 보유 자격증을 체크하면, 기업마다 서류 가점이 몇 점 나오는지
-            자동으로 계산됩니다.
-          </p>
+          <p className="text-sm font-bold text-amber-300 mb-1">먼저 「내 스펙」을 채워주세요</p>
+          <p className="text-xs text-amber-200/70">체크하는 즉시 기업별 서류점수가 계산됩니다.</p>
         </div>
       )}
-
       <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">🎯 주 타깃</p>
-      <div className="space-y-3 mb-8">
-        {targets.map(r => (
-          <CompanyCard key={r.company.id} r={r} open={openId === r.company.id}
-            onToggle={() => setOpenId(openId === r.company.id ? null : r.company.id)}
-            spec={spec} rubric={rubrics.find(x => x.company_id === r.company.id)} onSaved={onSaved} />
-        ))}
-      </div>
-
-      <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">
-        📐 레퍼런스 <span className="text-gray-700 normal-case tracking-normal">기준선을 잡기 위한 곳들</span>
-      </p>
-      <div className="space-y-3">
-        {refs.map(r => (
-          <CompanyCard key={r.company.id} r={r} open={openId === r.company.id}
-            onToggle={() => setOpenId(openId === r.company.id ? null : r.company.id)}
-            spec={spec} rubric={rubrics.find(x => x.company_id === r.company.id)} onSaved={onSaved} />
-        ))}
-      </div>
-
-      <p className="text-[10px] text-gray-700 mt-6 leading-relaxed">
-        여기 배점은 과거 공고와 공개 자료를 모은 출발점입니다. 공기업 가점 구조는 회차·직렬마다
-        바뀌므로, 실제 지원 전에는 각 기업 카드의 「배점 편집」에서 그 회차 공고 값으로 덮어쓰세요.
-      </p>
+      <div className="space-y-3 mb-8">{render(targets)}</div>
+      <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📐 레퍼런스</p>
+      <div className="space-y-3">{render(refs)}</div>
     </div>
   )
 }
 
-function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
-  r: CompanyResult; open: boolean; onToggle: () => void
-  spec: SpecMap; rubric?: RubricRow; onSaved: () => void
+function CompanyCard({ r, spec, open, onToggle, rubric, onSaved }: {
+  r: CompanyResult; spec: SpecMap; open: boolean; onToggle: () => void
+  rubric?: RubricRow; onSaved: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const c = r.company
+  const toeic = bestToeic(spec)
   const p = r.max === 0 ? 0 : (r.earned / r.max) * 100
 
   return (
@@ -168,8 +145,11 @@ function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
       <button onClick={onToggle} className="w-full text-left p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
-            <p className="font-bold text-sm">
-              {c.name} <span className="text-gray-600 font-normal">{c.short}</span>
+            <p className="font-bold text-sm flex items-center gap-2">
+              {c.name}
+              {c.confirmed
+                ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/60 text-green-400 font-bold">공고 확인</span>
+                : <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-bold">미확인</span>}
             </p>
             <p className="text-[11px] text-gray-600 mt-0.5">{c.sector} · {c.season}</p>
           </div>
@@ -177,17 +157,19 @@ function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
             <p className="text-lg font-bold text-blue-400 leading-none">
               {r.earned}<span className="text-xs text-gray-600">/{r.max}</span>
             </p>
-            <p className="text-[10px] text-gray-600 mt-1">가점 예상</p>
+            <p className="text-[10px] text-gray-600 mt-1">
+              서류{r.extraEarned > 0 && ` +별도 ${r.extraEarned}`}
+            </p>
           </div>
         </div>
         <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
           <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${p}%` }} />
         </div>
         {r.upside.length > 0 && (
-          <p className="text-[11px] text-gray-500 mt-2">
+          <p className="text-[11px] text-gray-500 mt-2 truncate">
             {r.upside.slice(0, 2).map(u => (
-              <span key={u.cert} className="mr-3">
-                <span className="text-amber-400">+{u.gain}</span> {certLabel(u.cert)}
+              <span key={u.label} className="mr-3">
+                <span className="text-amber-400">+{u.gain}</span> {u.label}
               </span>
             ))}
           </p>
@@ -196,9 +178,8 @@ function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
 
       {open && (
         <div className="px-5 pb-5 border-t border-gray-800 pt-4">
-          {/* 필기 */}
           <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">필기</p>
-          <div className="space-y-1 mb-3">
+          <div className="space-y-1 mb-2">
             {c.exam.parts.map(pt => (
               <div key={pt.name} className="flex items-baseline justify-between text-xs">
                 <span className="text-gray-300">{pt.name}</span>
@@ -209,22 +190,20 @@ function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-gray-500 mb-1">총점 {c.exam.total}</p>
+          <p className="text-[11px] text-gray-500">총점 {c.exam.total}</p>
           <p className="text-[11px] text-red-400/80 mb-4">과락 {c.exam.cutoff}</p>
 
-          {/* 자격 요건 */}
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">지원 자격 (문턱)</p>
+          <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">지원 자격</p>
           <ul className="space-y-1 mb-4">
             {c.eligibility.map((e, i) => (
-              <li key={i} className="text-xs text-gray-400 flex gap-2">
-                <span className="text-gray-700">·</span>{e}
-              </li>
+              <li key={i} className="text-xs text-gray-400 flex gap-2"><span className="text-gray-700">·</span>{e}</li>
             ))}
           </ul>
 
-          {/* 가점표 */}
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">가점 구조</p>
+            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">
+              서류 배점표 <span className="text-gray-700 normal-case">합계 {c.docTotal}점</span>
+            </p>
             <button onClick={() => setEditing(v => !v)}
               className="text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 transition">
               {editing ? '편집 닫기' : '✎ 배점 편집'}
@@ -234,69 +213,87 @@ function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
           {editing ? (
             <RubricEditor c={c} rubric={rubric} onSaved={() => { setEditing(false); onSaved() }} />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {r.groups.map(g => (
                 <div key={g.group.id}>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <span className="text-xs font-bold text-gray-300">
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-xs font-bold text-gray-200">
                       {g.group.label}
                       <span className="text-[10px] text-gray-600 font-normal ml-1.5">
-                        최대 {g.group.max} · {g.group.pick}개 인정
+                        {g.group.max}점 · {g.group.mode === 'top1' ? '최상위 1개' : '합산'}
                       </span>
                     </span>
-                    <span className={`text-xs font-bold ${g.earned > 0 ? 'text-blue-400' : 'text-gray-700'}`}>
+                    <span className={`text-sm font-bold ${g.earned > 0 ? 'text-blue-400' : 'text-gray-700'}`}>
                       {g.earned}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {g.group.options.map(o => {
-                      const owned = !!spec[o.cert]
-                      const used = g.used.includes(o)
+                  <div className="space-y-0.5">
+                    {g.group.tiers.map((t, i) => {
+                      const met = tierMet(t, spec, toeic)
+                      const hit = g.hitTier === t || (g.group.mode === 'sum' && met)
                       return (
-                        <span key={o.cert}
-                          className={`text-[11px] px-2 py-1 rounded-lg ${
-                            used ? 'bg-blue-600/30 text-blue-300 font-bold'
-                              : owned ? 'bg-gray-800 text-gray-400'
-                                : 'bg-gray-950 text-gray-600'
-                          }`}
-                          title={o.cond}>
-                          {certLabel(o.cert)} <span className="opacity-70">{o.points}</span>
-                          {owned && !used && <span className="text-[9px] ml-1 opacity-60">보유·미반영</span>}
-                        </span>
+                        <div key={i}
+                          className={`flex items-baseline gap-2 text-[11px] px-2 py-1 rounded ${
+                            hit ? 'bg-blue-600/25' : met ? 'bg-gray-800/60' : ''
+                          }`}>
+                          <span className={`w-8 text-right font-bold shrink-0 ${hit ? 'text-blue-300' : 'text-gray-600'}`}>
+                            {t.points}
+                          </span>
+                          <span className={hit ? 'text-white' : met ? 'text-gray-400' : 'text-gray-600'}>
+                            {t.label}
+                          </span>
+                          {hit && <span className="ml-auto text-[9px] text-blue-300 shrink-0">←내 등급</span>}
+                        </div>
                       )
                     })}
                   </div>
-                  {g.group.note && (
-                    <p className="text-[10px] text-gray-600 mt-1.5 leading-relaxed">{g.group.note}</p>
-                  )}
+                  {g.group.note && <p className="text-[10px] text-gray-600 mt-1 leading-relaxed">{g.group.note}</p>}
                 </div>
               ))}
+
+              {r.extra && (
+                <div className="pt-3 border-t border-gray-800">
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-xs font-bold text-gray-400">
+                      {r.extra.group.label}
+                      <span className="text-[10px] text-gray-600 font-normal ml-1.5">최대 {r.extra.group.max}점 · 합계 밖</span>
+                    </span>
+                    <span className="text-sm font-bold text-gray-500">{r.extra.earned}</span>
+                  </div>
+                  {r.extra.group.tiers.map((t, i) => (
+                    <div key={i} className="flex items-baseline gap-2 text-[11px] px-2 py-0.5">
+                      <span className="w-8 text-right text-gray-600 font-bold shrink-0">{t.points}</span>
+                      <span className="text-gray-600">{t.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* 다음 한 수 */}
           {r.upside.length > 0 && !editing && (
             <div className="mt-4 pt-3 border-t border-gray-800">
-              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">
-                지금 더 따면
-              </p>
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">다음 한 수</p>
               <div className="space-y-1">
                 {r.upside.map(u => (
-                  <div key={u.cert} className="flex items-baseline justify-between text-xs">
-                    <span className="text-gray-300">{certLabel(u.cert)}</span>
-                    <span className="text-amber-400 font-bold">+{u.gain}점</span>
+                  <div key={u.label} className="flex items-baseline gap-2 text-xs">
+                    <span className="text-amber-400 font-bold w-9 shrink-0">+{u.gain}</span>
+                    <span className="text-gray-400 truncate">{u.how}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <p className="text-[10px] text-gray-700 mt-4 leading-relaxed border-t border-gray-800 pt-3">
-            ⚠ {c.verified}
-          </p>
-          {rubric?.memo && (
-            <p className="text-[10px] text-blue-400/70 mt-1">📌 {rubric.memo}</p>
+          {c.tiebreak && (
+            <p className="text-[10px] text-gray-600 mt-3">
+              동점자 처리: {c.tiebreak.map((t, i) => `${i + 1}. ${t}`).join('  ')}
+            </p>
           )}
+          <p className="text-[10px] text-gray-700 mt-3 leading-relaxed border-t border-gray-800 pt-3">
+            {c.confirmed ? '✓ ' : '⚠ '}{c.verified}
+          </p>
+          {rubric?.memo && <p className="text-[10px] text-blue-400/70 mt-1">📌 {rubric.memo}</p>}
         </div>
       )}
     </div>
@@ -304,90 +301,121 @@ function CompanyCard({ r, open, onToggle, spec, rubric, onSaved }: {
 }
 
 // ── 배점 편집 ────────────────────────────────────────────────────
-function RubricEditor({ c, rubric, onSaved }: {
-  c: Company; rubric?: RubricRow; onSaved: () => void
-}) {
+function RubricEditor({ c, rubric, onSaved }: { c: Company; rubric?: RubricRow; onSaved: () => void }) {
   const [groups, setGroups] = useState<RuleGroup[]>(() => JSON.parse(JSON.stringify(c.groups)))
-  const [bonusMax, setBonusMax] = useState(String(c.bonusMax))
   const [memo, setMemo] = useState(rubric?.memo ?? '')
   const [saving, setSaving] = useState(false)
+  const [pickFor, setPickFor] = useState<string | null>(null)
 
-  const setOpt = (gi: number, oi: number, v: string) => {
-    const n = [...groups]
-    n[gi] = { ...n[gi], options: n[gi].options.map((o, i) => i === oi ? { ...o, points: Number(v || 0) } : o) }
-    setGroups(n)
-  }
-  const setG = (gi: number, k: 'max' | 'pick', v: string) => {
-    const n = [...groups]
-    n[gi] = { ...n[gi], [k]: Number(v || 0) }
-    setGroups(n)
+  const upd = (gi: number, patch: Partial<RuleGroup>) =>
+    setGroups(gs => gs.map((g, i) => i === gi ? { ...g, ...patch } : g))
+  const updTier = (gi: number, ti: number, patch: Partial<RuleTier>) =>
+    setGroups(gs => gs.map((g, i) => i === gi
+      ? { ...g, tiers: g.tiers.map((t, j) => j === ti ? { ...t, ...patch } : t) } : g))
+  const addTier = (gi: number) =>
+    setGroups(gs => gs.map((g, i) => i === gi
+      ? { ...g, tiers: [...g.tiers, { points: 0, label: '새 등급', certs: [] }] } : g))
+  const delTier = (gi: number, ti: number) =>
+    setGroups(gs => gs.map((g, i) => i === gi ? { ...g, tiers: g.tiers.filter((_, j) => j !== ti) } : g))
+  const addGroup = () =>
+    setGroups(gs => [...gs, {
+      id: `g${Date.now()}`, label: '새 분야', max: 10, mode: 'top1',
+      tiers: [{ points: 10, label: '', certs: [] }],
+    }])
+  const delGroup = (gi: number) => setGroups(gs => gs.filter((_, i) => i !== gi))
+
+  const toggleCert = (gi: number, ti: number, key: string) => {
+    const cur = groups[gi].tiers[ti].certs ?? []
+    updTier(gi, ti, { certs: cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key] })
   }
 
   const save = async () => {
     setSaving(true)
     const { error } = await supabase.from('kp_rubrics').upsert({
-      company_id: c.id,
-      bonus_max: Number(bonusMax || 0),
-      groups,
-      memo: memo.trim() || null,
-      updated_at: new Date().toISOString(),
+      company_id: c.id, groups, memo: memo.trim() || null, updated_at: new Date().toISOString(),
     }, { onConflict: 'company_id' })
     setSaving(false)
     if (error) { alert(`저장하지 못했습니다.\n${error.message}`); return }
     onSaved()
   }
-
   const reset = async () => {
-    if (!confirm('기본 배점으로 되돌릴까요?')) return
+    if (!confirm('기본 배점표로 되돌릴까요?')) return
     await supabase.from('kp_rubrics').delete().eq('company_id', c.id)
     onSaved()
   }
 
-  const num = 'w-14 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-2 py-1 text-xs text-center outline-none transition'
+  const num = 'w-12 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-1.5 py-1 text-xs text-center outline-none'
+  const txt = 'flex-1 min-w-0 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-2 py-1 text-xs outline-none'
 
   return (
     <div className="bg-gray-950/60 rounded-xl p-3">
       <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">
-        공고 원문을 보면서 숫자를 고치세요. 저장하면 이 기업만 여기 값으로 계산됩니다.
+        공고 붙임의 「서류심사 표준배점표」를 보면서 그대로 옮기세요. 분야 · 등급 · 점수를 자유롭게 더하고 뺄 수 있고,
+        각 등급에 어떤 자격증이 해당하는지는 <span className="text-gray-400">자격</span> 버튼으로 연결합니다.
+        어학 등급은 <span className="text-gray-400">TOEIC 하한</span>만 넣으면 OPIc·TOEFL이 자동 환산돼 매칭됩니다.
       </p>
-
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-xs text-gray-400 flex-1">가점 총 상한</span>
-        <input value={bonusMax} onChange={e => setBonusMax(e.target.value.replace(/\D/g, ''))} className={num} />
-      </div>
 
       {groups.map((g, gi) => (
         <div key={g.id} className="mb-3 pb-3 border-b border-gray-900 last:border-0">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-bold text-gray-300 flex-1 truncate">{g.label}</span>
-            <span className="text-[10px] text-gray-600">최대</span>
-            <input value={String(g.max)} onChange={e => setG(gi, 'max', e.target.value.replace(/\D/g, ''))} className={num} />
-            <span className="text-[10px] text-gray-600">개수</span>
-            <input value={String(g.pick)} onChange={e => setG(gi, 'pick', e.target.value.replace(/\D/g, ''))} className={num} />
+          <div className="flex items-center gap-1.5 mb-2">
+            <input value={g.label} onChange={e => upd(gi, { label: e.target.value })} className={txt} />
+            <input value={String(g.max)} onChange={e => upd(gi, { max: Number(e.target.value.replace(/\D/g, '') || 0) })} className={num} />
+            <button onClick={() => upd(gi, { mode: g.mode === 'top1' ? 'sum' : 'top1' })}
+              className="text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 shrink-0">
+              {g.mode === 'top1' ? '최상위1' : '합산'}
+            </button>
+            <button onClick={() => delGroup(gi)} className="text-[10px] text-gray-700 hover:text-red-400 px-1 shrink-0">✕</button>
           </div>
-          <div className="space-y-1">
-            {g.options.map((o, oi) => (
-              <div key={o.cert} className="flex items-center gap-2">
-                <span className="text-[11px] text-gray-400 flex-1 truncate">
-                  {certLabel(o.cert)}
-                  {o.cond && <span className="text-gray-700 ml-1">{o.cond}</span>}
-                </span>
-                <input value={String(o.points)} onChange={e => setOpt(gi, oi, e.target.value.replace(/\D/g, ''))} className={num} />
+
+          {g.tiers.map((t, ti) => {
+            const pid = `${gi}-${ti}`
+            return (
+              <div key={ti} className="mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <input value={String(t.points)} onChange={e => updTier(gi, ti, { points: Number(e.target.value.replace(/\D/g, '') || 0) })} className={num} />
+                  <input value={t.label} onChange={e => updTier(gi, ti, { label: e.target.value })}
+                    placeholder="공고 원문 그대로" className={`${txt} placeholder:text-gray-700`} />
+                  <input value={t.toeicMin === undefined ? '' : String(t.toeicMin)}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '')
+                      updTier(gi, ti, { toeicMin: v === '' ? undefined : Number(v) })
+                    }}
+                    placeholder="TOEIC" className={`${num} w-16 placeholder:text-gray-700 text-amber-300`} />
+                  <button onClick={() => setPickFor(pickFor === pid ? null : pid)}
+                    className={`text-[10px] px-2 py-1 rounded shrink-0 ${(t.certs?.length ?? 0) > 0 ? 'bg-blue-900/60 text-blue-300' : 'bg-gray-800 text-gray-500'}`}>
+                    자격 {t.certs?.length ?? 0}
+                  </button>
+                  <button onClick={() => delTier(gi, ti)} className="text-[10px] text-gray-700 hover:text-red-400 px-1 shrink-0">✕</button>
+                </div>
+                {pickFor === pid && (
+                  <div className="flex flex-wrap gap-1 mt-1.5 p-2 bg-gray-900 rounded-lg">
+                    {CERT_CATALOG.filter(x => x.value === 'bool').map(x => (
+                      <button key={x.key} onClick={() => toggleCert(gi, ti, x.key)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          (t.certs ?? []).includes(x.key) ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                        }`}>{x.label}</button>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            )
+          })}
+          <button onClick={() => addTier(gi)}
+            className="text-[10px] text-gray-600 hover:text-gray-300 mt-1">+ 등급 추가</button>
         </div>
       ))}
 
+      <button onClick={addGroup}
+        className="w-full border border-dashed border-gray-800 hover:border-gray-600 text-gray-600 hover:text-gray-300 rounded-lg py-2 text-[11px] mb-3 transition">
+        + 분야 추가
+      </button>
+
       <input value={memo} onChange={e => setMemo(e.target.value)}
         placeholder="공고 회차 · URL 메모"
-        className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-xs outline-none transition mb-3 placeholder:text-gray-700" />
+        className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-xs outline-none mb-3 placeholder:text-gray-700" />
 
       <div className="flex gap-2">
-        <button onClick={reset}
-          className="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-semibold transition">
-          기본값으로
-        </button>
+        <button onClick={reset} className="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-semibold transition">기본값으로</button>
         <button onClick={save} disabled={saving}
           className="flex-1 py-2 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 text-xs font-bold transition">
           {saving ? '저장 중...' : '저장'}
@@ -398,89 +426,226 @@ function RubricEditor({ c, rubric, onSaved }: {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  내 스펙 탭
+//  내 스펙
 // ═══════════════════════════════════════════════════════════════
-function SpecTab({ specs, onSaved }: { specs: SpecRow[]; onSaved: () => void }) {
+function SpecTab({ specs, spec, onSaved }: { specs: SpecRow[]; spec: SpecMap; onSaved: () => void }) {
   const [busy, setBusy] = useState(false)
   const map = useMemo(() => Object.fromEntries(specs.map(s => [s.cert_key, s])), [specs])
+  const langs = langSources(spec)
 
   const toggle = async (c: CertDef) => {
     if (busy) return
     setBusy(true)
-    const cur = map[c.key]
-    if (cur?.has) await supabase.from('kp_specs').delete().eq('cert_key', c.key)
+    if (map[c.key]?.has) await supabase.from('kp_specs').delete().eq('cert_key', c.key)
     else await supabase.from('kp_specs').upsert(
-      { cert_key: c.key, has: true, value: cur?.value ?? null, updated_at: new Date().toISOString() },
-      { onConflict: 'cert_key' },
-    )
-    setBusy(false)
-    onSaved()
+      { cert_key: c.key, has: true, value: map[c.key]?.value ?? null, updated_at: new Date().toISOString() },
+      { onConflict: 'cert_key' })
+    setBusy(false); onSaved()
   }
-
   const setValue = async (c: CertDef, v: string) => {
     await supabase.from('kp_specs').upsert(
       { cert_key: c.key, has: true, value: v || null, updated_at: new Date().toISOString() },
-      { onConflict: 'cert_key' },
-    )
+      { onConflict: 'cert_key' })
     onSaved()
   }
 
   return (
     <div>
       <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-        가진 것만 켜면 됩니다. 기업 탭의 점수가 즉시 다시 계산됩니다.
-        어학·한국사처럼 급수가 있는 항목은 값도 적어두면 나중에 공고 요건과 대조하기 쉽습니다.
+        현실적으로 취득 가능한 것만 남겼습니다. 배점표에만 이름이 나오는 자격증(기술사·기능장 등)은
+        기업 탭의 표에는 그대로 보이되 여기서는 체크 대상이 아닙니다.
       </p>
-      {ALL_KINDS.map(kind => (
-        <div key={kind} className="mb-5">
-          <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-2">
-            {KIND_LABELS[kind as CertKind]}
-          </p>
-          <div className="space-y-1.5">
-            {CERT_CATALOG.filter(c => c.kind === kind).map(c => {
-              const row = map[c.key]
-              const on = !!row?.has
-              return (
-                <div key={c.key}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${on ? 'bg-blue-950/40 border border-blue-900' : 'bg-gray-900 border border-transparent'}`}>
-                  <button onClick={() => toggle(c)} disabled={busy}
-                    className={`w-5 h-5 rounded shrink-0 flex items-center justify-center text-[11px] font-bold transition ${
-                      on ? 'bg-blue-600 text-white' : 'bg-gray-800 text-transparent'
-                    }`}>✓</button>
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-[13px] leading-tight truncate ${on ? 'font-semibold' : 'text-gray-400'}`}>
-                      {c.label}
-                    </p>
-                    {c.hint && <p className="text-[10px] text-gray-600 truncate">{c.hint}</p>}
-                  </div>
-                  {on && c.value !== 'bool' && (
-                    <input
-                      defaultValue={row?.value ?? ''}
-                      onBlur={e => setValue(c, e.target.value.trim())}
-                      placeholder={c.value === 'score' ? '점수' : '급수'}
-                      className="w-20 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-2 py-1 text-xs text-center outline-none transition shrink-0 placeholder:text-gray-700"
-                    />
-                  )}
-                </div>
-              )
-            })}
+
+      {langs.length > 0 && (
+        <div className="bg-gray-900 rounded-2xl p-4 mb-5">
+          <p className="text-xs text-gray-500 mb-2">외국어 TOEIC 환산 — 가장 높은 것이 반영됩니다</p>
+          <div className="space-y-1">
+            {langs.map((l, i) => (
+              <div key={l.key} className="flex items-baseline gap-2 text-xs">
+                <span className={i === 0 ? 'text-white font-bold' : 'text-gray-500'}>{l.label}</span>
+                <span className="text-gray-700">→</span>
+                <span className={i === 0 ? 'text-blue-400 font-bold' : 'text-gray-600'}>
+                  TOEIC {Math.round(l.toeic)}
+                </span>
+                {!l.official && <span className="text-[9px] text-amber-600">비공식 환산</span>}
+                {i === 0 && <span className="ml-auto text-[10px] text-blue-400">반영</span>}
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+      )}
+
+      {ALL_KINDS.map(kind => {
+        const items = MY_CERTS.filter(c => c.kind === kind)
+        if (!items.length) return null
+        return (
+          <div key={kind} className="mb-5">
+            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-2">
+              {KIND_LABELS[kind as CertKind]}
+            </p>
+            <div className="space-y-1.5">
+              {items.map(c => {
+                const row = map[c.key]
+                const on = !!row?.has
+                return (
+                  <div key={c.key}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${on ? 'bg-blue-950/40 border border-blue-900' : 'bg-gray-900 border border-transparent'}`}>
+                    <button onClick={() => toggle(c)} disabled={busy}
+                      className={`w-5 h-5 rounded shrink-0 text-[11px] font-bold transition ${on ? 'bg-blue-600 text-white' : 'bg-gray-800 text-transparent'}`}>✓</button>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[13px] leading-tight truncate ${on ? 'font-semibold' : 'text-gray-400'}`}>{c.label}</p>
+                      {c.hint && <p className="text-[10px] text-gray-600 truncate">{c.hint}</p>}
+                    </div>
+                    {on && c.value === 'score' && (
+                      <input inputMode="numeric" defaultValue={row?.value ?? ''}
+                        onBlur={e => setValue(c, e.target.value.replace(/\D/g, ''))}
+                        placeholder="점수"
+                        className="w-20 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-2 py-1 text-xs text-center outline-none shrink-0 placeholder:text-gray-700" />
+                    )}
+                    {on && c.value === 'grade' && (
+                      <select value={row?.value ?? ''} onChange={e => setValue(c, e.target.value)}
+                        className="w-24 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-1 py-1 text-xs outline-none shrink-0">
+                        <option value="">선택</option>
+                        {(c.grades ?? []).map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  모의고사 탭
+//  자기소개서
+// ═══════════════════════════════════════════════════════════════
+function EssayTab({ essays, onSaved }: { essays: EssayRow[]; onSaved: () => void }) {
+  const [cid, setCid] = useState(COMPANIES[0].id)
+  const rows = essays.filter(e => e.company_id === cid)
+  const c = COMPANIES.find(x => x.id === cid)!
+
+  const seed = async () => {
+    const prompts = c.essayPrompts ?? []
+    if (!prompts.length) return
+    await supabase.from('kp_essays').insert(prompts.map((p, i) => ({
+      company_id: cid, idx: i + 1, prompt: p, min_chars: 500, max_chars: 1000,
+    })))
+    onSaved()
+  }
+  const addBlank = async () => {
+    await supabase.from('kp_essays').insert({
+      company_id: cid, idx: rows.length + 1, prompt: '', min_chars: 500, max_chars: 1000,
+    })
+    onSaved()
+  }
+
+  return (
+    <div>
+      <select value={cid} onChange={e => setCid(e.target.value)}
+        className="w-full bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-xl px-3 py-2.5 text-sm outline-none transition mb-4">
+        {COMPANIES.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+
+      {rows.length === 0 ? (
+        <div className="text-center py-10">
+          <p className="text-gray-600 text-sm mb-4">{c.short} 문항이 아직 없습니다.</p>
+          <div className="flex gap-2 justify-center">
+            {(c.essayPrompts?.length ?? 0) > 0 && (
+              <button onClick={seed}
+                className="px-4 py-2.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-sm font-bold transition">
+                공고 문항 {c.essayPrompts!.length}개 불러오기
+              </button>
+            )}
+            <button onClick={addBlank}
+              className="px-4 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-semibold transition">
+              빈 문항 추가
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-4">
+            {rows.map(e => <EssayCard key={e.id} row={e} onSaved={onSaved} />)}
+          </div>
+          <button onClick={addBlank}
+            className="w-full mt-4 border border-dashed border-gray-800 hover:border-gray-600 text-gray-600 hover:text-gray-300 rounded-xl py-3 text-sm transition">
+            + 문항 추가
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function EssayCard({ row, onSaved }: { row: EssayRow; onSaved: () => void }) {
+  const [prompt, setPrompt] = useState(row.prompt)
+  const [body, setBody] = useState(row.body ?? '')
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const min = row.min_chars ?? 0, max = row.max_chars ?? 0
+  const len = body.length
+  const ok = len >= min && (max === 0 || len <= max)
+
+  const save = async () => {
+    setSaving(true)
+    await supabase.from('kp_essays')
+      .update({ prompt, body, updated_at: new Date().toISOString() }).eq('id', row.id)
+    setSaving(false); setDirty(false); onSaved()
+  }
+  const remove = async () => {
+    if (!confirm('이 문항을 지울까요?')) return
+    await supabase.from('kp_essays').delete().eq('id', row.id)
+    onSaved()
+  }
+
+  return (
+    <div className="bg-gray-900 rounded-2xl p-4">
+      <div className="flex items-start gap-2 mb-2">
+        <span className="text-xs font-bold text-blue-400 shrink-0 mt-2">{row.idx}</span>
+        <textarea value={prompt} rows={2}
+          onChange={e => { setPrompt(e.target.value); setDirty(true) }}
+          placeholder="문항 원문을 붙여넣으세요"
+          className="flex-1 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-xs leading-relaxed outline-none transition resize-y placeholder:text-gray-700" />
+        <button onClick={remove} className="text-[11px] text-gray-700 hover:text-red-400 px-1 shrink-0 mt-2">✕</button>
+      </div>
+
+      <textarea value={body} rows={8}
+        onChange={e => { setBody(e.target.value); setDirty(true) }}
+        placeholder="답안"
+        className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-sm leading-relaxed outline-none transition resize-y placeholder:text-gray-700 mb-2" />
+
+      <div className="flex items-center gap-3">
+        <span className={`text-[11px] ${ok ? 'text-green-400' : len === 0 ? 'text-gray-600' : 'text-amber-400'}`}>
+          {len}자 {min > 0 && `· ${min}~${max}자`}
+        </span>
+        <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${ok ? 'bg-green-500' : 'bg-amber-500'}`}
+            style={{ width: `${Math.min((len / (max || 1000)) * 100, 100)}%` }} />
+        </div>
+        {dirty && (
+          <button onClick={save} disabled={saving}
+            className="text-[11px] px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 font-bold transition shrink-0">
+            {saving ? '저장 중' : '저장'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  모의고사
 // ═══════════════════════════════════════════════════════════════
 type Cell = { got: string; total: string }
 type Draft = { company_id: string; title: string; taken_on: string; nums: Record<string, Cell> }
 
 const emptyDraft = (): Draft => ({
-  company_id: '',
-  title: '',
-  taken_on: new Date().toISOString().slice(0, 10),
+  company_id: '', title: '', taken_on: new Date().toISOString().slice(0, 10),
   nums: Object.fromEntries(MOCK_PARTS.map(p => [p.key, { got: '', total: '' }])),
 })
 
@@ -492,33 +657,28 @@ function MocksTab({ mocks, onSaved }: { mocks: MockRow[]; onSaved: () => void })
 
   const setNum = (k: string, f: keyof Cell, v: string) =>
     setDraft(d => ({ ...d, nums: { ...d.nums, [k]: { ...d.nums[k], [f]: v.replace(/\D/g, '') } } }))
-
   const close = () => { setOpen(false); setEditingId(null); setDraft(emptyDraft()) }
 
   const startEdit = (m: MockRow) => {
     setEditingId(m.id); setOpen(true)
     setDraft({
-      company_id: m.company_id ?? '',
-      title: m.title,
-      taken_on: m.taken_on,
+      company_id: m.company_id ?? '', title: m.title, taken_on: m.taken_on,
       nums: Object.fromEntries(MOCK_PARTS.map(p => {
-        const got = m[p.key as 'ncs'] as number | null
-        const total = m[`${p.key}_total` as 'ncs_total'] as number | null
-        return [p.key, { got: got === null ? '' : String(got), total: total === null ? '' : String(total) }]
+        const g = m[p.key as 'ncs'] as number | null
+        const t = m[`${p.key}_total` as 'ncs_total'] as number | null
+        return [p.key, { got: g === null ? '' : String(g), total: t === null ? '' : String(t) }]
       })),
     })
   }
 
-  const filled = MOCK_PARTS.filter(p => draft.nums[p.key].got !== '' && Number(draft.nums[p.key].total) > 0)
-  const canSave = draft.title.trim().length > 0 && filled.length > 0
+  const canSave = draft.title.trim().length > 0 &&
+    MOCK_PARTS.some(p => draft.nums[p.key].got !== '' && Number(draft.nums[p.key].total) > 0)
 
   const save = async () => {
     if (!canSave || saving) return
     setSaving(true)
     const payload: Record<string, unknown> = {
-      company_id: draft.company_id || null,
-      title: draft.title.trim(),
-      taken_on: draft.taken_on,
+      company_id: draft.company_id || null, title: draft.title.trim(), taken_on: draft.taken_on,
     }
     MOCK_PARTS.forEach(p => {
       const c = draft.nums[p.key]
@@ -540,10 +700,8 @@ function MocksTab({ mocks, onSaved }: { mocks: MockRow[]; onSaved: () => void })
     onSaved()
   }
 
-  // 파트별 평균
   const avg = MOCK_PARTS.map(p => {
-    const vs = mocks
-      .map(m => ({ g: m[p.key as 'ncs'], t: m[`${p.key}_total` as 'ncs_total'] }))
+    const vs = mocks.map(m => ({ g: m[p.key as 'ncs'], t: m[`${p.key}_total` as 'ncs_total'] }))
       .filter(v => v.g !== null && v.t)
     return { ...p, avg: vs.length ? vs.reduce((a, v) => a + pct(v.g!, v.t!), 0) / vs.length : null, n: vs.length }
   })
@@ -554,16 +712,13 @@ function MocksTab({ mocks, onSaved }: { mocks: MockRow[]; onSaved: () => void })
     <div>
       {mocks.length > 0 && (
         <div className="bg-gray-900 rounded-2xl p-5 mb-4">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
-            {mocks.length}회 · 파트별 평균 정답률
-          </p>
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">{mocks.length}회 · 파트별 평균</p>
           <div className="space-y-2.5">
             {avg.map(a => (
               <div key={a.key} className="flex items-center gap-3">
                 <span className="w-24 text-[11px] text-gray-500 shrink-0">{a.label}</span>
                 <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all"
-                    style={{ width: `${a.avg ?? 0}%`, backgroundColor: a.color }} />
+                  <div className="h-full rounded-full" style={{ width: `${a.avg ?? 0}%`, backgroundColor: a.color }} />
                 </div>
                 <span className="w-16 text-right text-[11px] text-gray-400 shrink-0">
                   {a.avg === null ? '—' : `${Math.round(a.avg)}% (${a.n})`}
@@ -581,29 +736,20 @@ function MocksTab({ mocks, onSaved }: { mocks: MockRow[]; onSaved: () => void })
         </button>
       ) : (
         <div className="bg-gray-900 rounded-2xl p-5 mb-5 border border-gray-800">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
-            {editingId ? '기록 수정' : '모의고사 결과 추가'}
-          </p>
           <div className="flex gap-2 mb-3">
             <input value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
-              placeholder="교재명 + 회차 (예: 해커스 NCS 3회)"
+              placeholder="교재명 + 회차"
               className="flex-1 min-w-0 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-sm outline-none transition placeholder:text-gray-700" />
             <input type="date" value={draft.taken_on}
               onChange={e => setDraft(d => ({ ...d, taken_on: e.target.value }))}
               className="bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-2 text-sm outline-none transition shrink-0" />
           </div>
-
           <select value={draft.company_id} onChange={e => setDraft(d => ({ ...d, company_id: e.target.value }))}
             className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-xs outline-none transition mb-3">
-            <option value="">기업 지정 안 함 (일반 교재)</option>
+            <option value="">기업 지정 안 함</option>
             {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-
           <div className="space-y-2 mb-4">
-            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 text-[10px] text-gray-600 font-bold px-1">
-              <span>파트</span><span className="w-16 text-center">정답</span>
-              <span className="w-16 text-center">문항</span><span className="w-10 text-right">%</span>
-            </div>
             {MOCK_PARTS.map(p => {
               const c = draft.nums[p.key]
               const g = Number(c.got || 0), t = Number(c.total || 0)
@@ -621,11 +767,8 @@ function MocksTab({ mocks, onSaved }: { mocks: MockRow[]; onSaved: () => void })
               )
             })}
           </div>
-          <p className="text-[10px] text-gray-600 mb-3">안 본 파트는 비워두면 됩니다.</p>
-
           <div className="flex gap-2">
-            <button onClick={close}
-              className="px-4 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-semibold transition">취소</button>
+            <button onClick={close} className="px-4 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-semibold transition">취소</button>
             <button onClick={save} disabled={!canSave || saving}
               className="flex-1 py-2.5 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 text-sm font-bold transition">
               {saving ? '저장 중...' : editingId ? '수정 저장' : '저장'}
@@ -645,12 +788,10 @@ function MocksTab({ mocks, onSaved }: { mocks: MockRow[]; onSaved: () => void })
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">
                     <p className="font-bold text-sm truncate">{m.title}</p>
-                    <p className="text-[11px] text-gray-600 mt-0.5">
-                      {m.taken_on}{co && ` · ${co.short}`}
-                    </p>
+                    <p className="text-[11px] text-gray-600 mt-0.5">{m.taken_on}{co && ` · ${co.short}`}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => startEdit(m)} className="text-[11px] px-1.5 py-0.5 rounded text-gray-600 hover:text-blue-400 transition">수정</button>
+                    <button onClick={() => startEdit(m)} className="text-[11px] text-gray-600 hover:text-blue-400 transition">수정</button>
                     <button onClick={() => remove(m)} className="text-[11px] px-1.5 py-0.5 rounded text-gray-600 hover:text-white hover:bg-red-800 transition">삭제</button>
                   </div>
                 </div>

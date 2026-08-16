@@ -96,6 +96,13 @@ export const CERTS: Cert[] = [
     defaultStatus: 'planned',
   },
   {
+    slug: 'timeline', href: '/dashboard/timeline', emoji: '🗓', flag: '🇰🇷',
+    org: '공기업 · 일본 트랙 통합', title: '시험 일정',
+    desc: '원서접수와 시험일 간트',
+    meta: '두 트랙이 겹치는 달을 한눈에',
+    defaultStatus: 'active',
+  },
+  {
     slug: 'koreapub', href: '/dashboard/koreapub', emoji: '🏛', flag: '🇰🇷',
     org: '한국 공기업 전기직', title: '공기업 채용',
     desc: '기업별 가점 구조 · 서류점수 · NCS/전공',

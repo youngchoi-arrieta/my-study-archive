@@ -1,25 +1,26 @@
 // ═══════════════════════════════════════════════════════════════
-//  한국 공기업 채용 — 기업 · 가점 규칙 · 서류점수 계산
+//  한국 공기업 채용 — 서류 표준배점표 모델
 //
-//  ⚠ 중요: 여기 들어 있는 배점은 공개된 과거 공고와 학원 자료를
-//  모은 "출발점"이지 확정값이 아니다. 공기업 가점 구조는 해마다
-//  바뀌고 직렬마다 다르다. 각 기업의 verified 필드에 근거와 시점을
-//  적어 두었고, 앱에서 직접 고쳐 kp_rubrics 테이블에 저장한다.
-//  실제 지원 전에는 반드시 그 회차 공고 원문으로 덮어쓸 것.
+//  공기업 서류배점은 대부분 이 형태다:
+//    분야(한국사·한국어·IT·외국어·전공자격)별로 등급표가 있고,
+//    각 분야에서 최상위 1개만 인정해 합산한다.
+//  그래서 "자격증 → 점수" 단순 매핑이 아니라 tier 구조로 짰다.
+//
+//  KESCO(한국전기안전공사)만 실제 공고 붙임3 표를 그대로 옮긴 확정값이고,
+//  나머지는 골격만 잡은 템플릿이다. 공고를 보고 앱에서 직접 고친다.
 // ═══════════════════════════════════════════════════════════════
 
-export type CertKind = 'tech' | 'lang' | 'history' | 'it' | 'etc'
+export type CertKind = 'tech' | 'it' | 'history' | 'lang' | 'etc'
 
 export const KIND_LABELS: Record<CertKind, string> = {
-  tech: '기술 자격증',
-  lang: '어학',
+  tech: '전공 자격증',
+  it: 'IT',
   history: '한국사',
-  it: 'IT · 사무',
-  etc: '기타 가점',
+  lang: '외국어',
+  etc: '기타',
 }
 export const ALL_KINDS = Object.keys(KIND_LABELS) as CertKind[]
 
-/** bool = 있다/없다, score = 점수(토익 등), grade = 등급(1/2/3급) */
 export type CertValue = 'bool' | 'score' | 'grade'
 
 export interface CertDef {
@@ -27,58 +28,141 @@ export interface CertDef {
   label: string
   kind: CertKind
   value: CertValue
+  /** 내 스펙 탭에 체크박스로 띄울 것인가.
+   *  false 여도 배점표에는 이름이 표시된다(공고 원문 유지). */
+  mine: boolean
   hint?: string
+  /** grade 타입일 때 고를 수 있는 값 */
+  grades?: string[]
 }
 
 export const CERT_CATALOG: CertDef[] = [
-  // 기술
-  { key: 'elec-gisa', label: '전기기사', kind: 'tech', value: 'bool' },
-  { key: 'elec-gongsa-gisa', label: '전기공사기사', kind: 'tech', value: 'bool', hint: '전기기사와 묶어 "쌍기사"' },
-  { key: 'elec-sanup', label: '전기산업기사', kind: 'tech', value: 'bool' },
-  { key: 'elec-gongsa-sanup', label: '전기공사산업기사', kind: 'tech', value: 'bool' },
-  { key: 'elec-gineungsa', label: '전기기능사', kind: 'tech', value: 'bool' },
-  { key: 'elec-gineungjang', label: '전기기능장', kind: 'tech', value: 'bool' },
-  { key: 'fire-elec-gisa', label: '소방설비기사(전기)', kind: 'tech', value: 'bool' },
-  { key: 'safety-gisa', label: '산업안전기사', kind: 'tech', value: 'bool' },
-  { key: 'energy-gisa', label: '에너지관리기사', kind: 'tech', value: 'bool' },
-  { key: 'info-comm-gisa', label: '정보통신기사', kind: 'tech', value: 'bool' },
-  { key: 'railway-safety', label: '철도교통안전관리자', kind: 'tech', value: 'bool' },
-  { key: 'railway-signal', label: '철도신호기사·산업기사', kind: 'tech', value: 'bool' },
-  { key: 'elec-vehicle-lic', label: '전기차량 운전면허', kind: 'tech', value: 'bool' },
-  { key: 'pe', label: '기술사 (전기응용·발송배전 등)', kind: 'tech', value: 'bool', hint: '대개 최고 배점 · 서류 면제 사유가 되기도 함' },
-  // 어학
-  { key: 'toeic', label: 'TOEIC', kind: 'lang', value: 'score' },
-  { key: 'toeic-speaking', label: 'TOEIC Speaking', kind: 'lang', value: 'grade', hint: 'AL / IH / IM3 …' },
-  { key: 'opic', label: 'OPIc', kind: 'lang', value: 'grade' },
-  { key: 'kbs-korean', label: 'KBS한국어능력시험', kind: 'lang', value: 'grade' },
-  { key: 'korean-ability', label: '국어능력인증시험(ToKL)', kind: 'lang', value: 'grade' },
-  // 한국사
-  { key: 'kor-history', label: '한국사능력검정', kind: 'history', value: 'grade', hint: '1급 / 2급 / 3급' },
-  // IT·사무
-  { key: 'comp-act', label: '컴퓨터활용능력', kind: 'it', value: 'grade', hint: '대한상공회의소 발급만 인정하는 곳이 많음' },
-  { key: 'itq', label: 'ITQ · 워드프로세서', kind: 'it', value: 'grade' },
-  { key: 'info-processing', label: '정보처리기사', kind: 'it', value: 'bool' },
-  // 기타
-  { key: 'veteran', label: '취업지원대상자(보훈)', kind: 'etc', value: 'bool' },
-  { key: 'local-talent', label: '이전지역인재', kind: 'etc', value: 'bool' },
-  { key: 'disabled', label: '장애인', kind: 'etc', value: 'bool' },
-  { key: 'social-equity', label: '기초생활수급 등 사회형평', kind: 'etc', value: 'bool' },
+  // ── 내가 실제로 가질 수 있는 것 ──
+  { key: 'elec-gisa', label: '전기기사', kind: 'tech', value: 'bool', mine: true },
+  { key: 'elec-gineungsa', label: '전기기능사', kind: 'tech', value: 'bool', mine: true },
+  { key: 'info-processing', label: '정보처리기사', kind: 'it', value: 'bool', mine: true },
+  {
+    key: 'kor-history', label: '한국사능력검정', kind: 'history', value: 'grade', mine: true,
+    grades: ['1급', '2급', '3급'],
+  },
+  { key: 'toeic', label: 'TOEIC', kind: 'lang', value: 'score', mine: true, hint: '점수 그대로' },
+  {
+    key: 'opic', label: 'OPIc', kind: 'lang', value: 'grade', mine: true,
+    grades: ['AL', 'IH', 'IM3', 'IM2', 'IM1'],
+  },
+  { key: 'toefl', label: 'TOEFL iBT', kind: 'lang', value: 'score', mine: true, hint: 'TOEIC 환산은 비공식 근사치' },
+  {
+    key: 'toeic-speaking', label: 'TOEIC Speaking', kind: 'lang', value: 'grade', mine: true,
+    grades: ['AH', 'AM', 'AL', 'IH', 'IM3', 'IM2'],
+  },
+  { key: 'teps', label: 'TEPS', kind: 'lang', value: 'score', mine: true },
+  { key: 'veteran', label: '취업지원 대상자(보훈)', kind: 'etc', value: 'bool', mine: true },
+  { key: 'local-talent', label: '이전지역인재', kind: 'etc', value: 'bool', mine: true },
+
+  // ── 배점표에 이름만 나오는 것들 (체크 대상 아님) ──
+  { key: 'elec-gongsa-gisa', label: '전기공사기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'elec-sanup', label: '전기산업기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'elec-gongsa-sanup', label: '전기공사산업기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'elec-gineungjang', label: '전기기능장', kind: 'tech', value: 'bool', mine: false },
+  { key: 'elec-rail-gisa', label: '전기철도기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'rail-signal-gisa', label: '철도신호기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'elec-rail-sanup', label: '전기철도산업기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'rail-signal-sanup', label: '철도신호산업기사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'rail-elec-gineungsa', label: '철도전기신호기능사', kind: 'tech', value: 'bool', mine: false },
+  { key: 'pe-elec', label: '전기 기술사', kind: 'tech', value: 'bool', mine: false, hint: '경력 요건 때문에 당장은 무의미' },
+  { key: 'comp-act-1', label: '컴퓨터활용능력 1급', kind: 'it', value: 'bool', mine: false },
+  { key: 'comp-act-2', label: '컴퓨터활용능력 2급', kind: 'it', value: 'bool', mine: false },
+  { key: 'bigdata-gisa', label: '빅데이터분석기사', kind: 'it', value: 'bool', mine: false },
+  { key: 'info-processing-sanup', label: '정보처리산업기사', kind: 'it', value: 'bool', mine: false },
+  { key: 'office-auto-sanup', label: '사무자동화산업기사', kind: 'it', value: 'bool', mine: false },
+  { key: 'prog-gineungsa', label: '프로그래밍기능사', kind: 'it', value: 'bool', mine: false },
+  { key: 'kbs-korean', label: 'KBS한국어능력시험', kind: 'etc', value: 'grade', mine: false, grades: ['2+급', '2-급', '3+급'] },
+  { key: 'paper-sci', label: 'SCI(E) 제1저자 논문', kind: 'etc', value: 'bool', mine: false, hint: '연구직군 배점표에만 등장' },
+  { key: 'phd', label: '박사학위', kind: 'etc', value: 'bool', mine: false },
+  { key: 'kesco-intern', label: '체험형 인턴 수료', kind: 'etc', value: 'bool', mine: false },
 ]
 
-export const certDef = (key: string) => CERT_CATALOG.find(c => c.key === key)
-export const certLabel = (key: string) => certDef(key)?.label ?? key
+export const certDef = (k: string) => CERT_CATALOG.find(c => c.key === k)
+export const certLabel = (k: string) => certDef(k)?.label ?? k
+export const MY_CERTS = CERT_CATALOG.filter(c => c.mine)
 
-// ── 가점 규칙 ────────────────────────────────────────────────────
-export interface RuleOption { cert: string; points: number; cond?: string }
+// ── 어학 환산 (KESCO 붙임2 기준) ────────────────────────────────
+export const OPIC_TO_TOEIC: Record<string, number> = {
+  AL: 979.5, IH: 935.8, IM3: 860.9, IM2: 765.8, IM1: 700,
+}
+export const TOEICS_TO_TOEIC: Record<string, number> = {
+  AH: 990, AM: 982, AL: 936.7, IH: 871.3, IM3: 773.5, IM2: 703.5,
+}
+/** TEPS → TOEIC (붙임2 표를 구간으로 압축) */
+const TEPS_BANDS: [number, number][] = [
+  [558, 990], [526, 985], [504, 980], [486, 975], [471, 970], [458, 965], [446, 960],
+  [437, 955], [428, 950], [420, 945], [412, 940], [406, 935], [400, 930], [394, 925],
+  [389, 920], [384, 915], [379, 910], [375, 905], [370, 900], [366, 895], [362, 890],
+  [359, 885], [355, 880], [352, 875], [348, 870], [345, 865], [342, 860], [339, 855],
+  [336, 850], [333, 845], [330, 840], [327, 835], [324, 830], [322, 825], [319, 820],
+  [316, 815], [314, 810], [311, 805], [309, 800], [306, 795], [304, 790], [301, 785],
+  [299, 780], [297, 775], [294, 770], [292, 765], [290, 760], [288, 755], [285, 750],
+  [283, 745], [281, 740], [279, 735], [277, 730], [274, 725], [272, 720], [270, 715],
+  [268, 710], [266, 705], [264, 700],
+]
+/** TOEFL iBT → TOEIC — 공고 표에 없는 비공식 근사치 */
+const TOEFL_BANDS: [number, number][] = [
+  [110, 970], [105, 945], [100, 900], [95, 870], [90, 830],
+  [85, 800], [80, 770], [75, 740], [70, 700],
+]
+
+const fromBands = (v: number, bands: [number, number][]) => {
+  for (const [min, out] of bands) if (v >= min) return out
+  return 0
+}
+
+export interface LangSource { key: string; label: string; toeic: number; official: boolean }
+
+/** 내 어학 성적들을 TOEIC 환산으로 모아 최고값을 찾는다 */
+export function langSources(spec: SpecMap): LangSource[] {
+  const out: LangSource[] = []
+  const val = (k: string) => spec[k]?.value ?? ''
+  const num = (k: string) => Number(val(k) || 0)
+
+  if (num('toeic') > 0) out.push({ key: 'toeic', label: `TOEIC ${num('toeic')}`, toeic: num('toeic'), official: true })
+  if (val('opic') && OPIC_TO_TOEIC[val('opic')])
+    out.push({ key: 'opic', label: `OPIc ${val('opic')}`, toeic: OPIC_TO_TOEIC[val('opic')], official: true })
+  if (val('toeic-speaking') && TOEICS_TO_TOEIC[val('toeic-speaking')])
+    out.push({ key: 'toeic-speaking', label: `TOEIC-S ${val('toeic-speaking')}`, toeic: TOEICS_TO_TOEIC[val('toeic-speaking')], official: true })
+  if (num('teps') > 0)
+    out.push({ key: 'teps', label: `TEPS ${num('teps')}`, toeic: fromBands(num('teps'), TEPS_BANDS), official: true })
+  if (num('toefl') > 0)
+    out.push({ key: 'toefl', label: `TOEFL ${num('toefl')}`, toeic: fromBands(num('toefl'), TOEFL_BANDS), official: false })
+
+  return out.sort((a, b) => b.toeic - a.toeic)
+}
+
+export const bestToeic = (spec: SpecMap) => langSources(spec)[0]?.toeic ?? 0
+
+// ── 배점 구조 ────────────────────────────────────────────────────
+export type GroupMode = 'top1' | 'sum'
+
+export interface RuleTier {
+  points: number
+  /** 공고 원문의 그 줄 그대로 */
+  label: string
+  /** 이 등급에 해당하는 자격증들 */
+  certs?: string[]
+  /** 어학: TOEIC 환산 하한 */
+  toeicMin?: number
+  /** 한국사 등: 이 급수 이상이면 충족 (1급이 가장 상위 = 숫자 1) */
+  gradeAtMost?: number
+  /** KBS한국어처럼 문자열 급수를 쓰는 경우 */
+  gradeIn?: string[]
+}
 
 export interface RuleGroup {
   id: string
   label: string
-  /** 이 그룹에서 받을 수 있는 상한 */
   max: number
-  /** 몇 개까지 합산 인정하는가 (기본 1개) */
-  pick: number
-  options: RuleOption[]
+  /** top1 = 분야별 최상위 1개만 인정 (공기업 표준) */
+  mode: GroupMode
+  tiers: RuleTier[]
   note?: string
 }
 
@@ -89,20 +173,24 @@ export interface Company {
   name: string
   short: string
   sector: string
-  /** 주 타깃인가 */
   target: boolean
   season: string
-  /** 필기 구성 */
   exam: { parts: ExamPart[]; total: string; cutoff: string }
-  /** 지원 자격 (가점이 아니라 문턱) */
   eligibility: string[]
-  /** 가점 총 상한 */
-  bonusMax: number
+  /** 서류 합계 만점 */
+  docTotal: number
   groups: RuleGroup[]
-  /** 이 데이터가 어디서 왔고 언제 것인지 */
+  /** 별도가점 (합계 밖) */
+  extra?: RuleGroup
+  /** 동점자 처리 순서 */
+  tiebreak?: string[]
+  /** 실제 공고로 확인된 값인가 */
+  confirmed: boolean
   verified: string
+  essayPrompts?: string[]
 }
 
+// ── 기업 ─────────────────────────────────────────────────────────
 export const COMPANIES: Company[] = [
   {
     id: 'kesco',
@@ -110,41 +198,133 @@ export const COMPANIES: Company[] = [
     short: 'KESCO',
     sector: '전기안전 · 검사',
     target: true,
-    season: '통상 연 1~2회 · 하반기 중심',
+    season: '통상 연 1~2회',
     exam: {
       parts: [
         { name: 'NCS 직업기초', q: null, pt: null },
         { name: '전공 (전기)', q: null, pt: null },
       ],
       total: '공고별 상이',
-      cutoff: '과목별 과락 있음 · 공고 확인',
+      cutoff: '공고 확인',
     },
-    eligibility: ['전기 분야 자격증 요구되는 회차 있음', '어학 요건은 회차별로 다름'],
-    bonusMax: 50,
+    eligibility: ['서류심사 100점 + 별도가점 15점', '블라인드 채용 (학교·나이·지역 기재 금지)'],
+    docTotal: 100,
+    tiebreak: ['취업지원 대상자', '전공자격', '외국어', 'IT'],
     groups: [
       {
-        id: 'elec', label: '전기 분야 자격증', max: 50, pick: 2,
-        note: '전기안전공사는 전기 자격증 배점이 유난히 큽니다. 쌍기사가 그대로 점수가 됩니다.',
-        options: [
-          { cert: 'pe', points: 50 },
-          { cert: 'elec-gineungjang', points: 35 },
-          { cert: 'elec-gisa', points: 30 },
-          { cert: 'elec-gongsa-gisa', points: 20 },
-          { cert: 'elec-sanup', points: 15 },
-          { cert: 'elec-gongsa-sanup', points: 10 },
+        id: 'major', label: '전공자격', max: 35, mode: 'top1',
+        tiers: [
+          { points: 35, label: '전기기사, 전기기능장', certs: ['elec-gisa', 'elec-gineungjang'] },
+          { points: 30, label: '전기산업기사, 전기공사기사', certs: ['elec-sanup', 'elec-gongsa-gisa'] },
+          { points: 25, label: '전기공사산업기사, 전기철도기사, 철도신호기사', certs: ['elec-gongsa-sanup', 'elec-rail-gisa', 'rail-signal-gisa'] },
+          { points: 20, label: '전기기능사, 전기철도산업기사, 철도신호산업기사', certs: ['elec-gineungsa', 'elec-rail-sanup', 'rail-signal-sanup'] },
+          { points: 15, label: '철도전기신호기능사', certs: ['rail-elec-gineungsa'] },
         ],
       },
       {
-        id: 'etc', label: '기타 가점', max: 10, pick: 2,
-        options: [
-          { cert: 'kor-history', points: 3, cond: '1급 기준' },
-          { cert: 'comp-act', points: 3, cond: '1급 기준' },
-          { cert: 'safety-gisa', points: 3 },
-          { cert: 'veteran', points: 5 },
+        id: 'lang', label: '외국어', max: 20, mode: 'top1',
+        note: 'TOEIC · TEPS · TOEIC Speaking · OPIc 중 1개. 나머지는 붙임2 환산기준표로 TOEIC 환산.',
+        tiers: [
+          { points: 20, label: 'TOEIC 850 이상', toeicMin: 850 },
+          { points: 15, label: 'TOEIC 800 이상 850 미만', toeicMin: 800 },
+          { points: 10, label: 'TOEIC 750 이상 800 미만', toeicMin: 750 },
+          { points: 5, label: 'TOEIC 700 이상 750 미만', toeicMin: 700 },
+        ],
+      },
+      {
+        id: 'history', label: '한국사', max: 15, mode: 'top1',
+        tiers: [
+          { points: 15, label: '한국사능력검정 1급', gradeAtMost: 1 },
+          { points: 10, label: '한국사능력검정 2급', gradeAtMost: 2 },
+          { points: 5, label: '한국사능력검정 3급', gradeAtMost: 3 },
+        ],
+      },
+      {
+        id: 'korean', label: '한국어', max: 15, mode: 'top1',
+        tiers: [
+          { points: 15, label: 'KBS한국어능력시험 2⊕급 이상', gradeIn: ['2+급'] },
+          { points: 10, label: 'KBS한국어능력시험 2⊖급', gradeIn: ['2-급'] },
+          { points: 5, label: 'KBS한국어능력시험 3⊕급', gradeIn: ['3+급'] },
+        ],
+      },
+      {
+        id: 'it', label: 'IT', max: 15, mode: 'top1',
+        tiers: [
+          { points: 15, label: '컴퓨터활용능력 1급, 정보처리기사, 빅데이터분석기사', certs: ['comp-act-1', 'info-processing', 'bigdata-gisa'] },
+          { points: 10, label: '정보처리산업기사, 사무자동화산업기사', certs: ['info-processing-sanup', 'office-auto-sanup'] },
+          { points: 5, label: '컴퓨터활용능력 2급, 프로그래밍기능사', certs: ['comp-act-2', 'prog-gineungsa'] },
         ],
       },
     ],
-    verified: '전기기사 30점 / 전기공사기사 20점은 학원 공개자료(엔지니어랩) 기준. 회차·직렬별로 다르므로 공고로 확인 필요.',
+    extra: {
+      id: 'extra', label: '별도가점', max: 15, mode: 'sum',
+      tiers: [
+        { points: 10, label: '취업지원 대상자 (본인 가점비율에 따름)', certs: ['veteran'] },
+        { points: 5, label: '우리공사 체험형 인턴 수료자', certs: ['kesco-intern'] },
+      ],
+    },
+    confirmed: true,
+    verified: '2026년 공고 붙임3 「서류심사 표준배점표 — 신입(기술)」 원문 그대로. 붙임2 외국어 환산기준도 반영.',
+    essayPrompts: [
+      '한국전기안전공사의 핵심가치(안전·도전·상생·혁신) 중 본인을 제일 잘 나타내는 가치를 한 가지 선택하고, 구체적인 사례(경험)를 들어 그 이유를 기술하여 주십시오.',
+      '한국전기안전공사의 인재상(화합인·창조인·전문인) 중 본인이 제일 부합하는 인재상을 선택하고, 구체적인 사례(경험)를 들어 그 이유를 기술하여 주십시오.',
+      '본인이 속한 조직 또는 집단의 목표를 달성하는 과정에서 어려움 및 갈등이 발생했을 때, 이를 극복했던 경험을 구체적인 사례(본인의 역할, 해결방법, 경험을 통해 얻은 교훈 등)를 들어 기술하여 주십시오.',
+      '본인의 전문성을 키우기 위한 노력(교육·경험·경력 등)을 기술하고, 이를 바탕으로 입사 후 포부에 대해 기술하여 주십시오.',
+    ],
+  },
+  {
+    id: 'kesco-research',
+    name: '한국전기안전공사 (연구직)',
+    short: 'KESCO 연구',
+    sector: '전기안전 연구',
+    target: false,
+    season: '기술직과 함께 공고',
+    exam: {
+      parts: [{ name: '전공 PT 발표면접', q: null, pt: null }],
+      total: '공고별 상이',
+      cutoff: '공고 확인',
+    },
+    eligibility: ['개인 연구실적 PPT 발표면접 있음', '박사학위 배점 20점 — 미보유 시 그만큼 손해'],
+    docTotal: 100,
+    tiebreak: ['취업지원 대상자', '논문', '학위', '전공자격'],
+    groups: [
+      {
+        id: 'paper', label: '논문', max: 40, mode: 'sum',
+        note: '본인이 제1저자인 논문만 인정 · 논문당 점수 합산 · 학회 발표논문/Proceeding 불인정',
+        tiers: [
+          { points: 20, label: 'SCI(E) 저널 게재 논문', certs: ['paper-sci'] },
+        ],
+      },
+      {
+        id: 'lang', label: '외국어', max: 20, mode: 'top1',
+        tiers: [
+          { points: 20, label: 'TOEIC 850 이상', toeicMin: 850 },
+          { points: 15, label: 'TOEIC 800 이상 850 미만', toeicMin: 800 },
+          { points: 10, label: 'TOEIC 750 이상 800 미만', toeicMin: 750 },
+          { points: 5, label: 'TOEIC 700 이상 750 미만', toeicMin: 700 },
+        ],
+      },
+      {
+        id: 'degree', label: '학위', max: 20, mode: 'top1',
+        tiers: [{ points: 20, label: '모집 분야 박사학위', certs: ['phd'] }],
+      },
+      {
+        id: 'major', label: '전공자격', max: 20, mode: 'top1',
+        tiers: [
+          { points: 20, label: '건축전기·발송배전·전기응용·전기안전 기술사', certs: ['pe-elec'] },
+          { points: 10, label: '전기기사, 전기공사기사', certs: ['elec-gisa', 'elec-gongsa-gisa'] },
+        ],
+      },
+    ],
+    extra: {
+      id: 'extra', label: '별도가점', max: 15, mode: 'sum',
+      tiers: [
+        { points: 10, label: '취업지원 대상자', certs: ['veteran'] },
+        { points: 5, label: '체험형 인턴 수료자', certs: ['kesco-intern'] },
+      ],
+    },
+    confirmed: true,
+    verified: '2026년 공고 붙임3 「신입(연구)」 원문. 기술직과 배점 구조가 완전히 달라 비교용으로 넣어둠.',
   },
   {
     id: 'kps',
@@ -162,41 +342,24 @@ export const COMPANIES: Company[] = [
       cutoff: '배점 대비 40% 미만(가점 제외) 불합격',
     },
     eligibility: [
-      '영어성적 자격요건 있음 (G4/G3 등급별)',
-      '직무능력기반지원서 적부판정 통과 필요',
+      '영어성적 자격요건 있음 (등급별)',
+      '★ 고급자격증 소지자는 서류심사 배수외 합격 — 전기기사가 서류를 여는 열쇠',
     ],
-    bonusMax: 9,
+    docTotal: 9,
     groups: [
-      {
-        id: 'it', label: 'IT', max: 3, pick: 1,
-        options: [
-          { cert: 'comp-act', points: 3, cond: '1급 · 대한상의 발급만' },
-          { cert: 'info-processing', points: 3 },
-        ],
-      },
-      {
-        id: 'history', label: '한국사', max: 3, pick: 1,
-        options: [{ cert: 'kor-history', points: 3, cond: '급수별 차등' }],
-      },
-      {
-        id: 'korean', label: '한국어', max: 3, pick: 1,
-        options: [
-          { cert: 'kbs-korean', points: 3 },
-          { cert: 'korean-ability', points: 3 },
-        ],
-      },
-      {
-        id: 'english', label: '영어우수자', max: 3, pick: 1,
-        options: [{ cert: 'toeic', points: 3, cond: '고득점 기준선 이상' }],
-      },
+      { id: 'it', label: 'IT', max: 3, mode: 'top1', tiers: [{ points: 3, label: '컴활 1급(대한상의) 또는 정보처리기사', certs: ['comp-act-1', 'info-processing'] }] },
+      { id: 'history', label: '한국사', max: 3, mode: 'top1', tiers: [{ points: 3, label: '한국사능력검정 (급수별 차등)', gradeAtMost: 2 }] },
+      { id: 'korean', label: '한국어', max: 3, mode: 'top1', tiers: [{ points: 3, label: 'KBS한국어 등', gradeIn: ['2+급', '2-급'] }] },
+      { id: 'lang', label: '영어우수자', max: 3, mode: 'top1', tiers: [{ points: 3, label: 'TOEIC 고득점 기준선 이상', toeicMin: 850 }] },
     ],
-    verified: '필기 150점·40% 과락, 가점 영역별 1개씩 최대 9점(IT/한국사/한국어/영어우수자)은 2024년 공고 기준. ★ 별도로 「고급자격증 소지자는 서류심사 배수외 합격」 조항이 있어 전기기사급이 서류를 통과시키는 열쇠가 됩니다.',
+    confirmed: false,
+    verified: '필기 150점·40% 과락, 가점 영역별 1개씩 최대 9점(IT/한국사/한국어/영어우수자)은 2024년 공고 기준. 기준선 숫자는 미확인이니 공고로 덮어쓸 것.',
   },
   {
     id: 'korail',
     name: '한국철도공사',
     short: '코레일',
-    sector: '철도 운영 · 전기통신',
+    sector: '철도 · 전기통신',
     target: true,
     season: '통상 상·하반기 2회',
     exam: {
@@ -208,82 +371,55 @@ export const COMPANIES: Company[] = [
       total: '70문항 / 70분',
       cutoff: '각 과목 40점 이상 · 필기는 최종 반영 50%',
     },
-    eligibility: ['한국사 자격 요건화된 회차 있음', '전기통신직은 실기 시행 회차 있음'],
-    bonusMax: 20,
+    eligibility: ['한국사 자격 요건화된 회차 있음', '전기통신직 실기 시행 회차 있음'],
+    docTotal: 20,
     groups: [
       {
-        id: 'job', label: '직렬 직무 자격증', max: 8, pick: 2,
-        note: '공통 직무 + 직렬 직무에서 2개까지 조합. 쌍기사면 각 4점씩 8점 만점.',
-        options: [
-          { cert: 'elec-gisa', points: 4 },
-          { cert: 'elec-gongsa-gisa', points: 4 },
-          { cert: 'info-comm-gisa', points: 4 },
-          { cert: 'railway-signal', points: 4 },
-          { cert: 'elec-sanup', points: 2 },
-          { cert: 'elec-gongsa-sanup', points: 2 },
+        id: 'major', label: '직렬 직무 자격증', max: 8, mode: 'sum',
+        note: '공통 직무 + 직렬 직무에서 2개까지 조합. 정확한 조합 규칙은 공고 확인.',
+        tiers: [
+          { points: 4, label: '전기기사', certs: ['elec-gisa'] },
+          { points: 4, label: '전기공사기사', certs: ['elec-gongsa-gisa'] },
         ],
       },
-      {
-        id: 'railway', label: '철도 직무 자격증', max: 8, pick: 2,
-        note: '2026년부터 별도 신설된 항목. 철도교통안전관리자·전기차량 운전면허 등.',
-        options: [
-          { cert: 'railway-safety', points: 4 },
-          { cert: 'elec-vehicle-lic', points: 4 },
-        ],
-      },
-      {
-        id: 'common', label: '공통 가점', max: 4, pick: 2,
-        options: [
-          { cert: 'kor-history', points: 2, cond: '급수별 차등' },
-          { cert: 'comp-act', points: 2 },
-          { cert: 'toeic', points: 2, cond: '기준 점수 이상' },
-        ],
-      },
+      { id: 'history', label: '한국사', max: 2, mode: 'top1', tiers: [{ points: 2, label: '한국사능력검정 (급수별 차등)', gradeAtMost: 2 }] },
+      { id: 'it', label: 'IT', max: 2, mode: 'top1', tiers: [{ points: 2, label: '정보처리기사 등', certs: ['info-processing', 'comp-act-1'] }] },
+      { id: 'lang', label: '외국어', max: 2, mode: 'top1', tiers: [{ points: 2, label: 'TOEIC 기준 이상', toeicMin: 800 }] },
     ],
-    verified: '필기 70문항(NCS 30 + 전공 30 + 법령 10), 과목별 40점 과락, 필기 50% 반영은 2024~2025 공고 기준. 자격증 가점 최대 20점·조합 방식은 2026년부터 개편된 구조라 반드시 최신 공고로 확인.',
+    confirmed: false,
+    verified: '필기 70문항(NCS 30 + 전공 30 + 법령 10), 과목별 40점 과락, 필기 50% 반영은 2024~2025 공고 기준. 자격증 가점은 2026년부터 개편됐다는 자료가 있어 최신 공고 확인 필수.',
   },
   {
     id: 'kepco',
     name: '한국전력공사',
     short: '한전',
-    sector: '송배전 · 발전 지주',
+    sector: '송배전',
     target: false,
-    season: '통상 상반기 2~4월 / 하반기 8~10월',
+    season: '상반기 2~4월 / 하반기 8~10월',
     exam: {
       parts: [
         { name: 'NCS 직업기초', q: 55, pt: 70 },
         { name: '전공 (전기)', q: 15, pt: 30 },
       ],
       total: '100점',
-      cutoff: '영역별 과락 — 1개 영역만 미달해도 총점 무관 탈락',
+      cutoff: '영역별 과락 — 1개만 미달해도 총점 무관 탈락',
     },
-    eligibility: [
-      '전기기사 또는 전기공사기사 (전기직 필수 수준)',
-      'TOEIC 800 이상급 어학 요건',
-      'TOEIC Speaking AL 등 말하기 성적 요구 회차 있음',
-    ],
-    bonusMax: 10,
+    eligibility: ['전기(공사)기사 사실상 필수', 'TOEIC 800급 어학 요건', '말하기 성적 요구 회차 있음'],
+    docTotal: 10,
     groups: [
       {
-        id: 'lic', label: '자격증', max: 5, pick: 1,
-        note: '전기직은 기사급이 사실상 지원 요건이라, 가점보다 문턱 통과가 먼저입니다.',
-        options: [
-          { cert: 'pe', points: 5 },
-          { cert: 'elec-gisa', points: 3 },
-          { cert: 'elec-gongsa-gisa', points: 3 },
+        id: 'major', label: '자격증', max: 5, mode: 'top1',
+        tiers: [
+          { points: 5, label: '기술사', certs: ['pe-elec'] },
+          { points: 3, label: '전기기사 / 전기공사기사', certs: ['elec-gisa', 'elec-gongsa-gisa'] },
         ],
       },
-      {
-        id: 'etc', label: '기타', max: 5, pick: 2,
-        options: [
-          { cert: 'kor-history', points: 2, cond: '1급' },
-          { cert: 'comp-act', points: 2, cond: '1급' },
-          { cert: 'kbs-korean', points: 2, cond: '3+급' },
-          { cert: 'local-talent', points: 3 },
-        ],
-      },
+      { id: 'history', label: '한국사', max: 2, mode: 'top1', tiers: [{ points: 2, label: '한국사능력검정 1급', gradeAtMost: 1 }] },
+      { id: 'it', label: 'IT', max: 2, mode: 'top1', tiers: [{ points: 2, label: '컴활 1급 / 정보처리기사', certs: ['comp-act-1', 'info-processing'] }] },
+      { id: 'local', label: '지역인재', max: 3, mode: 'top1', tiers: [{ points: 3, label: '이전지역인재', certs: ['local-talent'] }] },
     ],
-    verified: 'NCS 70 + 전공 30(15문항), 영역별 과락은 합격 후기 다수 일치. 서류 커트라인·가점 세부는 회차 편차가 커서 참고용.',
+    confirmed: false,
+    verified: 'NCS 70 + 전공 30(15문항), 영역별 과락은 후기 다수 일치. 가점 세부는 미확인 — 레퍼런스로만 볼 것.',
   },
   {
     id: 'komipo',
@@ -296,33 +432,26 @@ export const COMPANIES: Company[] = [
       parts: [
         { name: 'NCS 직업기초', q: null, pt: null },
         { name: '직무지식(전공)', q: null, pt: null },
-        { name: '인성 · 상황판단', q: null, pt: null },
       ],
       total: '공고별 상이',
-      cutoff: '과목별 과락 · 공고 확인',
+      cutoff: '과목별 과락',
     },
     eligibility: ['전기기사급 권장', '어학 요건 있음'],
-    bonusMax: 10,
+    docTotal: 10,
     groups: [
       {
-        id: 'lic', label: '자격증', max: 6, pick: 2,
-        options: [
-          { cert: 'pe', points: 6 },
-          { cert: 'elec-gisa', points: 4 },
-          { cert: 'elec-gongsa-gisa', points: 2 },
-          { cert: 'energy-gisa', points: 2 },
+        id: 'major', label: '자격증', max: 6, mode: 'top1',
+        tiers: [
+          { points: 6, label: '기술사', certs: ['pe-elec'] },
+          { points: 4, label: '전기기사', certs: ['elec-gisa'] },
+          { points: 2, label: '전기산업기사', certs: ['elec-sanup'] },
         ],
       },
-      {
-        id: 'etc', label: '기타', max: 4, pick: 2,
-        options: [
-          { cert: 'kor-history', points: 2 },
-          { cert: 'local-talent', points: 2 },
-          { cert: 'veteran', points: 4 },
-        ],
-      },
+      { id: 'history', label: '한국사', max: 2, mode: 'top1', tiers: [{ points: 2, label: '한국사능력검정', gradeAtMost: 2 }] },
+      { id: 'local', label: '지역인재', max: 2, mode: 'top1', tiers: [{ points: 2, label: '이전지역인재', certs: ['local-talent'] }] },
     ],
-    verified: '발전 5사(남동·남부·동서·서부·중부)는 구조가 비슷하지만 배점은 제각각입니다. 지원할 회사의 공고로 덮어쓰세요.',
+    confirmed: false,
+    verified: '발전 5사는 구조가 비슷하지만 배점은 제각각. 지원할 회사 공고로 덮어쓸 것.',
   },
   {
     id: 'humetro',
@@ -330,7 +459,7 @@ export const COMPANIES: Company[] = [
     short: '부교공',
     sector: '도시철도',
     target: false,
-    season: '통상 연 1회 · 하반기',
+    season: '통상 연 1회',
     exam: {
       parts: [
         { name: 'NCS 직업기초', q: null, pt: null },
@@ -339,102 +468,114 @@ export const COMPANIES: Company[] = [
       total: '공고별 상이',
       cutoff: '과목별 40% 과락이 일반적',
     },
-    eligibility: ['부산 지역인재 가점 큼', '전기 자격증 요구 회차 있음'],
-    bonusMax: 10,
+    eligibility: ['부산·울산·경남 지역인재 가점 비중 큼'],
+    docTotal: 10,
     groups: [
       {
-        id: 'lic', label: '자격증', max: 5, pick: 2,
-        options: [
-          { cert: 'elec-gisa', points: 3 },
-          { cert: 'elec-gongsa-gisa', points: 2 },
-          { cert: 'elec-sanup', points: 2 },
-          { cert: 'railway-signal', points: 2 },
+        id: 'major', label: '자격증', max: 5, mode: 'top1',
+        tiers: [
+          { points: 3, label: '전기기사', certs: ['elec-gisa'] },
+          { points: 2, label: '전기산업기사', certs: ['elec-sanup'] },
         ],
       },
-      {
-        id: 'etc', label: '기타', max: 5, pick: 2,
-        options: [
-          { cert: 'local-talent', points: 5, cond: '부산·울산·경남' },
-          { cert: 'kor-history', points: 2 },
-          { cert: 'veteran', points: 5 },
-        ],
-      },
+      { id: 'local', label: '지역인재', max: 5, mode: 'top1', tiers: [{ points: 5, label: '부산·울산·경남 지역인재', certs: ['local-talent'] }] },
+      { id: 'history', label: '한국사', max: 2, mode: 'top1', tiers: [{ points: 2, label: '한국사능력검정', gradeAtMost: 2 }] },
     ],
-    verified: '지역인재 비중이 큰 것으로 알려져 있으나 배점은 공고 확인 필요. 전기직 경쟁률이 특히 높은 편입니다.',
+    confirmed: false,
+    verified: '지역인재 비중이 큰 것으로 알려져 있으나 배점 미확인.',
   },
 ]
 
 export const company = (id: string) => COMPANIES.find(c => c.id === id)
 
 // ── 내 스펙 ──────────────────────────────────────────────────────
-export interface SpecRow {
-  cert_key: string
-  has: boolean
-  value: string | null   // 토익 점수, 한국사 급수 등
-}
-
+export interface SpecRow { cert_key: string; has: boolean; value: string | null }
 export type SpecMap = Record<string, SpecRow>
-
 export const toSpecMap = (rows: SpecRow[]): SpecMap =>
   Object.fromEntries(rows.filter(r => r.has).map(r => [r.cert_key, r]))
 
 // ── 점수 계산 ────────────────────────────────────────────────────
+const gradeNum = (v: string) => {
+  const m = v.match(/(\d+)/)
+  return m ? Number(m[1]) : 99
+}
+
+export function tierMet(t: RuleTier, spec: SpecMap, toeic: number): boolean {
+  if (t.toeicMin !== undefined) return toeic >= t.toeicMin
+  if (t.gradeAtMost !== undefined) {
+    const v = spec['kor-history']?.value
+    return !!v && gradeNum(v) <= t.gradeAtMost
+  }
+  if (t.gradeIn) {
+    const v = spec['kbs-korean']?.value
+    return !!v && t.gradeIn.includes(v)
+  }
+  return (t.certs ?? []).some(c => !!spec[c])
+}
+
 export interface GroupResult {
   group: RuleGroup
   earned: number
-  used: RuleOption[]
-  /** 아직 없어서 못 받은 것 중 배점이 높은 것 */
-  missing: RuleOption[]
+  metTiers: RuleTier[]
+  /** top1에서 실제로 점수를 준 등급 */
+  hitTier: RuleTier | null
+}
+
+export function scoreGroup(g: RuleGroup, spec: SpecMap, toeic: number): GroupResult {
+  const met = g.tiers.filter(t => tierMet(t, spec, toeic))
+  if (g.mode === 'top1') {
+    const hit = met.sort((a, b) => b.points - a.points)[0] ?? null
+    return { group: g, earned: Math.min(hit?.points ?? 0, g.max), metTiers: met, hitTier: hit }
+  }
+  const sum = met.reduce((a, t) => a + t.points, 0)
+  return { group: g, earned: Math.min(sum, g.max), metTiers: met, hitTier: null }
 }
 
 export interface CompanyResult {
   company: Company
   groups: GroupResult[]
+  extra: GroupResult | null
   earned: number
   max: number
-  /** 이걸 더 따면 몇 점 오르는가 */
-  upside: { cert: string; gain: number }[]
-}
-
-function scoreGroup(g: RuleGroup, spec: SpecMap): GroupResult {
-  const owned = g.options.filter(o => spec[o.cert]).sort((a, b) => b.points - a.points)
-  const used = owned.slice(0, g.pick)
-  const earned = Math.min(used.reduce((a, o) => a + o.points, 0), g.max)
-  const missing = g.options
-    .filter(o => !spec[o.cert])
-    .sort((a, b) => b.points - a.points)
-  return { group: g, earned, used, missing }
+  extraEarned: number
+  /** 이걸 채우면 몇 점 오르는가 */
+  upside: { label: string; gain: number; how: string }[]
 }
 
 export function scoreCompany(c: Company, spec: SpecMap): CompanyResult {
-  const groups = c.groups.map(g => scoreGroup(g, spec))
-  const earned = Math.min(groups.reduce((a, g) => a + g.earned, 0), c.bonusMax)
+  const toeic = bestToeic(spec)
+  const groups = c.groups.map(g => scoreGroup(g, spec, toeic))
+  const earned = groups.reduce((a, g) => a + g.earned, 0)
+  const extra = c.extra ? scoreGroup(c.extra, spec, toeic) : null
 
-  // 하나씩 더 가졌다고 가정했을 때의 증가분
-  const upside: { cert: string; gain: number }[] = []
-  const seen = new Set<string>()
-  for (const gr of groups) {
-    for (const m of gr.missing) {
-      if (seen.has(m.cert)) continue
-      seen.add(m.cert)
-      const trial: SpecMap = { ...spec, [m.cert]: { cert_key: m.cert, has: true, value: null } }
-      const after = Math.min(
-        c.groups.map(g => scoreGroup(g, trial).earned).reduce((a, b) => a + b, 0),
-        c.bonusMax,
-      )
-      const gain = after - earned
-      if (gain > 0) upside.push({ cert: m.cert, gain })
+  // 각 분야에서 아직 못 받은 상위 등급 = 다음 한 수
+  const upside: { label: string; gain: number; how: string }[] = []
+  groups.forEach(g => {
+    const better = g.group.tiers
+      .filter(t => t.points > g.earned && !tierMet(t, spec, toeic))
+      .sort((a, b) => a.points - b.points)[0]
+    if (better) {
+      upside.push({
+        label: g.group.label,
+        gain: Math.min(better.points, g.group.max) - g.earned,
+        how: better.label,
+      })
     }
-  }
+  })
   upside.sort((a, b) => b.gain - a.gain)
 
-  return { company: c, groups, earned, max: c.bonusMax, upside: upside.slice(0, 4) }
+  return {
+    company: c, groups, extra, earned,
+    max: c.groups.reduce((a, g) => a + g.max, 0),
+    extraEarned: extra?.earned ?? 0,
+    upside,
+  }
 }
 
 // ── 모의고사 ─────────────────────────────────────────────────────
 export interface MockRow {
   id: string
-  company_id: string | null   // null = 일반 교재
+  company_id: string | null
   title: string
   taken_on: string
   ncs: number | null; ncs_total: number | null
@@ -447,5 +588,16 @@ export const MOCK_PARTS = [
   { key: 'major', label: '전공', color: '#34d399' },
   { key: 'law', label: '법령', color: '#fbbf24' },
 ] as const
+
+// ── 자기소개서 ───────────────────────────────────────────────────
+export interface EssayRow {
+  id: string
+  company_id: string
+  idx: number
+  prompt: string
+  body: string | null
+  min_chars: number | null
+  max_chars: number | null
+}
 
 export const pct = (got: number, total: number) => (total === 0 ? 0 : (got / total) * 100)
