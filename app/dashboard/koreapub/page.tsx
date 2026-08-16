@@ -21,6 +21,7 @@ import {
 // ───────────────────────────────────────────────────────────────
 
 type Tab = 'companies' | 'spec' | 'essay' | 'mocks'
+type ObjAny = { data: unknown }
 
 interface RubricRow { company_id: string; groups: RuleGroup[]; memo: string | null }
 
@@ -31,22 +32,24 @@ export default function KoreaPubPage() {
   const [mocks, setMocks] = useState<MockRow[]>([])
   const [essays, setEssays] = useState<EssayRow[]>([])
   const [coRows, setCoRows] = useState<CompanyRow[]>([])
+  const [coError, setCoError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, { data: co }] = await Promise.all([
+    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, co] = await Promise.all([
       supabase.from('kp_specs').select('cert_key, has, value'),
       supabase.from('kp_rubrics').select('company_id, groups, memo'),
       supabase.from('kp_mocks').select('*').order('taken_on', { ascending: false }),
       supabase.from('kp_essays').select('*').order('idx', { ascending: true }),
-      supabase.from('kp_companies').select('id, hidden, data, sort_order'),
-    ])
+      supabase.from('kp_companies').select('id, hidden, target, data, sort_order'),
+    ]) as [ObjAny, ObjAny, ObjAny, ObjAny, { data: unknown; error: { message: string } | null }]
     setSpecs((sp as SpecRow[]) || [])
     setRubrics((rb as RubricRow[]) || [])
     setMocks((mk as MockRow[]) || [])
     setEssays((es as EssayRow[]) || [])
-    setCoRows((co as CompanyRow[]) || [])
+    setCoRows((co.data as CompanyRow[]) || [])
+    setCoError(co.error ? co.error.message : null)
     setLoading(false)
   }, [])
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -93,7 +96,7 @@ export default function KoreaPubPage() {
         </div>
 
         {loading && <p className="text-gray-500 text-sm">불러오는 중...</p>}
-        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} onSaved={fetchAll} />}
+        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} onSaved={fetchAll} />}
         {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={fetchAll} />}
         {!loading && tab === 'essay' && <EssayTab essays={essays} companies={companies} onSaved={fetchAll} />}
         {!loading && tab === 'mocks' && <MocksTab mocks={mocks} onSaved={fetchAll} />}
@@ -105,9 +108,9 @@ export default function KoreaPubPage() {
 // ═══════════════════════════════════════════════════════════════
 //  기업
 // ═══════════════════════════════════════════════════════════════
-function CompaniesTab({ results, spec, rubrics, coRows, onSaved }: {
+function CompaniesTab({ results, spec, rubrics, coRows, coError, onSaved }: {
   results: CompanyResult[]; spec: SpecMap; rubrics: RubricRow[]
-  coRows: CompanyRow[]; onSaved: () => void
+  coRows: CompanyRow[]; coError: string | null; onSaved: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [manage, setManage] = useState(false)
@@ -142,6 +145,16 @@ function CompaniesTab({ results, spec, rubrics, coRows, onSaved }: {
         </button>
       </div>
 
+      {coError && (
+        <div className="bg-red-950/50 border border-red-900 rounded-xl p-4 mb-4">
+          <p className="text-sm font-bold text-red-300 mb-1">기업 목록 테이블을 읽지 못했습니다</p>
+          <p className="text-[11px] text-red-200/70 leading-relaxed">
+            supabase/koreapub_essay_timeline_migration.sql 의 <span className="font-mono">kp_companies</span> 부분을
+            실행했는지 확인하세요. 추가·숨김이 저장되지 않습니다.
+            <br /><span className="text-red-400/60">{coError}</span>
+          </p>
+        </div>
+      )}
       {manage ? (
         <CompanyManager coRows={coRows} onSaved={onSaved} />
       ) : (
@@ -168,82 +181,101 @@ function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: ()
   const [sector, setSector] = useState('')
   const [busy, setBusy] = useState(false)
   const [tag, setTag] = useState<SuggestTag | 'all'>('all')
+  const [flash, setFlash] = useState<string | null>(null)
 
   const rowOf = (id: string) => coRows.find(r => r.id === id)
   const custom = coRows.filter(r => r.data)
 
-  const setHidden = async (id: string, hidden: boolean, data: Company | null = null) => {
+  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(null), 2500) }
+
+  /** 내장 기업의 숨김 / 주타깃 덮어쓰기 */
+  const patchBuiltin = async (id: string, patch: { hidden?: boolean; target?: boolean }) => {
     if (busy) return
     setBusy(true)
-    await supabase.from('kp_companies').upsert(
-      { id, hidden, data, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-    setBusy(false); onSaved()
+    const cur = rowOf(id)
+    const { error } = await supabase.from('kp_companies').upsert({
+      id,
+      hidden: patch.hidden ?? cur?.hidden ?? false,
+      target: patch.target ?? cur?.target ?? null,
+      data: cur?.data ?? null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+    setBusy(false)
+    if (error) { alert(`저장하지 못했습니다.\n${error.message}`); return }
+    onSaved()
   }
 
-  const add = async (n: string, sec: string, target = true) => {
+  const add = async (n: string, sec: string) => {
     if (!n.trim() || busy) return
     setBusy(true)
     const id = `u-${Date.now().toString(36)}`
     const c = blankCompany(id, n.trim())
     c.sector = sec
-    c.target = target
-    await supabase.from('kp_companies').insert({
-      id, hidden: false, data: c, sort_order: custom.length,
+    c.target = true
+    const { error } = await supabase.from('kp_companies').insert({
+      id, hidden: false, target: true, data: c, sort_order: custom.length,
     })
-    setBusy(false); setName(''); setSector(''); onSaved()
+    setBusy(false)
+    if (error) { alert(`추가하지 못했습니다.\n${error.message}`); return }
+    setName(''); setSector('')
+    say(`${n.trim()} 추가됨 — 주 타깃 목록에 들어갔습니다`)
+    onSaved()
   }
 
   const removeCustom = async (id: string, label: string) => {
     if (!confirm(`"${label}" 을(를) 목록에서 지울까요?`)) return
-    await supabase.from('kp_companies').delete().eq('id', id)
+    const { error } = await supabase.from('kp_companies').delete().eq('id', id)
+    if (error) { alert(`삭제하지 못했습니다.\n${error.message}`); return }
     onSaved()
   }
 
-  const setTargetFlag = async (r: CompanyRow, target: boolean) => {
+  const setCustomTarget = async (r: CompanyRow, target: boolean) => {
     if (!r.data) return
-    await supabase.from('kp_companies')
-      .update({ data: { ...r.data, target }, updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('kp_companies')
+      .update({ target, data: { ...r.data, target }, updated_at: new Date().toISOString() })
       .eq('id', r.id)
+    if (error) { alert(`저장하지 못했습니다.\n${error.message}`); return }
     onSaved()
   }
 
   const inp = 'bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-sm outline-none transition placeholder:text-gray-700'
-  const shown = tag === 'all' ? SUGGESTIONS : SUGGESTIONS.filter(s => s.tag === tag)
+  const shown = tag === 'all' ? SUGGESTIONS : SUGGESTIONS.filter(sg => sg.tag === tag)
+
+  /** 주 타깃 / 레퍼런스 2분할 토글 */
+  const TargetSwitch = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
+    <div className="flex gap-0.5 bg-gray-950 rounded-lg p-0.5 shrink-0">
+      <button onClick={() => onChange(true)}
+        className={`px-2 py-1 rounded text-[10px] font-bold transition ${on ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-400'}`}>
+        주 타깃
+      </button>
+      <button onClick={() => onChange(false)}
+        className={`px-2 py-1 rounded text-[10px] font-bold transition ${!on ? 'bg-gray-700 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}>
+        레퍼런스
+      </button>
+    </div>
+  )
 
   return (
     <div className="space-y-5">
-      {/* 내장 기업 표시 여부 */}
-      <div className="bg-gray-900 rounded-2xl p-4">
-        <p className="text-xs text-gray-500 mb-3">기본 제공 기업 — 끄면 목록에서 사라집니다</p>
-        <div className="space-y-1.5">
-          {COMPANIES.map(c => {
-            const hidden = !!rowOf(c.id)?.hidden
-            return (
-              <div key={c.id} className="flex items-center gap-3">
-                <button onClick={() => setHidden(c.id, !hidden)} disabled={busy}
-                  className={`w-9 h-5 rounded-full flex items-center px-0.5 shrink-0 transition ${hidden ? 'bg-gray-700 justify-start' : 'bg-blue-600 justify-end'}`}>
-                  <span className="w-4 h-4 bg-white rounded-full block" />
-                </button>
-                <span className={`text-[13px] flex-1 truncate ${hidden ? 'text-gray-600 line-through' : ''}`}>{c.name}</span>
-                <span className="text-[10px] text-gray-700 shrink-0">{c.sector}</span>
-              </div>
-            )
-          })}
+      {flash && (
+        <div className="bg-green-950/60 border border-green-900 rounded-xl px-4 py-2.5">
+          <p className="text-xs text-green-300">✓ {flash}</p>
         </div>
-      </div>
+      )}
 
-      {/* 직접 추가한 기업 */}
+      {/* 직접 추가한 기업 — 결과가 바로 보이도록 맨 위 */}
       {custom.length > 0 && (
         <div className="bg-gray-900 rounded-2xl p-4">
-          <p className="text-xs text-gray-500 mb-3">직접 추가한 기업</p>
-          <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 mb-3">직접 추가한 기업 {custom.length}</p>
+          <div className="space-y-2">
             {custom.map(r => (
               <div key={r.id} className="flex items-center gap-2">
-                <button onClick={() => setTargetFlag(r, !r.data!.target)}
-                  className={`text-[10px] px-2 py-1 rounded shrink-0 font-bold ${r.data!.target ? 'bg-blue-600/30 text-blue-300' : 'bg-gray-800 text-gray-500'}`}>
-                  {r.data!.target ? '주 타깃' : '레퍼런스'}
-                </button>
-                <span className="text-[13px] flex-1 truncate">{r.data!.name}</span>
+                <span className="text-[13px] flex-1 truncate">
+                  {r.data!.name}
+                  {r.data!.sector && <span className="text-[10px] text-gray-600 ml-2">{r.data!.sector}</span>}
+                </span>
+                <TargetSwitch on={r.target ?? r.data!.target}
+                  onChange={v => setCustomTarget(r, v)} />
                 <button onClick={() => removeCustom(r.id, r.data!.name)}
                   className="text-[11px] text-gray-700 hover:text-red-400 px-1 shrink-0">✕</button>
               </div>
@@ -251,6 +283,32 @@ function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: ()
           </div>
         </div>
       )}
+
+      {/* 내장 기업 */}
+      <div className="bg-gray-900 rounded-2xl p-4">
+        <p className="text-xs text-gray-500 mb-3">기본 제공 기업 — 왼쪽 스위치를 끄면 목록에서 사라집니다</p>
+        <div className="space-y-2">
+          {COMPANIES.map(c => {
+            const row = rowOf(c.id)
+            const hidden = !!row?.hidden
+            const target = row?.target ?? c.target
+            return (
+              <div key={c.id} className="flex items-center gap-2">
+                <button onClick={() => patchBuiltin(c.id, { hidden: !hidden })} disabled={busy}
+                  className={`w-9 h-5 rounded-full flex items-center px-0.5 shrink-0 transition ${hidden ? 'bg-gray-700 justify-start' : 'bg-blue-600 justify-end'}`}>
+                  <span className="w-4 h-4 bg-white rounded-full block" />
+                </button>
+                <span className={`text-[13px] flex-1 truncate ${hidden ? 'text-gray-600 line-through' : ''}`}>
+                  {c.name}
+                </span>
+                {!hidden && (
+                  <TargetSwitch on={target} onChange={v => patchBuiltin(c.id, { target: v })} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {/* 직접 입력 */}
       <div className="bg-gray-900 rounded-2xl p-4">
@@ -266,7 +324,8 @@ function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: ()
           </button>
         </div>
         <p className="text-[10px] text-gray-600">
-          추가하면 빈 배점표로 들어갑니다. 카드를 열고 「배점 편집」에서 공고 표를 옮겨 넣으세요.
+          추가하면 주 타깃으로 들어가고 배점표는 비어 있습니다. 「완료」를 누른 뒤 카드를 열어
+          「배점 편집」에서 공고 표를 옮겨 넣으세요.
         </p>
       </div>
 
@@ -283,9 +342,7 @@ function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: ()
             </button>
           ))}
         </div>
-        {tag !== 'all' && (
-          <p className="text-[10px] text-gray-600 mb-2">{SUGGEST_TAGS[tag].desc}</p>
-        )}
+        {tag !== 'all' && <p className="text-[10px] text-gray-600 mb-2">{SUGGEST_TAGS[tag].desc}</p>}
         <div className="space-y-2">
           {shown.map(sg => {
             const already = custom.some(r => r.data?.name === sg.name)
@@ -327,14 +384,16 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
       <button onClick={onToggle} className="w-full text-left p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
-            <p className="font-bold text-sm flex items-center gap-2">
+            <p className="font-bold text-sm flex items-center gap-2 flex-wrap">
               {c.name}
               {c.confirmed
                 ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/60 text-green-400 font-bold">공고 확인</span>
                 : <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-bold">미확인</span>}
               {custom && <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 font-bold">직접 추가</span>}
             </p>
-            <p className="text-[11px] text-gray-600 mt-0.5">{c.sector} · {c.season}</p>
+            <p className="text-[11px] text-gray-600 mt-0.5">
+              {[c.sector, c.season].filter(Boolean).join(' · ') || '분야·시기 미입력'}
+            </p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-lg font-bold text-blue-400 leading-none">
@@ -348,7 +407,9 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
         <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
           <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${p}%` }} />
         </div>
-        {r.upside.length > 0 && (
+        {r.max === 0 ? (
+          <p className="text-[11px] text-amber-500/80 mt-2">배점표가 비어 있습니다 — 카드를 열고 「배점 편집」</p>
+        ) : r.upside.length > 0 && (
           <p className="text-[11px] text-gray-500 mt-2 truncate">
             {r.upside.slice(0, 2).map(u => (
               <span key={u.label} className="mr-3">
@@ -376,25 +437,36 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
           <p className="text-[11px] text-gray-500">총점 {c.exam.total}</p>
           <p className="text-[11px] text-red-400/80 mb-4">과락 {c.exam.cutoff}</p>
 
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">지원 자격</p>
-          <ul className="space-y-1 mb-4">
-            {c.eligibility.map((e, i) => (
-              <li key={i} className="text-xs text-gray-400 flex gap-2"><span className="text-gray-700">·</span>{e}</li>
-            ))}
-          </ul>
+          {c.eligibility.length > 0 && (
+            <>
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">지원 자격</p>
+              <ul className="space-y-1 mb-4">
+                {c.eligibility.map((e, i) => (
+                  <li key={i} className="text-xs text-gray-400 flex gap-2"><span className="text-gray-700">·</span>{e}</li>
+                ))}
+              </ul>
+            </>
+          )}
 
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">
               서류 배점표 <span className="text-gray-700 normal-case">합계 {c.docTotal}점</span>
             </p>
             <button onClick={() => setEditing(v => !v)}
-              className="text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 transition">
+              className={`text-[10px] px-2 py-1 rounded transition ${
+                editing ? 'bg-blue-600 text-white' : r.max === 0 ? 'bg-amber-700 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'
+              }`}>
               {editing ? '편집 닫기' : '✎ 배점 편집'}
             </button>
           </div>
 
           {editing ? (
             <RubricEditor c={c} rubric={rubric} onSaved={() => { setEditing(false); onSaved() }} />
+          ) : c.groups.length === 0 ? (
+            <p className="text-xs text-gray-600 py-4 leading-relaxed">
+              아직 배점표가 없습니다. 공고의 「서류심사 표준배점표」를 보면서
+              위의 <span className="text-amber-400">✎ 배점 편집</span>에서 분야와 등급을 만들어 넣으세요.
+            </p>
           ) : (
             <div className="space-y-4">
               {r.groups.map(g => (

@@ -444,19 +444,28 @@ export const company = (id: string) => COMPANIES.find(c => c.id === id)
 export interface CompanyRow {
   id: string
   hidden: boolean
+  /** 주 타깃 여부 덮어쓰기 — null이면 기본값을 따른다 */
+  target: boolean | null
   /** 사용자가 직접 추가한 기업이면 Company 전체, 내장 기업이면 null */
   data: Company | null
   sort_order: number
 }
 
-/** 내장 목록 + 사용자 추가분을 합치고 숨긴 것을 걷어낸다 */
+/** 내장 목록 + 사용자 추가분을 합치고, 숨김·주타깃 덮어쓰기를 적용한다 */
 export function mergeCompanies(rows: CompanyRow[]): Company[] {
-  const hidden = new Set(rows.filter(r => r.hidden).map(r => r.id))
+  const byId = new Map(rows.map(r => [r.id, r]))
+  const withTarget = (c: Company): Company => {
+    const t = byId.get(c.id)?.target
+    return t === null || t === undefined ? c : { ...c, target: t }
+  }
+  const builtins = COMPANIES
+    .filter(c => !byId.get(c.id)?.hidden)
+    .map(withTarget)
   const custom = rows
     .filter(r => r.data && !r.hidden)
     .sort((a, b) => a.sort_order - b.sort_order)
-    .map(r => r.data as Company)
-  return [...COMPANIES.filter(c => !hidden.has(c.id)), ...custom]
+    .map(r => withTarget(r.data as Company))
+  return [...builtins, ...custom]
 }
 
 /** 새 기업의 빈 껍데기 — 배점은 편집기로 채운다 */

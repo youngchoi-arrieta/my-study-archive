@@ -83,3 +83,6 @@ create table if not exists kp_companies (
   updated_at  timestamptz default now()
 );
 alter table kp_companies disable row level security;
+
+-- 주 타깃 / 레퍼런스 분류를 내장 기업에도 적용하기 위한 컬럼
+alter table kp_companies add column if not exists target boolean;
