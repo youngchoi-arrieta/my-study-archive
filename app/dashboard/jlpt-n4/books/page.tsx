@@ -167,9 +167,33 @@ function BooksPage() {
 
   const deleteBook = async (b: Book) => {
     if (!confirm(`"${b.title}" 교재를 삭제할까요? 안의 모든 목차도 삭제됩니다.`)) return
+    const bookSnap = books, nodeSnap = nodes
     setBooks(prev => prev.filter(x => x.id !== b.id))
+    setNodes(prev => prev.filter(n => n.book_id !== b.id))
     if (activeBook === b.id) setActiveBook(null)
-    await supabase.from('jp_books').delete().eq('id', b.id)
+
+    // 노드를 먼저 비우고 교재를 지운다 (cascade가 없어도 통과하도록)
+    const own = nodeSnap.filter(n => n.book_id === b.id)
+    const byDepth: string[][] = []
+    let level = own.filter(n => n.parent_id === null).map(n => n.id)
+    while (level.length) {
+      byDepth.push(level)
+      const parents = level
+      level = own.filter(n => n.parent_id && parents.includes(n.parent_id)).map(n => n.id)
+    }
+    for (let i = byDepth.length - 1; i >= 0; i--) {
+      const { error } = await supabase.from('jp_nodes').delete().in('id', byDepth[i])
+      if (error) {
+        setBooks(bookSnap); setNodes(nodeSnap)
+        alert(`삭제하지 못했습니다.\n${error.message}`)
+        return
+      }
+    }
+    const { error } = await supabase.from('jp_books').delete().eq('id', b.id)
+    if (error) {
+      setBooks(bookSnap); setNodes(nodeSnap)
+      alert(`교재를 삭제하지 못했습니다.\n${error.message}`)
+    }
   }
 
   // ── 노드 CRUD (낙관적) ──────────────────────────────────────
@@ -215,19 +239,41 @@ function BooksPage() {
   }
 
   const deleteNode = async (id: string) => {
-    // 로컬에서 서브트리 전체 제거 (DB는 on delete cascade)
-    const toDelete = new Set<string>([id])
-    let grew = true
-    while (grew) {
-      grew = false
-      nodes.forEach(n => {
-        if (n.parent_id && toDelete.has(n.parent_id) && !toDelete.has(n.id)) {
-          toDelete.add(n.id); grew = true
-        }
-      })
+    const target = nodes.find(n => n.id === id)
+    if (!target) return
+
+    // 서브트리를 깊이별로 모은다.
+    // DB에 on delete cascade가 걸려 있지 않으면 부모부터 지울 때
+    // 외래키 위반으로 조용히 실패하므로, 반드시 아래층부터 지운다.
+    const levels: string[][] = [[id]]
+    const seen = new Set<string>([id])
+    for (;;) {
+      const parents = levels[levels.length - 1]
+      const kids = nodes
+        .filter(n => n.parent_id && parents.includes(n.parent_id) && !seen.has(n.id))
+        .map(n => n.id)
+      if (!kids.length) break
+      kids.forEach(k => seen.add(k))
+      levels.push(kids)
     }
-    setNodes(prev => prev.filter(n => !toDelete.has(n.id)))
-    await supabase.from('jp_nodes').delete().eq('id', id)
+
+    const childCount = seen.size - 1
+    const msg = childCount
+      ? `"${target.title}" 과 그 아래 ${childCount}개 항목을 삭제할까요?`
+      : `"${target.title}" 을(를) 삭제할까요?`
+    if (!confirm(msg)) return
+
+    const snapshot = nodes
+    setNodes(prev => prev.filter(n => !seen.has(n.id)))
+
+    for (let i = levels.length - 1; i >= 0; i--) {
+      const { error } = await supabase.from('jp_nodes').delete().in('id', levels[i])
+      if (error) {
+        setNodes(snapshot)   // 실패하면 화면을 되돌린다 — 지워진 척하지 않도록
+        alert(`삭제하지 못했습니다.\n${error.message}`)
+        return
+      }
+    }
   }
 
   const reorder = async (n: Node, dir: -1 | 1) => {
@@ -517,8 +563,10 @@ function TreeNodeRow({
           <button onClick={() => onReorder(node, -1)} title="위로" className="text-gray-600 hover:text-white text-xs px-1">▲</button>
           <button onClick={() => onReorder(node, 1)} title="아래로" className="text-gray-600 hover:text-white text-xs px-1">▼</button>
           <button onClick={() => setAdding(v => !v)} title="하위 항목 추가" className="text-blue-500 hover:text-blue-400 text-sm px-1.5 font-bold">＋하위</button>
-          <button onClick={() => { setMemoText(node.memo ?? ''); setMemoOpen(v => !v) }} title="메모" className="text-gray-600 hover:text-white text-xs px-1">📝</button>
-          <button onClick={() => onDelete(node.id)} title="삭제" className="text-gray-700 hover:text-red-400 text-xs px-1">🗑</button>
+          <button onClick={() => { setMemoText(node.memo ?? ''); setMemoOpen(v => !v) }} title="메모"
+            className={`text-[11px] px-1.5 py-0.5 rounded transition ${node.memo ? 'text-amber-400 hover:text-amber-300' : 'text-gray-600 hover:text-white'}`}>메모</button>
+          <button onClick={() => onDelete(node.id)} title="삭제"
+            className="text-[11px] px-1.5 py-0.5 rounded text-gray-600 hover:text-white hover:bg-red-800 transition">삭제</button>
         </div>
       </div>
 
