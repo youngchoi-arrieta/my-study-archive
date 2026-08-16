@@ -10,12 +10,13 @@
 //  나머지는 골격만 잡은 템플릿이다. 공고를 보고 앱에서 직접 고친다.
 // ═══════════════════════════════════════════════════════════════
 
-export type CertKind = 'tech' | 'it' | 'history' | 'lang' | 'etc'
+export type CertKind = 'tech' | 'it' | 'history' | 'korean' | 'lang' | 'etc'
 
 export const KIND_LABELS: Record<CertKind, string> = {
   tech: '전공 자격증',
   it: 'IT',
   history: '한국사',
+  korean: '한국어',
   lang: '외국어',
   etc: '기타',
 }
@@ -47,6 +48,11 @@ export const CERT_CATALOG: CertDef[] = [
   },
   { key: 'toeic', label: 'TOEIC', kind: 'lang', value: 'score', mine: true, hint: '점수 그대로' },
   {
+    key: 'kbs-korean', label: 'KBS한국어능력시험', kind: 'korean', value: 'grade', mine: true,
+    hint: '상대평가 — 2+급 상위 1% · 2-급 상위 5%',
+    grades: ['1급', '2+급', '2-급', '3+급', '3-급', '4+급'],
+  },
+  {
     key: 'opic', label: 'OPIc', kind: 'lang', value: 'grade', mine: true,
     grades: ['AL', 'IH', 'IM3', 'IM2', 'IM1'],
   },
@@ -76,7 +82,7 @@ export const CERT_CATALOG: CertDef[] = [
   { key: 'info-processing-sanup', label: '정보처리산업기사', kind: 'it', value: 'bool', mine: false },
   { key: 'office-auto-sanup', label: '사무자동화산업기사', kind: 'it', value: 'bool', mine: false },
   { key: 'prog-gineungsa', label: '프로그래밍기능사', kind: 'it', value: 'bool', mine: false },
-  { key: 'kbs-korean', label: 'KBS한국어능력시험', kind: 'etc', value: 'grade', mine: false, grades: ['2+급', '2-급', '3+급'] },
+
   { key: 'paper-sci', label: 'SCI(E) 제1저자 논문', kind: 'etc', value: 'bool', mine: false, hint: '연구직군 배점표에만 등장' },
   { key: 'phd', label: '박사학위', kind: 'etc', value: 'bool', mine: false },
   { key: 'kesco-intern', label: '체험형 인턴 수료', kind: 'etc', value: 'bool', mine: false },
@@ -242,7 +248,7 @@ export const COMPANIES: Company[] = [
       {
         id: 'korean', label: '한국어', max: 15, mode: 'top1',
         tiers: [
-          { points: 15, label: 'KBS한국어능력시험 2⊕급 이상', gradeIn: ['2+급'] },
+          { points: 15, label: 'KBS한국어능력시험 2⊕급 이상', gradeIn: ['1급', '2+급'] },
           { points: 10, label: 'KBS한국어능력시험 2⊖급', gradeIn: ['2-급'] },
           { points: 5, label: 'KBS한국어능력시험 3⊕급', gradeIn: ['3+급'] },
         ],
@@ -273,60 +279,6 @@ export const COMPANIES: Company[] = [
     ],
   },
   {
-    id: 'kesco-research',
-    name: '한국전기안전공사 (연구직)',
-    short: 'KESCO 연구',
-    sector: '전기안전 연구',
-    target: false,
-    season: '기술직과 함께 공고',
-    exam: {
-      parts: [{ name: '전공 PT 발표면접', q: null, pt: null }],
-      total: '공고별 상이',
-      cutoff: '공고 확인',
-    },
-    eligibility: ['개인 연구실적 PPT 발표면접 있음', '박사학위 배점 20점 — 미보유 시 그만큼 손해'],
-    docTotal: 100,
-    tiebreak: ['취업지원 대상자', '논문', '학위', '전공자격'],
-    groups: [
-      {
-        id: 'paper', label: '논문', max: 40, mode: 'sum',
-        note: '본인이 제1저자인 논문만 인정 · 논문당 점수 합산 · 학회 발표논문/Proceeding 불인정',
-        tiers: [
-          { points: 20, label: 'SCI(E) 저널 게재 논문', certs: ['paper-sci'] },
-        ],
-      },
-      {
-        id: 'lang', label: '외국어', max: 20, mode: 'top1',
-        tiers: [
-          { points: 20, label: 'TOEIC 850 이상', toeicMin: 850 },
-          { points: 15, label: 'TOEIC 800 이상 850 미만', toeicMin: 800 },
-          { points: 10, label: 'TOEIC 750 이상 800 미만', toeicMin: 750 },
-          { points: 5, label: 'TOEIC 700 이상 750 미만', toeicMin: 700 },
-        ],
-      },
-      {
-        id: 'degree', label: '학위', max: 20, mode: 'top1',
-        tiers: [{ points: 20, label: '모집 분야 박사학위', certs: ['phd'] }],
-      },
-      {
-        id: 'major', label: '전공자격', max: 20, mode: 'top1',
-        tiers: [
-          { points: 20, label: '건축전기·발송배전·전기응용·전기안전 기술사', certs: ['pe-elec'] },
-          { points: 10, label: '전기기사, 전기공사기사', certs: ['elec-gisa', 'elec-gongsa-gisa'] },
-        ],
-      },
-    ],
-    extra: {
-      id: 'extra', label: '별도가점', max: 15, mode: 'sum',
-      tiers: [
-        { points: 10, label: '취업지원 대상자', certs: ['veteran'] },
-        { points: 5, label: '체험형 인턴 수료자', certs: ['kesco-intern'] },
-      ],
-    },
-    confirmed: true,
-    verified: '2026년 공고 붙임3 「신입(연구)」 원문. 기술직과 배점 구조가 완전히 달라 비교용으로 넣어둠.',
-  },
-  {
     id: 'kps',
     name: '한전KPS',
     short: 'KPS',
@@ -349,7 +301,7 @@ export const COMPANIES: Company[] = [
     groups: [
       { id: 'it', label: 'IT', max: 3, mode: 'top1', tiers: [{ points: 3, label: '컴활 1급(대한상의) 또는 정보처리기사', certs: ['comp-act-1', 'info-processing'] }] },
       { id: 'history', label: '한국사', max: 3, mode: 'top1', tiers: [{ points: 3, label: '한국사능력검정 (급수별 차등)', gradeAtMost: 2 }] },
-      { id: 'korean', label: '한국어', max: 3, mode: 'top1', tiers: [{ points: 3, label: 'KBS한국어 등', gradeIn: ['2+급', '2-급'] }] },
+      { id: 'korean', label: '한국어', max: 3, mode: 'top1', tiers: [{ points: 3, label: 'KBS한국어 등', gradeIn: ['1급', '2+급', '2-급'] }] },
       { id: 'lang', label: '영어우수자', max: 3, mode: 'top1', tiers: [{ points: 3, label: 'TOEIC 고득점 기준선 이상', toeicMin: 850 }] },
     ],
     confirmed: false,
@@ -487,6 +439,75 @@ export const COMPANIES: Company[] = [
 ]
 
 export const company = (id: string) => COMPANIES.find(c => c.id === id)
+
+// ── 기업 추가/숨김 ───────────────────────────────────────────────
+export interface CompanyRow {
+  id: string
+  hidden: boolean
+  /** 사용자가 직접 추가한 기업이면 Company 전체, 내장 기업이면 null */
+  data: Company | null
+  sort_order: number
+}
+
+/** 내장 목록 + 사용자 추가분을 합치고 숨긴 것을 걷어낸다 */
+export function mergeCompanies(rows: CompanyRow[]): Company[] {
+  const hidden = new Set(rows.filter(r => r.hidden).map(r => r.id))
+  const custom = rows
+    .filter(r => r.data && !r.hidden)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(r => r.data as Company)
+  return [...COMPANIES.filter(c => !hidden.has(c.id)), ...custom]
+}
+
+/** 새 기업의 빈 껍데기 — 배점은 편집기로 채운다 */
+export function blankCompany(id: string, name: string): Company {
+  return {
+    id, name, short: name.slice(0, 6), sector: '', target: false, season: '',
+    exam: { parts: [{ name: 'NCS 직업기초', q: null, pt: null }, { name: '전공', q: null, pt: null }], total: '공고별 상이', cutoff: '공고 확인' },
+    eligibility: [], docTotal: 100, groups: [], confirmed: false,
+    verified: '직접 추가한 기업입니다. 「배점 편집」에서 공고의 서류심사 표준배점표를 옮겨 넣으세요.',
+  }
+}
+
+// ── 후보 기업 ────────────────────────────────────────────────────
+export type SuggestTag = 'practice' | 'grid' | 'life'
+
+export const SUGGEST_TAGS: Record<SuggestTag, { label: string; desc: string }> = {
+  practice: { label: '전기 실무', desc: '수전·발전설비를 직접 만지는 곳 — 電験 실무경력으로 이어짐' },
+  grid: { label: '계통·설계', desc: '산출물형 직무 — 물리·수학 배경이 살아나는 쪽' },
+  life: { label: '생활 + 공부', desc: '교대·대기시간이 있어 병행이 가능하다고 알려진 곳' },
+}
+
+export interface Suggestion {
+  name: string; short: string; sector: string; tag: SuggestTag; why: string
+}
+
+export const SUGGESTIONS: Suggestion[] = [
+  { name: '한국수력원자력', short: 'KHNP', sector: '원자력 발전', tag: 'practice',
+    why: '전기직 채용 규모가 크고 발전소 전기설비 실무가 그대로 쌓입니다. 다만 원전 특유의 절차·보안 업무 비중이 큽니다.' },
+  { name: '한국남동발전 / 남부 / 동서 / 서부발전', short: '발전4사', sector: '발전', tag: 'practice',
+    why: '중부발전과 구조가 거의 같습니다. 한 회사만 넣지 말고 회차마다 열리는 곳에 다 넣는 게 정석입니다.' },
+  { name: '한국지역난방공사', short: '한난', sector: '집단에너지', tag: 'practice',
+    why: '열병합 발전과 수전설비를 함께 다룹니다. 발전사보다 채용이 적지만 근무지가 수도권에 몰려 있습니다.' },
+  { name: '한국가스공사', short: '가스공사', sector: '가스 설비', tag: 'practice',
+    why: '생산기지 전기설비 운영. 처우가 좋은 편이고 교대 비중이 있습니다.' },
+  { name: '전력거래소', short: 'KPX', sector: '계통 운영 · 급전', tag: 'grid',
+    why: '전력계통 운영의 심장부라 계통해석·조류계산이 실무 그 자체입니다. 물리 배경이 가장 잘 살아나는 곳이지만 채용 인원이 한 자릿수~십수 명이라 경쟁이 극심하고, 중앙급전소는 교대근무입니다.' },
+  { name: '한국전력기술', short: 'KEPCO E&C', sector: '발전·송변전 설계', tag: 'grid',
+    why: '설계 산출물이 남는 직무. 일본에서도 설계 경력은 통하지만, 신입 경쟁이 특히 치열합니다.' },
+  { name: '한전KDN', short: 'KDN', sector: '전력 IT · 계통보호', tag: 'grid',
+    why: '전기와 IT가 겹치는 자리. 정보처리기사를 딸 계획이라면 두 자격이 동시에 값을 합니다.' },
+  { name: '국가철도공단', short: '철도공단', sector: '전철전력 설계·감리', tag: 'grid',
+    why: '코레일이 운영이라면 여기는 건설·감리 쪽. 산출물형 경력이 남습니다.' },
+  { name: '서울교통공사', short: '서교공', sector: '도시철도', tag: 'life',
+    why: '전기직 채용 규모가 도시철도 중 가장 큽니다. 야간 대기시간이 있어 공부를 병행했다는 사례가 많은 곳입니다.' },
+  { name: '인천국제공항공사', short: '인국공', sector: '공항 시설', tag: 'life',
+    why: '시설 전기직. 처우가 좋아 경쟁률이 높지만 근무 패턴상 자기 시간 확보가 되는 편입니다.' },
+  { name: '한국공항공사', short: 'KAC', sector: '공항 시설', tag: 'life',
+    why: '인국공보다 문턱이 낮고 지방공항 근무지가 많아 선택지가 넓습니다.' },
+  { name: '서울시설공단 / 지방 도시관리공사', short: '시설공단', sector: '공공시설 관리', tag: 'life',
+    why: '업무 강도가 가장 낮은 축. 처우는 낮지만 「경유지」로 삼아 자격 공부에 시간을 쓰기에는 가장 무난합니다.' },
+]
 
 // ── 내 스펙 ──────────────────────────────────────────────────────
 export interface SpecRow { cert_key: string; has: boolean; value: string | null }

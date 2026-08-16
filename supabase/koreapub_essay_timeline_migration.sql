@@ -71,3 +71,15 @@ insert into tl_events (track, title, reg_start, reg_end, exam_date, note, sort_o
   ('public','한국전기안전공사',null,null,null,'공고 확인 필요',64),
   ('public','코레일 (상반기)',null,null,null,'공고 확인 필요',65)
 on conflict do nothing;
+
+-- ── 기업 추가 / 숨김 ──
+-- 내장 기업 목록은 lib/constants-koreapub.ts 의 COMPANIES.
+-- 여기에는 "숨긴 내장 기업"과 "직접 추가한 기업"만 들어간다.
+create table if not exists kp_companies (
+  id          text primary key,   -- 내장이면 그 id, 사용자 추가면 새 슬러그
+  hidden      boolean not null default false,
+  data        jsonb,              -- 사용자 추가 기업의 Company 전체 (내장이면 null)
+  sort_order  int not null default 0,
+  updated_at  timestamptz default now()
+);
+alter table kp_companies disable row level security;

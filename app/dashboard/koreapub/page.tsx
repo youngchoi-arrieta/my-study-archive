@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import {
   CertDef, CertKind, ALL_KINDS, KIND_LABELS, CERT_CATALOG, MY_CERTS,
   Company, RuleGroup, RuleTier, COMPANIES,
+  CompanyRow, mergeCompanies, blankCompany, SUGGESTIONS, SUGGEST_TAGS, SuggestTag,
   SpecRow, SpecMap, toSpecMap, langSources, bestToeic,
   scoreCompany, CompanyResult, tierMet,
   MockRow, MOCK_PARTS, EssayRow, pct,
@@ -29,30 +30,33 @@ export default function KoreaPubPage() {
   const [rubrics, setRubrics] = useState<RubricRow[]>([])
   const [mocks, setMocks] = useState<MockRow[]>([])
   const [essays, setEssays] = useState<EssayRow[]>([])
+  const [coRows, setCoRows] = useState<CompanyRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }] = await Promise.all([
+    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, { data: co }] = await Promise.all([
       supabase.from('kp_specs').select('cert_key, has, value'),
       supabase.from('kp_rubrics').select('company_id, groups, memo'),
       supabase.from('kp_mocks').select('*').order('taken_on', { ascending: false }),
       supabase.from('kp_essays').select('*').order('idx', { ascending: true }),
+      supabase.from('kp_companies').select('id, hidden, data, sort_order'),
     ])
     setSpecs((sp as SpecRow[]) || [])
     setRubrics((rb as RubricRow[]) || [])
     setMocks((mk as MockRow[]) || [])
     setEssays((es as EssayRow[]) || [])
+    setCoRows((co as CompanyRow[]) || [])
     setLoading(false)
   }, [])
   useEffect(() => { fetchAll() }, [fetchAll])
 
   const spec: SpecMap = useMemo(() => toSpecMap(specs), [specs])
 
-  const companies: Company[] = useMemo(() => COMPANIES.map(c => {
+  const companies: Company[] = useMemo(() => mergeCompanies(coRows).map(c => {
     const r = rubrics.find(x => x.company_id === c.id)
     return r?.groups?.length ? { ...c, groups: r.groups } : c
-  }), [rubrics])
+  }), [coRows, rubrics])
 
   const results = useMemo(() => companies.map(c => scoreCompany(c, spec)), [companies, spec])
 
@@ -89,9 +93,9 @@ export default function KoreaPubPage() {
         </div>
 
         {loading && <p className="text-gray-500 text-sm">불러오는 중...</p>}
-        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} onSaved={fetchAll} />}
+        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} onSaved={fetchAll} />}
         {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={fetchAll} />}
-        {!loading && tab === 'essay' && <EssayTab essays={essays} onSaved={fetchAll} />}
+        {!loading && tab === 'essay' && <EssayTab essays={essays} companies={companies} onSaved={fetchAll} />}
         {!loading && tab === 'mocks' && <MocksTab mocks={mocks} onSaved={fetchAll} />}
       </div>
     </main>
@@ -101,10 +105,12 @@ export default function KoreaPubPage() {
 // ═══════════════════════════════════════════════════════════════
 //  기업
 // ═══════════════════════════════════════════════════════════════
-function CompaniesTab({ results, spec, rubrics, onSaved }: {
-  results: CompanyResult[]; spec: SpecMap; rubrics: RubricRow[]; onSaved: () => void
+function CompaniesTab({ results, spec, rubrics, coRows, onSaved }: {
+  results: CompanyResult[]; spec: SpecMap; rubrics: RubricRow[]
+  coRows: CompanyRow[]; onSaved: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
+  const [manage, setManage] = useState(false)
   const targets = results.filter(r => r.company.target)
   const refs = results.filter(r => !r.company.target)
 
@@ -112,7 +118,9 @@ function CompaniesTab({ results, spec, rubrics, onSaved }: {
     <CompanyCard key={r.company.id} r={r} spec={spec}
       open={openId === r.company.id}
       onToggle={() => setOpenId(openId === r.company.id ? null : r.company.id)}
-      rubric={rubrics.find(x => x.company_id === r.company.id)} onSaved={onSaved} />
+      rubric={rubrics.find(x => x.company_id === r.company.id)}
+      custom={!!coRows.find(x => x.id === r.company.id)?.data}
+      onSaved={onSaved} />
   ))
 
   return (
@@ -123,17 +131,191 @@ function CompaniesTab({ results, spec, rubrics, onSaved }: {
           <p className="text-xs text-amber-200/70">체크하는 즉시 기업별 서류점수가 계산됩니다.</p>
         </div>
       )}
-      <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">🎯 주 타깃</p>
-      <div className="space-y-3 mb-8">{render(targets)}</div>
-      <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📐 레퍼런스</p>
-      <div className="space-y-3">{render(refs)}</div>
+
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">🎯 주 타깃</p>
+        <button onClick={() => setManage(v => !v)}
+          className={`text-[10px] px-2.5 py-1 rounded-lg font-bold transition ${
+            manage ? 'bg-blue-600 text-white' : 'bg-gray-900 text-gray-500 hover:text-gray-300'
+          }`}>
+          {manage ? '완료' : '✎ 기업 관리'}
+        </button>
+      </div>
+
+      {manage ? (
+        <CompanyManager coRows={coRows} onSaved={onSaved} />
+      ) : (
+        <>
+          <div className="space-y-3 mb-8">
+            {targets.length ? render(targets)
+              : <p className="text-gray-600 text-sm py-4">주 타깃으로 표시된 기업이 없습니다.</p>}
+          </div>
+          {refs.length > 0 && (
+            <>
+              <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📐 레퍼런스</p>
+              <div className="space-y-3">{render(refs)}</div>
+            </>
+          )}
+        </>
+      )}
     </div>
   )
 }
 
-function CompanyCard({ r, spec, open, onToggle, rubric, onSaved }: {
+// ── 기업 추가 · 숨김 ─────────────────────────────────────────────
+function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: () => void }) {
+  const [name, setName] = useState('')
+  const [sector, setSector] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [tag, setTag] = useState<SuggestTag | 'all'>('all')
+
+  const rowOf = (id: string) => coRows.find(r => r.id === id)
+  const custom = coRows.filter(r => r.data)
+
+  const setHidden = async (id: string, hidden: boolean, data: Company | null = null) => {
+    if (busy) return
+    setBusy(true)
+    await supabase.from('kp_companies').upsert(
+      { id, hidden, data, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    setBusy(false); onSaved()
+  }
+
+  const add = async (n: string, sec: string, target = true) => {
+    if (!n.trim() || busy) return
+    setBusy(true)
+    const id = `u-${Date.now().toString(36)}`
+    const c = blankCompany(id, n.trim())
+    c.sector = sec
+    c.target = target
+    await supabase.from('kp_companies').insert({
+      id, hidden: false, data: c, sort_order: custom.length,
+    })
+    setBusy(false); setName(''); setSector(''); onSaved()
+  }
+
+  const removeCustom = async (id: string, label: string) => {
+    if (!confirm(`"${label}" 을(를) 목록에서 지울까요?`)) return
+    await supabase.from('kp_companies').delete().eq('id', id)
+    onSaved()
+  }
+
+  const setTargetFlag = async (r: CompanyRow, target: boolean) => {
+    if (!r.data) return
+    await supabase.from('kp_companies')
+      .update({ data: { ...r.data, target }, updated_at: new Date().toISOString() })
+      .eq('id', r.id)
+    onSaved()
+  }
+
+  const inp = 'bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-sm outline-none transition placeholder:text-gray-700'
+  const shown = tag === 'all' ? SUGGESTIONS : SUGGESTIONS.filter(s => s.tag === tag)
+
+  return (
+    <div className="space-y-5">
+      {/* 내장 기업 표시 여부 */}
+      <div className="bg-gray-900 rounded-2xl p-4">
+        <p className="text-xs text-gray-500 mb-3">기본 제공 기업 — 끄면 목록에서 사라집니다</p>
+        <div className="space-y-1.5">
+          {COMPANIES.map(c => {
+            const hidden = !!rowOf(c.id)?.hidden
+            return (
+              <div key={c.id} className="flex items-center gap-3">
+                <button onClick={() => setHidden(c.id, !hidden)} disabled={busy}
+                  className={`w-9 h-5 rounded-full flex items-center px-0.5 shrink-0 transition ${hidden ? 'bg-gray-700 justify-start' : 'bg-blue-600 justify-end'}`}>
+                  <span className="w-4 h-4 bg-white rounded-full block" />
+                </button>
+                <span className={`text-[13px] flex-1 truncate ${hidden ? 'text-gray-600 line-through' : ''}`}>{c.name}</span>
+                <span className="text-[10px] text-gray-700 shrink-0">{c.sector}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 직접 추가한 기업 */}
+      {custom.length > 0 && (
+        <div className="bg-gray-900 rounded-2xl p-4">
+          <p className="text-xs text-gray-500 mb-3">직접 추가한 기업</p>
+          <div className="space-y-1.5">
+            {custom.map(r => (
+              <div key={r.id} className="flex items-center gap-2">
+                <button onClick={() => setTargetFlag(r, !r.data!.target)}
+                  className={`text-[10px] px-2 py-1 rounded shrink-0 font-bold ${r.data!.target ? 'bg-blue-600/30 text-blue-300' : 'bg-gray-800 text-gray-500'}`}>
+                  {r.data!.target ? '주 타깃' : '레퍼런스'}
+                </button>
+                <span className="text-[13px] flex-1 truncate">{r.data!.name}</span>
+                <button onClick={() => removeCustom(r.id, r.data!.name)}
+                  className="text-[11px] text-gray-700 hover:text-red-400 px-1 shrink-0">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 직접 입력 */}
+      <div className="bg-gray-900 rounded-2xl p-4">
+        <p className="text-xs text-gray-500 mb-3">기업 추가</p>
+        <div className="flex gap-2 mb-2">
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="기업명"
+            className={`${inp} flex-1 min-w-0`} />
+          <input value={sector} onChange={e => setSector(e.target.value)} placeholder="분야"
+            className={`${inp} w-28 shrink-0`} />
+          <button onClick={() => add(name, sector)} disabled={!name.trim() || busy}
+            className="px-4 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 text-sm font-bold transition shrink-0">
+            추가
+          </button>
+        </div>
+        <p className="text-[10px] text-gray-600">
+          추가하면 빈 배점표로 들어갑니다. 카드를 열고 「배점 편집」에서 공고 표를 옮겨 넣으세요.
+        </p>
+      </div>
+
+      {/* 후보 */}
+      <div className="bg-gray-900 rounded-2xl p-4">
+        <p className="text-xs text-gray-500 mb-2">후보 — 탭하면 바로 추가됩니다</p>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          <button onClick={() => setTag('all')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${tag === 'all' ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400'}`}>전체</button>
+          {(Object.keys(SUGGEST_TAGS) as SuggestTag[]).map(t => (
+            <button key={t} onClick={() => setTag(t)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${tag === t ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
+              {SUGGEST_TAGS[t].label}
+            </button>
+          ))}
+        </div>
+        {tag !== 'all' && (
+          <p className="text-[10px] text-gray-600 mb-2">{SUGGEST_TAGS[tag].desc}</p>
+        )}
+        <div className="space-y-2">
+          {shown.map(sg => {
+            const already = custom.some(r => r.data?.name === sg.name)
+            return (
+              <div key={sg.name} className="flex items-start gap-3 py-2 border-b border-gray-800 last:border-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold">
+                    {sg.name}
+                    <span className="text-[10px] text-gray-600 font-normal ml-2">{sg.sector}</span>
+                  </p>
+                  <p className="text-[11px] text-gray-500 leading-relaxed mt-0.5">{sg.why}</p>
+                </div>
+                <button onClick={() => add(sg.name, sg.sector)} disabled={already || busy}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg shrink-0 font-bold transition ${
+                    already ? 'bg-gray-800 text-gray-600' : 'bg-blue-700 hover:bg-blue-600 text-white'
+                  }`}>
+                  {already ? '추가됨' : '추가'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
   r: CompanyResult; spec: SpecMap; open: boolean; onToggle: () => void
-  rubric?: RubricRow; onSaved: () => void
+  rubric?: RubricRow; custom?: boolean; onSaved: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const c = r.company
@@ -150,6 +332,7 @@ function CompanyCard({ r, spec, open, onToggle, rubric, onSaved }: {
               {c.confirmed
                 ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/60 text-green-400 font-bold">공고 확인</span>
                 : <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-bold">미확인</span>}
+              {custom && <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 font-bold">직접 추가</span>}
             </p>
             <p className="text-[11px] text-gray-600 mt-0.5">{c.sector} · {c.season}</p>
           </div>
@@ -502,10 +685,12 @@ function SpecTab({ specs, spec, onSaved }: { specs: SpecRow[]; spec: SpecMap; on
                         placeholder="점수"
                         className="w-20 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-2 py-1 text-xs text-center outline-none shrink-0 placeholder:text-gray-700" />
                     )}
-                    {on && c.value === 'grade' && (
+                    {c.value === 'grade' && (
                       <select value={row?.value ?? ''} onChange={e => setValue(c, e.target.value)}
-                        className="w-24 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded px-1 py-1 text-xs outline-none shrink-0">
-                        <option value="">선택</option>
+                        className={`w-28 bg-gray-950 border rounded px-1 py-1 text-xs outline-none shrink-0 transition ${
+                          on && row?.value ? 'border-blue-800 text-white' : 'border-gray-800 text-gray-500'
+                        }`}>
+                        <option value="">급수 선택</option>
                         {(c.grades ?? []).map(g => <option key={g} value={g}>{g}</option>)}
                       </select>
                     )}
@@ -523,10 +708,11 @@ function SpecTab({ specs, spec, onSaved }: { specs: SpecRow[]; spec: SpecMap; on
 // ═══════════════════════════════════════════════════════════════
 //  자기소개서
 // ═══════════════════════════════════════════════════════════════
-function EssayTab({ essays, onSaved }: { essays: EssayRow[]; onSaved: () => void }) {
-  const [cid, setCid] = useState(COMPANIES[0].id)
+function EssayTab({ essays, companies, onSaved }: { essays: EssayRow[]; companies: Company[]; onSaved: () => void }) {
+  const [cid, setCid] = useState(companies[0]?.id ?? '')
   const rows = essays.filter(e => e.company_id === cid)
-  const c = COMPANIES.find(x => x.id === cid)!
+  const c = companies.find(x => x.id === cid)
+  if (!c) return <p className="text-gray-600 text-sm text-center py-10">기업을 먼저 추가하세요.</p>
 
   const seed = async () => {
     const prompts = c.essayPrompts ?? []
@@ -547,7 +733,7 @@ function EssayTab({ essays, onSaved }: { essays: EssayRow[]; onSaved: () => void
     <div>
       <select value={cid} onChange={e => setCid(e.target.value)}
         className="w-full bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-xl px-3 py-2.5 text-sm outline-none transition mb-4">
-        {COMPANIES.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+        {companies.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
       </select>
 
       {rows.length === 0 ? (
