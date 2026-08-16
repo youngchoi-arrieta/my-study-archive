@@ -11,7 +11,8 @@ import { supabase } from '@/lib/supabase'
 //  어느 과목에서 열어도 같은 것을 보게 한다.
 // ═══════════════════════════════════════════════════════════════
 
-export type DocScope = 'denken12' | 'denken3'
+/** 'denken12' | 'denken3' | 범용 프레임의 시험 slug */
+export type DocScope = string
 /** 一次·二次로 解答 PDF가 갈린다. 三種처럼 구분이 없으면 'all' */
 export type DocPhase = 'ichiji' | 'niji' | 'all'
 

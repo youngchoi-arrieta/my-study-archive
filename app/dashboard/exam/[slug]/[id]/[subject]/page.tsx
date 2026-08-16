@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { loadExamDoc, saveExamAnswerUrl } from '@/lib/examDocs'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { PastPaperChip } from '@/app/components/PastPaperBar'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
@@ -56,6 +57,8 @@ export default function ExamSolvePage() {
   const [answerUrl, setAnswerUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sharedAnswer, setSharedAnswer] = useState(false)
+  const [dbError, setDbError] = useState<string | null>(null)
 
   // marksheet
   const [mark, setMark] = useState<MarkState>(() =>
@@ -80,16 +83,28 @@ export default function ExamSolvePage() {
   // ── 로드 ──────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!spec || !sp) return
-    const { data: sRows } = await supabase.from('exam_sessions')
+    const { data: sRows, error: sErr } = await supabase.from('gexam_sessions')
       .select('id, drive_url, answer_drive_url')
       .eq('exam_slug', slug).eq('exam_id', examId).eq('subject', subjectSlug).limit(1)
+    if (sErr) setDbError(sErr.message)
     const sess = sRows?.[0]
     if (sess) {
       setSessionId(sess.id)
       setUrlInput(sess.drive_url ?? '')
-      setAnswerUrl(sess.answer_drive_url ?? '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
-      if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
+    }
+
+    // 解答은 회차 단위로 공유한다 — 과목별 값보다 우선
+    const doc = await loadExamDoc(slug, examId, 'all')
+    const shared = doc?.answer_url ?? null
+    if (shared) {
+      setAnswerUrl(shared)
+      setAnswerPreviewUrl(toPreviewUrl(shared))
+      setSharedAnswer(true)
+    } else if (sess?.answer_drive_url) {
+      setAnswerUrl(sess.answer_drive_url)
+      setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
+      setSharedAnswer(false)
     }
     const { data: ans } = await supabase.from('exam_answers')
       .select('q_num, subs_json, selected, score, memo, review')
@@ -119,10 +134,14 @@ export default function ExamSolvePage() {
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId
-    const { data } = await supabase.from('exam_sessions')
+    const { data, error } = await supabase.from('gexam_sessions')
       .upsert({ exam_slug: slug, exam_id: examId, subject: subjectSlug }, { onConflict: 'exam_slug,exam_id,subject' })
       .select('id').single()
-    const id = data!.id
+    if (error || !data) {
+      setDbError(error?.message ?? '세션을 만들지 못했습니다')
+      throw new Error(error?.message ?? 'session')
+    }
+    const id = data.id as string
     setSessionId(id)
     return id
   }, [sessionId, slug, examId, subjectSlug])
@@ -180,14 +199,23 @@ export default function ExamSolvePage() {
   // ── URL 저장 ──────────────────────────────────────────────────────
   const saveUrlFor = useCallback(async (which: 'question' | 'answer') => {
     setSaving(true)
-    const patch = which === 'question'
-      ? { drive_url: urlInput.trim() || null }
-      : { answer_drive_url: answerUrl.trim() || null }
-    if (which === 'question') setPreviewUrl(urlInput.trim() ? toPreviewUrl(urlInput.trim()) : null)
-    else setAnswerPreviewUrl(answerUrl.trim() ? toPreviewUrl(answerUrl.trim()) : null)
-    await supabase.from('exam_sessions')
-      .upsert({ exam_slug: slug, exam_id: examId, subject: subjectSlug, ...patch }, { onConflict: 'exam_slug,exam_id,subject' })
+    if (which === 'answer') {
+      const url = answerUrl.trim()
+      setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
+      const err = await saveExamAnswerUrl(slug, examId, 'all', url)
+      setSaving(false)
+      if (err) { setDbError(err); alert(`解答 링크를 저장하지 못했습니다.\n${err}`); return }
+      setSharedAnswer(!!url); setDbError(null)
+      return
+    }
+    const url = urlInput.trim()
+    setPreviewUrl(url ? toPreviewUrl(url) : null)
+    const { error } = await supabase.from('gexam_sessions')
+      .upsert({ exam_slug: slug, exam_id: examId, subject: subjectSlug, drive_url: url || null, updated_at: new Date().toISOString() },
+        { onConflict: 'exam_slug,exam_id,subject' })
     setSaving(false)
+    if (error) { setDbError(error.message); alert(`링크를 저장하지 못했습니다.\n${error.message}`); return }
+    setDbError(null)
   }, [urlInput, answerUrl, slug, examId, subjectSlug])
 
   // 드래그
@@ -303,6 +331,15 @@ export default function ExamSolvePage() {
         )}
       </div>
 
+      {dbError && (
+        <div className="shrink-0 bg-red-950/70 border-b border-red-900 px-3 py-2">
+          <p className="text-[11px] text-red-300">
+            저장에 실패하고 있습니다 — supabase/gexam_sessions_fix_migration.sql 을 실행했는지 확인하세요.
+            <span className="text-red-400/60 ml-2 font-mono">{dbError}</span>
+          </p>
+        </div>
+      )}
+
       {/* 본문 */}
       <div className="flex flex-1 min-h-0">
         {/* PDF */}
@@ -327,6 +364,9 @@ export default function ExamSolvePage() {
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: accent }}>
                   {saving ? '…' : '불러오기'}
                 </button>
+                {previewUrl && (
+                  <span className="text-[10px] px-2 py-1 rounded bg-blue-900/60 text-blue-300 font-bold shrink-0">저장됨 ✓</span>
+                )}
                 {spec.pastPapers?.[0] && (
                   <PastPaperChip url={spec.pastPapers[0].url} label="공식 과년도" />
                 )}
@@ -335,12 +375,16 @@ export default function ExamSolvePage() {
               <>
                 <input value={answerUrl} onChange={e => setAnswerUrl(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && saveUrlFor('answer')}
-                  placeholder="정답 PDF URL..."
+                  placeholder="解答 PDF URL — 이 회차 전 과목이 함께 씁니다"
                   className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500/60 placeholder-gray-700 font-mono" />
                 <button onClick={() => saveUrlFor('answer')} disabled={saving}
                   className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">
                   {saving ? '…' : '불러오기'}
                 </button>
+                {sharedAnswer && (
+                  <span className="text-[10px] px-2 py-1 rounded bg-emerald-900/60 text-emerald-300 font-bold shrink-0"
+                    title="이 회차 전 과목 공유">회차 공유 ✓</span>
+                )}
                 {spec.pastPapers?.[0] && (
                   <PastPaperChip url={spec.pastPapers[0].url} label="공식 과년도" />
                 )}

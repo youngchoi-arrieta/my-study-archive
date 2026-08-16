@@ -82,7 +82,7 @@ export default function ExamHub() {
       supabase.from('exam_answers')
         .select('exam_id, subject, q_num, subs_json, selected, score, review')
         .eq('exam_slug', slug).in('exam_id', examIds),
-      supabase.from('exam_sessions')
+      supabase.from('gexam_sessions')
         .select('exam_id, subject, drive_url')
         .eq('exam_slug', slug).in('exam_id', examIds),
       supabase.from('exam_rates').select('exam_id, rate, note').eq('exam_slug', slug),
