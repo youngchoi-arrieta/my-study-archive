@@ -177,7 +177,8 @@ export default function Home() {
           <>
             {/* 도구 */}
             <SectionLabel>🛠 도구</SectionLabel>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-10">
+              <ToolCard href="/dashboard/timeline" emoji="🗓" title="시험 일정" desc="접수·시험일 간트 · 트랙 통합" />
               <ToolCard href="/jobs" emoji="💼" title="진로 대시보드" desc="칸반 · 마감일 · AI 파싱" />
               <ToolCard href="/library" emoji="📖" title="레퍼런스 라이브러리" desc="주제별 PDF · 드라이브" />
               <ToolCard href="/portfolio" emoji="🌀" title="찬란한 무용함" desc="호기심대로 만드는 것들" />

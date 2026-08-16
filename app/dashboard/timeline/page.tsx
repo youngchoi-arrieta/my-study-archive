@@ -35,8 +35,21 @@ interface Ev {
   sort_order: number
 }
 
-const MONTH_W = 62
+const ZOOMS = [
+  { w: 30, label: '촘촘' },
+  { w: 46, label: '보통' },
+  { w: 68, label: '넓게' },
+  { w: 96, label: '크게' },
+]
+const SPANS = [
+  { n: 6, label: '6개월' },
+  { n: 12, label: '1년' },
+  { n: 24, label: '2년' },
+  { n: 0, label: '전체' },
+]
+
 const ym = (d: string) => d.slice(0, 7)
+const today = () => new Date().toISOString().slice(0, 10)
 const monthIndex = (from: string, d: string) => {
   const [fy, fm] = from.split('-').map(Number)
   const [y, m] = d.split('-').map(Number)
@@ -47,10 +60,12 @@ const addMonths = (from: string, n: number) => {
   const total = (y * 12 + (m - 1)) + n
   return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
 }
-/** 그 달 안에서의 위치 비율 (0~1) */
+/** 그 달 안에서의 위치 비율 (0~1) — 실제 그 달의 일수로 나눈다 */
 const dayFrac = (d: string) => {
+  const [y, m] = d.split('-').map(Number)
   const day = Number(d.slice(8, 10) || 1)
-  return (day - 1) / 31
+  const days = new Date(y, m, 0).getDate()
+  return (day - 1) / days
 }
 
 const emptyDraft = () => ({
@@ -63,6 +78,8 @@ export default function TimelinePage() {
   const [loading, setLoading] = useState(true)
   const [hidden, setHidden] = useState<Set<Track>>(new Set())
   const [showDone, setShowDone] = useState(false)
+  const [mw, setMw] = useState(46)
+  const [span, setSpan] = useState(12)
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
@@ -86,14 +103,25 @@ export default function TimelinePage() {
   const range = useMemo(() => {
     const now = new Date().toISOString().slice(0, 7)
     const all = visible.flatMap(e => [e.reg_start, e.reg_end, e.exam_date].filter(Boolean) as string[])
-    if (!all.length) return { from: now, months: 12 }
+    if (!all.length) return { from: now, full: 12 }
     const min = all.map(ym).reduce((a, b) => (a < b ? a : b))
     const max = all.map(ym).reduce((a, b) => (a > b ? a : b))
     const from = min < now ? min : now
-    return { from, months: Math.max(monthIndex(from, `${max}-01`) + 2, 6) }
+    const full = Math.max(monthIndex(from, `${max}-01`) + 2, 6)
+    return { from, full }
   }, [visible])
 
-  const cols = Array.from({ length: range.months }, (_, i) => addMonths(range.from, i))
+  const months = span === 0 ? range.full : Math.min(range.full, span)
+  const cols: string[] = Array.from({ length: months }, (_, i) => addMonths(range.from, i))
+  const labelW = mw <= 34 ? 150 : 200
+
+  // 오늘 선의 x 위치 (라벨 칸 제외)
+  const todayX = useMemo(() => {
+    const t = today()
+    const i = monthIndex(range.from, t)
+    if (i < 0 || i >= months) return null
+    return i * mw + dayFrac(t) * mw
+  }, [range.from, months, mw])
 
   // 다가오는 마감
   const upcoming = useMemo(() => {
@@ -210,8 +238,32 @@ export default function TimelinePage() {
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ml-auto ${
               showDone ? 'bg-gray-800 text-gray-200' : 'bg-gray-900 text-gray-600'
             }`}>
-            완료 항목 {showDone ? '표시' : '숨김'}
+            완료 {showDone ? '표시' : '숨김'}
           </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-600 mr-1">기간</span>
+            {SPANS.map(sp => (
+              <button key={sp.n} onClick={() => setSpan(sp.n)}
+                className={`px-2 py-1 rounded text-[11px] font-bold transition ${
+                  span === sp.n ? 'bg-gray-700 text-white' : 'bg-gray-900 text-gray-600 hover:text-gray-400'
+                }`}>{sp.label}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-600 mr-1">배율</span>
+            {ZOOMS.map(z => (
+              <button key={z.w} onClick={() => setMw(z.w)}
+                className={`px-2 py-1 rounded text-[11px] font-bold transition ${
+                  mw === z.w ? 'bg-gray-700 text-white' : 'bg-gray-900 text-gray-600 hover:text-gray-400'
+                }`}>{z.label}</button>
+            ))}
+          </div>
+          <span className="text-[10px] text-gray-700 ml-auto flex items-center gap-1">
+            <span className="inline-block w-3 h-0.5 bg-red-500" /> 오늘
+          </span>
         </div>
 
         {/* 간트 */}
@@ -219,17 +271,32 @@ export default function TimelinePage() {
           <p className="text-gray-500 text-sm">불러오는 중...</p>
         ) : (
           <div className="bg-gray-900 rounded-2xl p-4 mb-5 overflow-x-auto">
-            <div style={{ minWidth: 220 + cols.length * MONTH_W }}>
+            <div className="relative" style={{ minWidth: labelW + cols.length * mw }}>
+
+              {/* 오늘 — 전체 행을 가로지르는 붉은 선 */}
+              {todayX !== null && (
+                <div className="absolute top-0 bottom-0 pointer-events-none z-[5]"
+                  style={{ left: labelW + todayX }}>
+                  <div className="w-px h-full bg-red-500/70" />
+                  <div className="absolute -top-0.5 -left-1 w-2 h-2 rounded-full bg-red-500" />
+                </div>
+              )}
+
               {/* 헤더 */}
-              <div className="flex border-b border-gray-800 pb-2 mb-2">
-                <div className="w-[220px] shrink-0" />
+              <div className="flex border-b border-gray-800 pb-2 mb-2 relative z-10">
+                <div className="shrink-0 sticky left-0 bg-gray-900" style={{ width: labelW }} />
                 {cols.map(c => {
                   const [y, m] = c.split('-')
                   const isJan = m === '01'
+                  const isNow = c === today().slice(0, 7)
                   return (
-                    <div key={c} className="text-center shrink-0" style={{ width: MONTH_W }}>
-                      {isJan && <p className="text-[10px] text-blue-400 font-bold">{y}</p>}
-                      <p className={`text-[10px] ${isJan ? 'text-gray-300 font-bold' : 'text-gray-600'}`}>{Number(m)}월</p>
+                    <div key={c} className="text-center shrink-0" style={{ width: mw }}>
+                      {isJan && <p className="text-[9px] text-blue-400 font-bold leading-tight">{y}</p>}
+                      <p className={`text-[10px] leading-tight ${
+                        isNow ? 'text-red-400 font-bold' : isJan ? 'text-gray-300 font-bold' : 'text-gray-600'
+                      }`}>
+                        {mw <= 34 ? Number(m) : `${Number(m)}월`}
+                      </p>
                     </div>
                   )
                 })}
@@ -240,17 +307,21 @@ export default function TimelinePage() {
                 const rows = visible.filter(e => e.track === t.key)
                 if (!rows.length) return null
                 return (
-                  <div key={t.key} className="mb-3">
-                    <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: t.color }}>
+                  <div key={t.key} className="mb-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest mb-1 sticky left-0 z-10"
+                      style={{ color: t.color }}>
                       {t.label}
                     </p>
                     {rows.map(e => {
                       const regFrom = e.reg_start ? monthIndex(range.from, e.reg_start) : null
                       const regTo = e.reg_end ? monthIndex(range.from, e.reg_end) : regFrom
                       const ex = e.exam_date ? monthIndex(range.from, e.exam_date) : null
+                      const showReg = regFrom !== null && regTo !== null && regTo >= 0 && regFrom < months
+                      const showEx = ex !== null && ex >= 0 && ex < months
                       return (
-                        <div key={e.id} className={`flex items-center h-8 group ${e.done ? 'opacity-40' : ''}`}>
-                          <div className="w-[220px] shrink-0 pr-3 flex items-center gap-1.5">
+                        <div key={e.id} className={`flex items-center h-7 group ${e.done ? 'opacity-40' : ''}`}>
+                          <div className="shrink-0 pr-3 flex items-center gap-1.5 sticky left-0 z-10 bg-gray-900 h-full"
+                            style={{ width: labelW }}>
                             <button onClick={() => toggleDone(e)}
                               className={`w-3.5 h-3.5 rounded shrink-0 text-[9px] leading-none ${e.done ? 'bg-green-600 text-white' : 'bg-gray-800 text-transparent'}`}>✓</button>
                             <button onClick={() => openEdit(e)}
@@ -260,28 +331,25 @@ export default function TimelinePage() {
                             <button onClick={() => remove(e)}
                               className="text-[10px] text-gray-800 group-hover:text-gray-600 hover:!text-red-400 transition shrink-0">✕</button>
                           </div>
-                          <div className="relative flex-1 h-full" style={{ width: cols.length * MONTH_W }}>
-                            {/* 월 구분선 */}
+                          <div className="relative h-full" style={{ width: cols.length * mw }}>
                             {cols.map((c, i) => (
-                              <div key={c} className="absolute top-0 bottom-0 border-l border-gray-800/50"
-                                style={{ left: i * MONTH_W }} />
+                              <div key={c} className="absolute top-0 bottom-0 border-l border-gray-800/40"
+                                style={{ left: i * mw }} />
                             ))}
-                            {/* 접수 기간 */}
-                            {regFrom !== null && regTo !== null && regFrom >= 0 && (
-                              <div className="absolute top-1/2 -translate-y-1/2 h-3 rounded-full flex items-center justify-center"
+                            {showReg && (
+                              <div className="absolute top-1/2 -translate-y-1/2 h-3 rounded-full flex items-center justify-center overflow-hidden"
                                 style={{
-                                  left: regFrom * MONTH_W + 3,
-                                  width: Math.max((regTo - regFrom + 1) * MONTH_W - 6, 14),
+                                  left: Math.max(regFrom!, 0) * mw + 2,
+                                  width: Math.max((Math.min(regTo!, months - 1) - Math.max(regFrom!, 0) + 1) * mw - 4, 12),
                                   backgroundColor: t.color, opacity: 0.35,
                                 }}
                                 title={`접수 ${e.reg_start} ~ ${e.reg_end ?? ''}`}>
-                                <span className="text-[9px] font-bold text-white/90">R</span>
+                                {mw > 34 && <span className="text-[9px] font-bold text-white/90">R</span>}
                               </div>
                             )}
-                            {/* 시험일 */}
-                            {ex !== null && ex >= 0 && (
-                              <div className="absolute top-1/2 -translate-y-1/2 text-[13px] leading-none"
-                                style={{ left: ex * MONTH_W + dayFrac(e.exam_date!) * MONTH_W + MONTH_W / 2 - 6, color: t.color }}
+                            {showEx && (
+                              <div className="absolute top-1/2 -translate-y-1/2 text-[12px] leading-none"
+                                style={{ left: ex! * mw + dayFrac(e.exam_date!) * mw - 5, color: t.color }}
                                 title={`시험 ${e.exam_date}`}>
                                 ◆
                               </div>
