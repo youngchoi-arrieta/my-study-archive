@@ -11,7 +11,7 @@
 //          선택 개수를 넘겨 입력해도 상위 N개만 인정한다(실제 채점과 동일).
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { loadExamDoc, saveExamAnswerUrl, phaseOfSubject } from '@/lib/examDocs'
@@ -31,6 +31,36 @@ import {
   type Denken12Grade, type IchijiSubject, type NijiSubject,
   type IchijiAnswer, type NijiAnswer, type Result,
 } from '@/lib/constants-denken12'
+
+// ── 과목 전환 ──────────────────────────────────────────────────────
+// 같은 회차 안에서 一次 4과목 ↔ 二次 2과목을 바로 오간다.
+// 解答 PDF가 회차 단위로 공유되므로, 과목을 옮겨도 해답 탭은 그대로 열린다.
+function SubjectSwitch({ examId, current }: { examId: string; current: string }) {
+  const router = useRouter()
+  const go = (sub: string) => {
+    if (sub === current) return
+    router.push(`/dashboard/denken12/${examId}/${encodeURIComponent(sub)}`)
+  }
+  const Chip = ({ sub }: { sub: string }) => {
+    const on = sub === current
+    return (
+      <button onClick={() => go(sub)}
+        className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition whitespace-nowrap ${
+          on ? 'text-white' : 'text-gray-500 hover:text-gray-200'
+        }`}
+        style={on ? { backgroundColor: SUBJECT_ACCENT[sub as IchijiSubject | NijiSubject] } : {}}>
+        {sub}
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center gap-0.5 bg-[#0f1c2e] rounded-lg p-0.5">
+      {ICHIJI_SUBJECTS.map(sub => <Chip key={sub} sub={sub} />)}
+      <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
+      {NIJI_SUBJECTS.map(sub => <Chip key={sub} sub={sub} />)}
+    </div>
+  )
+}
 
 type Row = {
   q_num: number
@@ -308,9 +338,7 @@ export default function Denken12SolvePage() {
           </span>
           <span className="text-sm font-bold text-white">{examLabel(examId)}</span>
           <span className="text-[10px] text-gray-600">{parsed ? wareki(parsed.nendo) : ''}</span>
-          <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>
-            {subject}
-          </span>
+          <SubjectSwitch examId={examId} current={subject} />
           <span className="text-[10px] text-gray-600">{niji ? '二次 · 記述式' : '一次 · 마크시트'}</span>
 
           <div className="ml-auto flex items-center gap-3">

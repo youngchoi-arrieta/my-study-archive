@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { loadExamDoc, saveExamAnswerUrl } from '@/lib/examDocs'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
   DENKEN_STRUCTURE,
+  DENKEN_SUBJECTS,
   SUBJECT_ACCENT,
   isBArea,
   isSelectQ,
@@ -104,6 +105,33 @@ function ScoreCell({ subject, qNum, answer, isSelectPair, isExcluded, isActive, 
           {answer.result === 'correct' ? '○' : answer.result === 'wrong' ? '✕' : '·'}
         </button>
       )}
+    </div>
+  )
+}
+
+// ── 과목 전환 ──────────────────────────────────────────────────────
+// 같은 회차 안에서 4과목을 바로 오간다.
+// 機械만 전용 라우트를 쓰기 때문에 경로를 따로 잡아준다.
+function SubjectSwitch({ examId, current }: { examId: string; current: string }) {
+  const router = useRouter()
+  const hrefOf = (sub: string) =>
+    sub === '機械'
+      ? `/dashboard/denken/kikai/${examId}`
+      : `/dashboard/denken/${encodeURIComponent(sub)}/${examId}`
+  return (
+    <div className="flex items-center gap-0.5 bg-[#0f1c2e] rounded-lg p-0.5">
+      {DENKEN_SUBJECTS.map(sub => {
+        const on = sub === current
+        return (
+          <button key={sub} onClick={() => !on && router.push(hrefOf(sub))}
+            className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition whitespace-nowrap ${
+              on ? 'text-white' : 'text-gray-500 hover:text-gray-200'
+            }`}
+            style={on ? { backgroundColor: SUBJECT_ACCENT[sub] } : {}}>
+            {sub}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -298,7 +326,7 @@ export default function GeneralSubjectPage() {
         <div className="flex items-center gap-3 mb-2">
           <Link href="/dashboard/denken" className="text-gray-500 hover:text-white text-xs transition">← 電験三種</Link>
           <span className="text-sm font-bold text-white">{examLabel}</span>
-          <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>{subject}</span>
+          <SubjectSwitch examId={examId} current={subject} />
           <div className="ml-auto flex items-center gap-3">
             <span className={`text-lg font-black tabular-nums ${score >= 60 ? 'text-emerald-400' : score >= 40 ? 'text-yellow-400' : 'text-white'}`}>{score}점</span>
             <span className="text-xs text-gray-600">{answered}/{totalQ}문</span>
