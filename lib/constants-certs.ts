@@ -96,6 +96,13 @@ export const CERTS: Cert[] = [
     defaultStatus: 'planned',
   },
   {
+    slug: 'koreapub', href: '/dashboard/koreapub', emoji: '🏛', flag: '🇰🇷',
+    org: '한국 공기업 전기직', title: '공기업 채용',
+    desc: '기업별 가점 구조 · 서류점수 · NCS/전공',
+    meta: '기업별 상시 · NCS + 전공',
+    defaultStatus: 'planned',
+  },
+  {
     slug: 'gosi', href: '/dashboard/exam/gosi', emoji: '🎓', flag: '🇰🇷',
     org: '인사혁신처', title: '기술고시 전기직',
     desc: '2차 논술 3과목', meta: '5급 공채 · 2차 논술 3과목',
