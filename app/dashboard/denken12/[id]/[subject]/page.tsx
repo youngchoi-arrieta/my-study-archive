@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { loadExamDoc, saveExamAnswerUrl, phaseOfSubject } from '@/lib/examDocs'
 import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
 import { PastPaperChip } from '@/app/components/PastPaperBar'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
@@ -102,6 +103,7 @@ export default function Denken12SolvePage() {
   const [activeQ, setActiveQ]   = useState(1)
   const [urlInput, setUrlInput] = useState('')
   const [answerUrl, setAnswerUrl] = useState('')
+  const [sharedAnswer, setSharedAnswer] = useState(false)
   const [saving, setSaving]     = useState(false)
   const [panelWidth, setPanelWidth] = useState(() =>
     typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.38) : 480
@@ -126,6 +128,16 @@ export default function Denken12SolvePage() {
       if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
       if (sess.selected_q) setSelectedQ(sess.selected_q)
     }
+    // 解答은 회차·차수 단위로 공유된다 — 과목별 값보다 우선
+    const doc = await loadExamDoc('denken12', examId, phaseOfSubject(subject))
+    if (doc?.answer_url) {
+      setAnswerUrl(doc.answer_url)
+      setAnswerPreviewUrl(toPreviewUrl(doc.answer_url))
+      setSharedAnswer(true)
+    } else {
+      setSharedAnswer(false)
+    }
+
     const { data: ans } = await supabase
       .from('denken12_answers')
       .select('q_num, sub_count, subs, selected, score, memo, review')
@@ -239,8 +251,9 @@ export default function Denken12SolvePage() {
     } else {
       const url = answerUrl.trim()
       setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
-      await supabase.from('denken12_sessions')
-        .upsert({ exam_id: examId, subject, answer_drive_url: url || null }, { onConflict: 'exam_id,subject' })
+      const err = await saveExamAnswerUrl('denken12', examId, phaseOfSubject(subject), url)
+      if (err) alert(`解答 링크를 저장하지 못했습니다.\n${err}`)
+      else setSharedAnswer(!!url)
     }
     setSaving(false)
   }, [urlInput, answerUrl, examId, subject])
@@ -382,16 +395,27 @@ export default function Denken12SolvePage() {
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: accent }}>
                 {saving ? '…' : '불러오기'}
               </button>
+              {previewUrl && (
+                <span className="text-[10px] px-2 py-1 rounded bg-blue-900/60 text-blue-300 font-bold shrink-0">
+                  저장됨 ✓
+                </span>
+              )}
               <PastPaperChip url={PAST_PAPER_URL[grade]} label="공식 과년도" />
             </>) : (<>
               <input value={answerUrl} onChange={e => setAnswerUrl(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && saveUrl('answer')}
-                placeholder="해답 PDF URL..."
+                placeholder={`${niji ? '二次' : '一次'} 解答 PDF URL — 이 회차 전 과목이 함께 씁니다`}
                 className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500/60 placeholder-gray-700 font-mono" />
               <button onClick={() => saveUrl('answer')} disabled={saving}
                 className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">
                 {saving ? '…' : '불러오기'}
               </button>
+              {sharedAnswer && (
+                <span className="text-[10px] px-2 py-1 rounded bg-emerald-900/60 text-emerald-300 font-bold shrink-0"
+                  title={`${niji ? '二次' : '一次'} 전 과목 공유`}>
+                  회차 공유 ✓
+                </span>
+              )}
               <PastPaperChip url={PAST_PAPER_URL[grade]} label="공식 과년도" />
             </>)}
           </div>
@@ -409,7 +433,8 @@ export default function Denken12SolvePage() {
                 hint="shiken.or.jp → 電気主任技術者 → 問題と解答" />
             )}
             {pdfTab === 'answer' && !answerPreviewUrl && (
-              <EmptyPane icon="✅" text={`${niji ? '해답례' : '정답지'} PDF URL을 입력하세요`} />
+              <EmptyPane icon="✅" text={`${niji ? '二次 標準解答' : '一次 解答'} PDF URL을 입력하세요`}
+                hint={`한 번 넣으면 이 회차 ${niji ? '二次 2과목' : '一次 4과목'} 전부에서 열립니다`} />
             )}
           </div>
         </div>

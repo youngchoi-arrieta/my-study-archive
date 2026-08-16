@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { loadExamDoc, saveExamAnswerUrl } from '@/lib/examDocs'
 import { cycleReview, REVIEW_META, type ReviewState } from '@/lib/constants-denken-review'
 import {
   DENKEN_STRUCTURE,
@@ -144,12 +145,23 @@ export default function GeneralSubjectPage() {
       .eq('exam_id', examId).eq('subject', subject)
       .order('created_at', { ascending: false }).limit(1)
     const sess = rows?.[0] ?? null
+
+    // 解答은 회차 단위 공유 — 과목별로 저장된 값보다 우선한다
+    const doc = await loadExamDoc('denken3', examId, 'all')
+    const sharedAns = doc?.answer_url ?? null
+    if (sharedAns) {
+      setAnswerUrl(sharedAns)
+      setAnswerPreviewUrl(toPreviewUrl(sharedAns))
+    }
+
     if (sess) {
       setSession(sess as Session)
       setUrlInput(sess.drive_url || '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
-      setAnswerUrl(sess.answer_drive_url || '')
-      if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
+      if (!sharedAns) {
+        setAnswerUrl(sess.answer_drive_url || '')
+        if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
+      }
       if (sess.selected_q) setSelectedQ(sess.selected_q)
       const { data: ans } = await supabase
         .from('denken_general_answers')
@@ -243,8 +255,8 @@ export default function GeneralSubjectPage() {
     const url = answerUrl.trim()
     setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
     setSaving(true)
-    await supabase.from('denken_general_sessions')
-      .upsert({ exam_id: examId, subject, answer_drive_url: url || null }, { onConflict: 'exam_id,subject' })
+    const err = await saveExamAnswerUrl('denken3', examId, 'all', url)
+    if (err) alert(`解答 링크를 저장하지 못했습니다.\n${err}`)
     setSaving(false)
   }, [answerUrl, examId, subject])
 

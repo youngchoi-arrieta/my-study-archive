@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { loadExamDocs, ExamDoc, docKey } from '@/lib/examDocs'
 import {
   GRADES, GRADE_META, PHASE_META,
   ICHIJI_SUBJECTS, NIJI_SUBJECTS, SUBJECT_ACCENT,
@@ -93,6 +94,7 @@ export default function Denken12Hub() {
   const [activeTab, setActiveTab] = useState<'scores' | 'rates' | 'review'>('scores')
   const [answers, setAnswers]     = useState<AnswerRow[]>([])
   const [sessions, setSessions]   = useState<SessionRow[]>([])
+  const [examDocs, setExamDocs] = useState<ExamDoc[]>([])
   const [overrides, setOverrides] = useState<Denken12RateOverride[]>([])
   const [loading, setLoading]     = useState(true)
   const [reviewMissing, setReviewMissing] = useState(false)
@@ -113,6 +115,7 @@ export default function Denken12Hub() {
         .in('exam_id', examIds),
       supabase.from('denken12_rates').select('*'),
     ])
+    setExamDocs(await loadExamDocs('denken12', examIds))
     setAnswers((ans as AnswerRow[]) ?? [])
     setSessions((sess as SessionRow[]) ?? [])
     setOverrides((ov as Denken12RateOverride[]) ?? [])
@@ -137,6 +140,11 @@ export default function Denken12Hub() {
   const medians = useMemo(() => computeMedians(rates), [rates])
 
   // ── 세션 맵 ───────────────────────────────────────────────────────
+  const answerDocMap = useMemo(
+    () => new Map(examDocs.filter(d => d.answer_url).map(d => [docKey(d.exam_id, d.phase), d.answer_url!])),
+    [examDocs],
+  )
+
   const sessionMap = useMemo(
     () => new Map(sessions.map(s => [key(s.exam_id, s.subject), s])),
     [sessions],
@@ -398,10 +406,16 @@ export default function Denken12Hub() {
                       </div>
 
                       {/* 一次 4과목 */}
-                      <div className="px-4 pt-3 pb-1">
-                        <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">
+                      <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                        <p className="text-[10px] text-gray-600 uppercase tracking-widest">
                           一次 · {PHASE_META.ichiji.desc}
                         </p>
+                        <span className={`ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          answerDocMap.has(docKey(exam.id, 'ichiji'))
+                            ? 'bg-emerald-900/60 text-emerald-300' : 'bg-gray-800 text-gray-600'
+                        }`} title="一次 解答 PDF — 4과목 공유">
+                          {answerDocMap.has(docKey(exam.id, 'ichiji')) ? '解答 ✓' : '解答 —'}
+                        </span>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-800">
                         {ICHIJI_SUBJECTS.map(sub => {
@@ -429,7 +443,8 @@ export default function Denken12Hub() {
                                   </span>
                                 )}
                                 {sess?.drive_url && (
-                                  <span className="ml-auto text-[9px] text-gray-600">PDF✓</span>
+                                  <span className="ml-auto text-[9px] font-bold px-1 rounded bg-blue-900/60 text-blue-300 shrink-0"
+                                    title="문제지 PDF 등록됨">📄</span>
                                 )}
                               </div>
                               <p className={`text-lg font-bold tabular-nums ${
@@ -458,6 +473,12 @@ export default function Denken12Hub() {
                         <p className="text-[10px] text-gray-600 uppercase tracking-widest">
                           二次 · 기술식
                         </p>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          answerDocMap.has(docKey(exam.id, 'niji'))
+                            ? 'bg-emerald-900/60 text-emerald-300' : 'bg-gray-800 text-gray-600'
+                        }`} title="二次 標準解答 PDF — 2과목 공유">
+                          {answerDocMap.has(docKey(exam.id, 'niji')) ? '解答 ✓' : '解答 —'}
+                        </span>
                         {nj && (
                           <span className="ml-auto text-[11px] tabular-nums">
                             <span className={nj.score >= NIJI_PASS_MARK ? 'text-emerald-400 font-bold' : 'text-gray-400'}>
@@ -474,6 +495,7 @@ export default function Denken12Hub() {
                           const auto = nijiMap.get(k)
                           const st   = NIJI_STRUCTURE[sub]
                           const rc   = reviewMap.get(k)
+                          const sess = sessionMap.get(k)
                           return (
                             <button
                               key={sub}
@@ -490,6 +512,10 @@ export default function Denken12Hub() {
                                     style={{ color: REVIEW_META.todo.color, backgroundColor: REVIEW_META.todo.bg }}>
                                     🔖{rc.todo}
                                   </span>
+                                )}
+                                {sess?.drive_url && (
+                                  <span className="ml-auto text-[9px] font-bold px-1 rounded bg-blue-900/60 text-blue-300 shrink-0"
+                                    title="문제지 PDF 등록됨">📄</span>
                                 )}
                               </div>
                               <p className={`text-lg font-bold tabular-nums ${
