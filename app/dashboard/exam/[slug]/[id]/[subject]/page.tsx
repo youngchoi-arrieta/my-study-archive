@@ -7,7 +7,7 @@
 //   essay 과목     : 문제별 선택 + 자기채점 → q_num≥1 행마다 저장
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useParams, notFound } from 'next/navigation'
+import { useParams, useRouter, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { loadExamDoc, saveExamAnswerUrl } from '@/lib/examDocs'

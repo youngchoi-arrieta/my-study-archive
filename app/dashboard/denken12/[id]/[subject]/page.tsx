@@ -253,7 +253,7 @@ export default function Denken12SolvePage() {
       .upsert({ exam_id: examId, subject }, { onConflict: 'exam_id,subject' })
       .select('id').single()
     if (error || !data) throw new Error('세션 생성 실패')
-    setSession({ id: data.id, drive_url: null, answer_drive_url: null, selected_q: null })
+    setSession({ id: data.id, drive_url: null, answer_drive_url: null, solution_url: null, selected_q: null })
     return data.id
   }, [session, examId, subject])
 
