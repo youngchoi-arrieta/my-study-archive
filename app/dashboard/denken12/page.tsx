@@ -249,6 +249,10 @@ export default function Denken12Hub() {
           <span className="text-2xl">🗼</span>
           <h1 className="text-2xl font-bold">電験一種・二種</h1>
           <span className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full">장기</span>
+          <Link href="/dashboard/denken12/topics"
+            className="ml-auto text-xs px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white transition shrink-0">
+            🧭 出題傾向
+          </Link>
         </div>
         <p className="text-gray-500 text-sm mb-5">
           연 1회 · 一次({scheduleNote('ichiji')}) → 二次({scheduleNote('niji')}) · 一次 합격 시 다음 해 一次 면제

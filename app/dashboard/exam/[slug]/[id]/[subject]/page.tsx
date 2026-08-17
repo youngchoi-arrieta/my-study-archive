@@ -20,7 +20,7 @@ import {
   markGroupScore, markSubjectScore, markGradedCount, markAnswerable,
   cutChecks, isPassed,
   essayScore, essayPicked, clampEssayScore,
-  type Result, type EssayAnswer,
+  type Result, type EssayAnswer, type SubjectSpec,
 } from '@/lib/constants-exams'
 
 function toPreviewUrl(url: string): string | null {
@@ -35,6 +35,39 @@ function toPreviewUrl(url: string): string | null {
 type MarkState = Result[][]
 // essay 상태: 문제별
 type EssayRow = { q_num: number; selected: boolean; score: number | null; memo: string; review: ReviewState }
+
+// ── 과목 전환 ──────────────────────────────────────────────────────
+// 과목이 여럿인 시험에서 회차를 유지한 채 과목만 갈아탄다.
+function SubjectSwitch({ slug, examId, subjects, current }: {
+  slug: string; examId: string; subjects: SubjectSpec[]; current: string
+}) {
+  const router = useRouter()
+  if (subjects.length < 2) {
+    const only = subjects.find(x => x.slug === current)
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white"
+        style={{ backgroundColor: only?.accent }}>{only?.name}</span>
+    )
+  }
+  return (
+    <div className="flex items-center gap-0.5 bg-[#0f1c2e] rounded-lg p-0.5 overflow-x-auto max-w-full">
+      {subjects.map(x => {
+        const on = x.slug === current
+        return (
+          <button key={x.slug}
+            onClick={() => !on && router.push(`/dashboard/exam/${slug}/${examId}/${x.slug}`)}
+            title={x.name}
+            className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition whitespace-nowrap ${
+              on ? 'text-white' : 'text-gray-500 hover:text-gray-200'
+            }`}
+            style={on ? { backgroundColor: x.accent } : {}}>
+            {x.short ?? x.name}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function ExamSolvePage() {
   const params = useParams()
@@ -52,7 +85,9 @@ export default function ExamSolvePage() {
   // ── 공통 세션(PDF/메모) ───────────────────────────────────────────
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
-  const [pdfTab, setPdfTab] = useState<'question' | 'answer'>('question')
+  const [pdfTab, setPdfTab] = useState<'question' | 'answer' | 'solution'>('question')
+  const [solutionUrl, setSolutionUrl] = useState('')
+  const [solutionPreviewUrl, setSolutionPreviewUrl] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
   const [answerUrl, setAnswerUrl] = useState('')
   const [saving, setSaving] = useState(false)
@@ -84,7 +119,7 @@ export default function ExamSolvePage() {
   const load = useCallback(async () => {
     if (!spec || !sp) return
     const { data: sRows, error: sErr } = await supabase.from('gexam_sessions')
-      .select('id, drive_url, answer_drive_url')
+      .select('id, drive_url, answer_drive_url, solution_url')
       .eq('exam_slug', slug).eq('exam_id', examId).eq('subject', subjectSlug).limit(1)
     if (sErr) setDbError(sErr.message)
     const sess = sRows?.[0]
@@ -92,6 +127,8 @@ export default function ExamSolvePage() {
       setSessionId(sess.id)
       setUrlInput(sess.drive_url ?? '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
+      setSolutionUrl(sess.solution_url ?? '')
+      if (sess.solution_url) setSolutionPreviewUrl(toPreviewUrl(sess.solution_url))
     }
 
     // 解答은 회차 단위로 공유한다 — 과목별 값보다 우선
@@ -197,8 +234,18 @@ export default function ExamSolvePage() {
   const toggleEssayReview = (q: number) => patchRow(q, r => ({ ...r, review: cycleReview(r.review) }))
 
   // ── URL 저장 ──────────────────────────────────────────────────────
-  const saveUrlFor = useCallback(async (which: 'question' | 'answer') => {
+  const saveUrlFor = useCallback(async (which: 'question' | 'answer' | 'solution') => {
     setSaving(true)
+    if (which === 'solution') {
+      const url = solutionUrl.trim()
+      setSolutionPreviewUrl(url ? toPreviewUrl(url) : null)
+      const { error } = await supabase.from('gexam_sessions')
+        .upsert({ exam_slug: slug, exam_id: examId, subject: subjectSlug, solution_url: url || null, updated_at: new Date().toISOString() },
+          { onConflict: 'exam_slug,exam_id,subject' })
+      setSaving(false)
+      if (error) { setDbError(error.message); alert(`내 풀이 링크를 저장하지 못했습니다.\n${error.message}`) }
+      return
+    }
     if (which === 'answer') {
       const url = answerUrl.trim()
       setAnswerPreviewUrl(url ? toPreviewUrl(url) : null)
@@ -216,7 +263,7 @@ export default function ExamSolvePage() {
     setSaving(false)
     if (error) { setDbError(error.message); alert(`링크를 저장하지 못했습니다.\n${error.message}`); return }
     setDbError(null)
-  }, [urlInput, answerUrl, slug, examId, subjectSlug])
+  }, [urlInput, answerUrl, solutionUrl, slug, examId, subjectSlug])
 
   // 드래그
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -265,9 +312,7 @@ export default function ExamSolvePage() {
           <span className="text-sm font-bold text-white">
             {spec.yearLabel(year)}{roundNo ? ` 제${roundNo}회` : ''}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: accent }}>
-            {sp.name}
-          </span>
+          <SubjectSwitch slug={slug} examId={examId} subjects={spec.subjects} current={subjectSlug} />
           <span className="text-[10px] text-gray-600">{isEssay ? '논술 · 자기채점' : '마크시트'}</span>
           <div className="ml-auto flex items-center gap-3">
             <span className={`text-lg font-black tabular-nums ${passed ? 'text-emerald-400' : score > 0 ? 'text-white' : 'text-gray-600'}`}>
@@ -353,8 +398,27 @@ export default function ExamSolvePage() {
                 className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'answer' ? 'bg-emerald-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
                 {isEssay ? '解答例' : '解答'}
               </button>
+              {isEssay && (
+                <button onClick={() => setPdfTab('solution')}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'solution' ? 'bg-amber-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  title="내가 만든 풀이 PDF">내 풀이</button>
+              )}
             </div>
-            {pdfTab === 'question' ? (
+            {pdfTab === 'solution' ? (
+              <>
+                <input value={solutionUrl} onChange={e => setSolutionUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveUrlFor('solution')}
+                  placeholder="내가 만든 풀이 PDF URL — 이 과목 전용"
+                  className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500/60 placeholder-gray-700 font-mono" />
+                <button onClick={() => saveUrlFor('solution')} disabled={saving}
+                  className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">
+                  {saving ? '…' : '불러오기'}
+                </button>
+                {solutionPreviewUrl && (
+                  <span className="text-[10px] px-2 py-1 rounded bg-amber-900/60 text-amber-300 font-bold shrink-0">저장됨 ✓</span>
+                )}
+              </>
+            ) : pdfTab === 'question' ? (
               <>
                 <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && saveUrlFor('question')}
@@ -396,6 +460,15 @@ export default function ExamSolvePage() {
               style={{ display: pdfTab === 'question' ? 'block' : 'none' }} />}
             {answerPreviewUrl && <iframe src={answerPreviewUrl} className="absolute inset-0 w-full h-full border-0" allow="autoplay"
               style={{ display: pdfTab === 'answer' ? 'block' : 'none' }} />}
+            {solutionPreviewUrl && <iframe src={solutionPreviewUrl} className="absolute inset-0 w-full h-full border-0" allow="autoplay"
+              style={{ display: pdfTab === 'solution' ? 'block' : 'none' }} />}
+            {pdfTab === 'solution' && !solutionPreviewUrl && (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-700">
+                <div className="text-5xl opacity-30">✍️</div>
+                <p className="text-sm">내가 만든 풀이 PDF URL을 입력하세요</p>
+                <p className="text-[11px] text-gray-800">논술은 공식 해답이 없으니 직접 만든 답안을 여기에</p>
+              </div>
+            )}
             {pdfTab === 'question' && !previewUrl && (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-700">
                 <div className="text-5xl opacity-30">📄</div><p className="text-sm">문제 PDF URL을 입력하세요</p>

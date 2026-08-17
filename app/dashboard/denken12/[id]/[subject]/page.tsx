@@ -32,6 +32,51 @@ import {
   type IchijiAnswer, type NijiAnswer, type Result,
 } from '@/lib/constants-denken12'
 
+// ── 출제 주제 · 키워드 ─────────────────────────────────────────────
+// 三種의 태그와 달리 자유 입력이다. 1·2종은 출제 범위가 넓어
+// 미리 정해둔 태그 목록으로는 담기지 않기 때문.
+// 여기 넣은 것들이 /dashboard/denken12/topics 에 모여 경향이 된다.
+function TopicBox({ topic, keywords, onTopic, onTopicBlur, onAdd, onRemove }: {
+  topic: string
+  keywords: string[]
+  onTopic: (v: string) => void
+  onTopicBlur: () => void
+  onAdd: (kw: string) => void
+  onRemove: (kw: string) => void
+}) {
+  const [draft, setDraft] = useState('')
+  const commit = () => { onAdd(draft); setDraft('') }
+  return (
+    <div className="bg-[#0f1c2e] rounded-lg p-2.5 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-gray-500 shrink-0 w-8">주제</span>
+        <input value={topic} onChange={e => onTopic(e.target.value)} onBlur={onTopicBlur}
+          placeholder="예: 同期電動機 負荷角 過渡現象"
+          className="flex-1 bg-[#0a1628] rounded px-2 py-1 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500/60 placeholder-gray-700" />
+      </div>
+      <div className="flex items-start gap-2">
+        <span className="text-[10px] text-gray-500 shrink-0 w-8 pt-1">키워드</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap gap-1 mb-1">
+            {keywords.map(k => (
+              <button key={k} onClick={() => onRemove(k)}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-200 hover:bg-red-900/60 hover:text-red-200 transition"
+                title="클릭하면 삭제">
+                {k} ✕
+              </button>
+            ))}
+          </div>
+          <input value={draft} onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit() } }}
+            onBlur={commit}
+            placeholder="Enter로 추가 · 微分方程式, 脱調, 過渡…"
+            className="w-full bg-[#0a1628] rounded px-2 py-1 text-xs text-white outline-none focus:ring-1 focus:ring-violet-500/60 placeholder-gray-700" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── 과목 전환 ──────────────────────────────────────────────────────
 // 같은 회차 안에서 一次 4과목 ↔ 二次 2과목을 바로 오간다.
 // 解答 PDF가 회차 단위로 공유되므로, 과목을 옮겨도 해답 탭은 그대로 열린다.
@@ -69,6 +114,8 @@ type Row = {
   selected: boolean
   score: number | null
   memo: string
+  topic: string
+  keywords: string[]
   review: ReviewState
 }
 
@@ -76,6 +123,7 @@ type Session = {
   id: string
   drive_url: string | null
   answer_drive_url: string | null
+  solution_url: string | null
   selected_q: number | null
 }
 
@@ -122,14 +170,16 @@ export default function Denken12SolvePage() {
       return {
         q_num: q, sub_count: sc,
         subs: Array.from({ length: sc }, () => null as Result),
-        selected: false, score: null, memo: '', review: null,
+        selected: false, score: null, memo: '', topic: '', keywords: [], review: null,
       }
     })
   )
   const [selectedQ, setSelectedQ] = useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [answerPreviewUrl, setAnswerPreviewUrl] = useState<string | null>(null)
-  const [pdfTab, setPdfTab]     = useState<'question' | 'answer'>('question')
+  const [pdfTab, setPdfTab]     = useState<'question' | 'answer' | 'solution'>('question')
+  const [solutionUrl, setSolutionUrl] = useState('')
+  const [solutionPreviewUrl, setSolutionPreviewUrl] = useState<string | null>(null)
   const [activeQ, setActiveQ]   = useState(1)
   const [urlInput, setUrlInput] = useState('')
   const [answerUrl, setAnswerUrl] = useState('')
@@ -147,7 +197,7 @@ export default function Denken12SolvePage() {
   const load = useCallback(async () => {
     const { data: sRows } = await supabase
       .from('denken12_sessions')
-      .select('id, drive_url, answer_drive_url, selected_q')
+      .select('id, drive_url, answer_drive_url, solution_url, selected_q')
       .eq('exam_id', examId).eq('subject', subject).limit(1)
     const sess = sRows?.[0] as Session | undefined
     if (sess) {
@@ -155,6 +205,8 @@ export default function Denken12SolvePage() {
       setUrlInput(sess.drive_url ?? '')
       setAnswerUrl(sess.answer_drive_url ?? '')
       if (sess.drive_url) setPreviewUrl(toPreviewUrl(sess.drive_url))
+      setSolutionUrl(sess.solution_url ?? '')
+      if (sess.solution_url) setSolutionPreviewUrl(toPreviewUrl(sess.solution_url))
       if (sess.answer_drive_url) setAnswerPreviewUrl(toPreviewUrl(sess.answer_drive_url))
       if (sess.selected_q) setSelectedQ(sess.selected_q)
     }
@@ -170,7 +222,7 @@ export default function Denken12SolvePage() {
 
     const { data: ans } = await supabase
       .from('denken12_answers')
-      .select('q_num, sub_count, subs, selected, score, memo, review')
+      .select('q_num, sub_count, subs, selected, score, memo, topic, keywords, review')
       .eq('exam_id', examId).eq('subject', subject)
     if (ans && ans.length > 0) {
       setRows(prev => prev.map(r => {
@@ -184,6 +236,8 @@ export default function Denken12SolvePage() {
           selected: !!f.selected,
           score: f.score ?? null,
           memo: f.memo ?? '',
+          topic: f.topic ?? '',
+          keywords: f.keywords ?? [],
           review: (f.review as ReviewState) ?? null,
         }
       }))
@@ -212,6 +266,8 @@ export default function Denken12SolvePage() {
       selected: niji ? r.selected : null,
       score: niji ? r.score : null,
       memo: r.memo || null,
+      topic: r.topic || null,
+      keywords: r.keywords.length ? r.keywords : null,
       review: r.review,
       review_at: r.review ? new Date().toISOString() : null,
     }, { onConflict: 'exam_id,subject,q_num' })
@@ -256,6 +312,19 @@ export default function Denken12SolvePage() {
     if (r) saveRow(r)
   }
 
+  const setTopic = (qNum: number, topic: string) =>
+    setRows(prev => prev.map(r => r.q_num === qNum ? { ...r, topic } : r))
+  const commitTopic = (qNum: number) => {
+    const r = rows.find(x => x.q_num === qNum); if (r) saveRow(r)
+  }
+  const addKeyword = (qNum: number, kw: string) => {
+    const v = kw.trim()
+    if (!v) return
+    patch(qNum, r => r.keywords.includes(v) ? r : { ...r, keywords: [...r.keywords, v] })
+  }
+  const removeKeyword = (qNum: number, kw: string) =>
+    patch(qNum, r => ({ ...r, keywords: r.keywords.filter(k => k !== kw) }))
+
   const changeMemo = (qNum: number, memo: string) =>
     setRows(prev => prev.map(r => r.q_num === qNum ? { ...r, memo } : r))
 
@@ -271,9 +340,15 @@ export default function Denken12SolvePage() {
     await supabase.from('denken12_sessions').update({ selected_q: next }).eq('id', sid)
   }, [selectedQ, ensureSession])
 
-  const saveUrl = useCallback(async (which: 'question' | 'answer') => {
+  const saveUrl = useCallback(async (which: 'question' | 'answer' | 'solution') => {
     setSaving(true)
-    if (which === 'question') {
+    if (which === 'solution') {
+      const url = solutionUrl.trim()
+      setSolutionPreviewUrl(url ? toPreviewUrl(url) : null)
+      const { error } = await supabase.from('denken12_sessions')
+        .upsert({ exam_id: examId, subject, solution_url: url || null }, { onConflict: 'exam_id,subject' })
+      if (error) alert(`내 풀이 링크를 저장하지 못했습니다.\n${error.message}`)
+    } else if (which === 'question') {
       const url = urlInput.trim()
       setPreviewUrl(url ? toPreviewUrl(url) : null)
       await supabase.from('denken12_sessions')
@@ -286,7 +361,7 @@ export default function Denken12SolvePage() {
       else setSharedAnswer(!!url)
     }
     setSaving(false)
-  }, [urlInput, answerUrl, examId, subject])
+  }, [urlInput, answerUrl, solutionUrl, examId, subject])
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     isDragging.current = true; dragStartX.current = e.clientX; dragStartW.current = panelWidth; e.preventDefault()
@@ -413,8 +488,25 @@ export default function Denken12SolvePage() {
                 className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'answer' ? 'bg-emerald-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
                 {niji ? '解答例' : '解答'}
               </button>
+              {niji && (
+                <button onClick={() => setPdfTab('solution')}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition ${pdfTab === 'solution' ? 'bg-amber-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  title="내가 만든 풀이 PDF">내 풀이</button>
+              )}
             </div>
-            {pdfTab === 'question' ? (<>
+            {pdfTab === 'solution' ? (<>
+              <input value={solutionUrl} onChange={e => setSolutionUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveUrl('solution')}
+                placeholder="내가 만든 풀이 PDF URL — 이 과목 전용"
+                className="flex-1 bg-[#0f1c2e] rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500/60 placeholder-gray-700 font-mono" />
+              <button onClick={() => saveUrl('solution')} disabled={saving}
+                className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">
+                {saving ? '…' : '불러오기'}
+              </button>
+              {solutionPreviewUrl && (
+                <span className="text-[10px] px-2 py-1 rounded bg-amber-900/60 text-amber-300 font-bold shrink-0">저장됨 ✓</span>
+              )}
+            </>) : pdfTab === 'question' ? (<>
               <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && saveUrl('question')}
                 placeholder="문제지 PDF URL..."
@@ -456,6 +548,14 @@ export default function Denken12SolvePage() {
               <iframe src={answerPreviewUrl} className="absolute inset-0 w-full h-full border-0" allow="autoplay"
                 style={{ display: pdfTab === 'answer' ? 'block' : 'none' }} />
             )}
+            {solutionPreviewUrl && (
+              <iframe src={solutionPreviewUrl} className="absolute inset-0 w-full h-full border-0" allow="autoplay"
+                style={{ display: pdfTab === 'solution' ? 'block' : 'none' }} />
+            )}
+            {pdfTab === 'solution' && !solutionPreviewUrl && (
+              <EmptyPane icon="✍️" text="내가 만든 풀이 PDF URL을 입력하세요"
+                hint="記述式은 標準解答만으로 부족하니 직접 만든 답안을 여기에" />
+            )}
             {pdfTab === 'question' && !previewUrl && (
               <EmptyPane icon="📄" text="문제지 PDF URL을 입력하세요"
                 hint="shiken.or.jp → 電気主任技術者 → 問題と解答" />
@@ -495,6 +595,18 @@ export default function Denken12SolvePage() {
                     {round1(questionScore(ist!, toIchiji(active)))} / {pointOf(ist!, activeQ)}点
                   </span>}
             </span>
+          </div>
+
+          <div className="px-3 pt-3">
+            <TopicBox
+              key={`t-${activeQ}`}
+              topic={active?.topic ?? ''}
+              keywords={active?.keywords ?? []}
+              onTopic={v => setTopic(activeQ, v)}
+              onTopicBlur={() => commitTopic(activeQ)}
+              onAdd={kw => addKeyword(activeQ, kw)}
+              onRemove={kw => removeKeyword(activeQ, kw)}
+            />
           </div>
 
           <div className="flex-1 p-3 flex flex-col min-h-0">
