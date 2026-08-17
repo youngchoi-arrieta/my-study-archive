@@ -630,4 +630,39 @@ export interface EssayRow {
   max_chars: number | null
 }
 
+// ── 기업별 자료 ──────────────────────────────────────────────────
+export type DocKind = 'notice' | 'jd' | 'rubric' | 'lang' | 'essay' | 'etc'
+
+export const DOC_KINDS: { key: DocKind; label: string; icon: string; color: string }[] = [
+  { key: 'notice', label: '채용공고',   icon: '📢', color: '#60a5fa' },
+  { key: 'jd',     label: '직무기술서', icon: '🧰', color: '#34d399' },
+  { key: 'rubric', label: '배점표',     icon: '📊', color: '#fbbf24' },
+  { key: 'lang',   label: '어학 환산',  icon: '🌐', color: '#a78bfa' },
+  { key: 'essay',  label: '자소서 문항', icon: '✍️', color: '#f472b6' },
+  { key: 'etc',    label: '기타',       icon: '📎', color: '#94a3b8' },
+]
+export const docKind = (k: string) => DOC_KINDS.find(d => d.key === k) ?? DOC_KINDS[DOC_KINDS.length - 1]
+
+export interface DocRow {
+  id: string
+  company_id: string
+  kind: DocKind
+  title: string
+  url: string
+  note: string | null
+  sort_order: number
+}
+
+/** 구글 드라이브 공유 링크를 iframe 미리보기 주소로 */
+export function toPreviewUrl(url: string): string | null {
+  if (!url) return null
+  const m = url.match(/\/file\/d\/([^/]+)/)
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`
+  const id = url.match(/[?&]id=([^&]+)/)
+  if (id) return `https://drive.google.com/file/d/${id[1]}/preview`
+  if (url.includes('drive.google.com')) return url.replace('/view', '/preview')
+  if (url.endsWith('.pdf')) return url
+  return url
+}
+
 export const pct = (got: number, total: number) => (total === 0 ? 0 : (got / total) * 100)

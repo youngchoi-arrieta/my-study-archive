@@ -10,6 +10,7 @@ import {
   SpecRow, SpecMap, toSpecMap, langSources, bestToeic,
   scoreCompany, CompanyResult, tierMet,
   MockRow, MOCK_PARTS, EssayRow, pct,
+  DocRow, DocKind, DOC_KINDS, docKind, toPreviewUrl,
 } from '@/lib/constants-koreapub'
 
 // ───────────────────────────────────────────────────────────────
@@ -32,23 +33,26 @@ export default function KoreaPubPage() {
   const [mocks, setMocks] = useState<MockRow[]>([])
   const [essays, setEssays] = useState<EssayRow[]>([])
   const [coRows, setCoRows] = useState<CompanyRow[]>([])
+  const [docs, setDocs] = useState<DocRow[]>([])
   const [coError, setCoError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, co] = await Promise.all([
+    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, co, { data: dc }] = await Promise.all([
       supabase.from('kp_specs').select('cert_key, has, value'),
       supabase.from('kp_rubrics').select('company_id, groups, memo'),
       supabase.from('kp_mocks').select('*').order('taken_on', { ascending: false }),
       supabase.from('kp_essays').select('*').order('idx', { ascending: true }),
       supabase.from('kp_companies').select('id, hidden, target, data, sort_order'),
-    ]) as [ObjAny, ObjAny, ObjAny, ObjAny, { data: unknown; error: { message: string } | null }]
+      supabase.from('kp_docs').select('*').order('sort_order', { ascending: true }),
+    ]) as [ObjAny, ObjAny, ObjAny, ObjAny, { data: unknown; error: { message: string } | null }, ObjAny]
     setSpecs((sp as SpecRow[]) || [])
     setRubrics((rb as RubricRow[]) || [])
     setMocks((mk as MockRow[]) || [])
     setEssays((es as EssayRow[]) || [])
     setCoRows((co.data as CompanyRow[]) || [])
+    setDocs((dc as DocRow[]) || [])
     setCoError(co.error ? co.error.message : null)
     setLoading(false)
   }, [])
@@ -96,7 +100,7 @@ export default function KoreaPubPage() {
         </div>
 
         {loading && <p className="text-gray-500 text-sm">불러오는 중...</p>}
-        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} onSaved={fetchAll} />}
+        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} docs={docs} onSaved={fetchAll} />}
         {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={fetchAll} />}
         {!loading && tab === 'essay' && <EssayTab essays={essays} companies={companies} onSaved={fetchAll} />}
         {!loading && tab === 'mocks' && <MocksTab mocks={mocks} onSaved={fetchAll} />}
@@ -108,9 +112,9 @@ export default function KoreaPubPage() {
 // ═══════════════════════════════════════════════════════════════
 //  기업
 // ═══════════════════════════════════════════════════════════════
-function CompaniesTab({ results, spec, rubrics, coRows, coError, onSaved }: {
+function CompaniesTab({ results, spec, rubrics, coRows, coError, docs, onSaved }: {
   results: CompanyResult[]; spec: SpecMap; rubrics: RubricRow[]
-  coRows: CompanyRow[]; coError: string | null; onSaved: () => void
+  coRows: CompanyRow[]; coError: string | null; docs: DocRow[]; onSaved: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [manage, setManage] = useState(false)
@@ -123,6 +127,7 @@ function CompaniesTab({ results, spec, rubrics, coRows, coError, onSaved }: {
       onToggle={() => setOpenId(openId === r.company.id ? null : r.company.id)}
       rubric={rubrics.find(x => x.company_id === r.company.id)}
       custom={!!coRows.find(x => x.id === r.company.id)?.data}
+      docs={docs.filter(d => d.company_id === r.company.id)}
       onSaved={onSaved} />
   ))
 
@@ -370,9 +375,9 @@ function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: ()
   )
 }
 
-function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
+function CompanyCard({ r, spec, open, onToggle, rubric, custom, docs, onSaved }: {
   r: CompanyResult; spec: SpecMap; open: boolean; onToggle: () => void
-  rubric?: RubricRow; custom?: boolean; onSaved: () => void
+  rubric?: RubricRow; custom?: boolean; docs: DocRow[]; onSaved: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const c = r.company
@@ -390,6 +395,9 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
                 ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/60 text-green-400 font-bold">공고 확인</span>
                 : <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-bold">미확인</span>}
               {custom && <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300 font-bold">직접 추가</span>}
+              {docs.length > 0 && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 font-bold">📎 {docs.length}</span>
+              )}
             </p>
             <p className="text-[11px] text-gray-600 mt-0.5">
               {[c.sector, c.season].filter(Boolean).join(' · ') || '분야·시기 미입력'}
@@ -422,6 +430,8 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
 
       {open && (
         <div className="px-5 pb-5 border-t border-gray-800 pt-4">
+          <DocsPanel companyId={c.id} docs={docs} onSaved={onSaved} />
+
           <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">필기</p>
           <div className="space-y-1 mb-2">
             {c.exam.parts.map(pt => (
@@ -549,6 +559,141 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, onSaved }: {
             {c.confirmed ? '✓ ' : '⚠ '}{c.verified}
           </p>
           {rubric?.memo && <p className="text-[10px] text-blue-400/70 mt-1">📌 {rubric.memo}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 기업 자료 (PDF 링크) ─────────────────────────────────────────
+// 채용공고·직무기술서·환산표처럼 회차마다 다시 꺼내 보는 문서를
+// 기업 카드 안에 붙여둔다. 앱 안에서 바로 열리고, 새 창으로도 나간다.
+function DocsPanel({ companyId, docs, onSaved }: {
+  companyId: string; docs: DocRow[]; onSaved: () => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [viewing, setViewing] = useState<DocRow | null>(null)
+  const [kind, setKind] = useState<DocKind>('notice')
+  const [title, setTitle] = useState('')
+  const [url, setUrl] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const reset = () => { setAdding(false); setTitle(''); setUrl(''); setNote(''); setKind('notice') }
+
+  const add = async () => {
+    if (!title.trim() || !url.trim() || busy) return
+    setBusy(true)
+    const { error } = await supabase.from('kp_docs').insert({
+      company_id: companyId, kind, title: title.trim(), url: url.trim(),
+      note: note.trim() || null, sort_order: docs.length,
+    })
+    setBusy(false)
+    if (error) { alert(`자료를 추가하지 못했습니다.\n${error.message}`); return }
+    reset(); onSaved()
+  }
+
+  const remove = async (d: DocRow) => {
+    if (!confirm(`"${d.title}" 을(를) 지울까요?`)) return
+    const { error } = await supabase.from('kp_docs').delete().eq('id', d.id)
+    if (error) { alert(`삭제하지 못했습니다.\n${error.message}`); return }
+    if (viewing?.id === d.id) setViewing(null)
+    onSaved()
+  }
+
+  const inp = 'bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs outline-none transition placeholder:text-gray-700'
+
+  return (
+    <div className="mb-4">
+      {/* 뷰어 */}
+      {viewing && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setViewing(null)}>
+          <div className="bg-gray-900 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col border border-gray-800"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-800 shrink-0">
+              <span className="text-sm">{docKind(viewing.kind).icon}</span>
+              <p className="text-sm font-bold truncate flex-1">{viewing.title}</p>
+              <a href={viewing.url} target="_blank" rel="noreferrer"
+                className="text-[11px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0">새 창 ↗</a>
+              <button onClick={() => setViewing(null)}
+                className="text-[11px] px-2 py-1 rounded text-gray-500 hover:text-white shrink-0">닫기 ✕</button>
+            </div>
+            <iframe src={toPreviewUrl(viewing.url) ?? viewing.url}
+              className="flex-1 w-full border-0 rounded-b-2xl" allow="autoplay" />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">
+          자료 {docs.length > 0 && <span className="text-gray-700 normal-case">{docs.length}건</span>}
+        </p>
+        <button onClick={() => setAdding(v => !v)}
+          className="text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 transition">
+          {adding ? '닫기' : '+ PDF 링크'}
+        </button>
+      </div>
+
+      {docs.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {docs.map(d => {
+            const meta = docKind(d.kind)
+            return (
+              <div key={d.id} className="flex items-center gap-2 bg-gray-950/60 rounded-lg px-2.5 py-2 group">
+                <span className="text-sm shrink-0">{meta.icon}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0"
+                  style={{ backgroundColor: `${meta.color}25`, color: meta.color }}>
+                  {meta.label}
+                </span>
+                <button onClick={() => setViewing(d)}
+                  className="text-xs text-left truncate flex-1 hover:text-blue-300 transition">
+                  {d.title}
+                  {d.note && <span className="text-[10px] text-gray-600 ml-1.5">{d.note}</span>}
+                </button>
+                <a href={d.url} target="_blank" rel="noreferrer"
+                  className="text-[10px] text-gray-700 hover:text-gray-300 shrink-0 transition">↗</a>
+                <button onClick={() => remove(d)}
+                  className="text-[10px] text-gray-800 group-hover:text-gray-600 hover:!text-red-400 shrink-0 transition">✕</button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {adding && (
+        <div className="bg-gray-950/60 rounded-lg p-3 space-y-2">
+          <div className="flex flex-wrap gap-1">
+            {DOC_KINDS.map(k => (
+              <button key={k.key} onClick={() => setKind(k.key)}
+                className={`text-[10px] px-2 py-1 rounded font-bold transition ${
+                  kind === k.key ? 'text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                }`}
+                style={kind === k.key ? { backgroundColor: k.color } : {}}>
+                {k.icon} {k.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="문서 이름 (예: 붙임3 서류심사 표준배점표)" className={`${inp} flex-1 min-w-0`} />
+            <input value={note} onChange={e => setNote(e.target.value)}
+              placeholder="회차" className={`${inp} w-20 shrink-0`} />
+          </div>
+          <div className="flex gap-2">
+            <input value={url} onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && add()}
+              placeholder="구글 드라이브 공유 링크"
+              className={`${inp} flex-1 min-w-0 font-mono`} />
+            <button onClick={add} disabled={!title.trim() || !url.trim() || busy}
+              className="px-3 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 text-xs font-bold transition shrink-0">
+              추가
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-700 leading-relaxed">
+            드라이브에서 「링크 복사」로 얻은 주소를 그대로 넣으면 됩니다.
+            공유 설정이 「링크가 있는 모든 사용자」여야 앱 안에서 열립니다.
+          </p>
         </div>
       )}
     </div>
