@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { TRAINERS, TRAINER_GROUPS } from '@/lib/constants-jlpt-trainers'
 import { MockRow, levelSpec, verdict } from '@/lib/constants-jlpt-mocks'
+import { BookStatus, BOOK_STATUS_META, normalizeBookStatus } from '@/lib/constants-jlpt-books'
 
 // ───────────────────────────────────────────────────────────────
 // JLPT 허브 (목표: N2)
@@ -17,7 +18,7 @@ import { MockRow, levelSpec, verdict } from '@/lib/constants-jlpt-mocks'
 // ───────────────────────────────────────────────────────────────
 
 type Tab = 'books' | 'decks' | 'train'
-type Book = { id: string; title: string; tag: string | null; color: string; sort_order: number }
+type Book = { id: string; title: string; tag: string | null; color: string; sort_order: number; status: BookStatus }
 type Node = { id: string; book_id: string; parent_id: string | null; status: 0 | 1 | 2 }
 
 function bookProgress(nodes: Node[], bookId: string): { done: number; total: number; weak: number } {
@@ -36,6 +37,15 @@ function bookProgress(nodes: Node[], bookId: string): { done: number; total: num
   }
 }
 
+function BookSectionLabel({ children, sub }: { children: React.ReactNode; sub?: string }) {
+  return (
+    <div className="flex items-baseline gap-2 mb-2">
+      <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">{children}</p>
+      {sub && <p className="text-[10px] text-gray-700">{sub}</p>}
+    </div>
+  )
+}
+
 export default function JlptHub() {
   const [activeTab, setActiveTab] = useState<Tab>('books')
   const [books, setBooks] = useState<Book[]>([])
@@ -47,13 +57,13 @@ export default function JlptHub() {
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const [{ data: bk }, { data: nd }, { data: mk }] = await Promise.all([
-      supabase.from('jp_books').select('id, title, tag, color, sort_order')
+      supabase.from('jp_books').select('id, title, tag, color, sort_order, status')
         .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
       supabase.from('jp_nodes').select('id, book_id, parent_id, status'),
       supabase.from('jlpt_mocks').select('*')
         .order('taken_on', { ascending: false }).order('created_at', { ascending: false }).limit(1),
     ])
-    setBooks((bk as Book[]) || [])
+    setBooks(((bk as Book[]) || []).map(b => ({ ...b, status: normalizeBookStatus(b.status) })))
     setNodes((nd as Node[]) || [])
     setLatestMock(((mk as MockRow[]) || [])[0] ?? null)
     setLoading(false)
@@ -61,8 +71,16 @@ export default function JlptHub() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  const byStatus = useMemo(() => ({
+    active: books.filter(b => b.status === 'active'),
+    planned: books.filter(b => b.status === 'planned'),
+    done: books.filter(b => b.status === 'done'),
+  }), [books])
+
+  // 전체 진도는 「예정」을 뺀다 — 아직 펴지도 않은 교재가 비율을 눌러버리면
+  // 진도 막대가 실제 상태를 못 보여준다.
   const overall = useMemo(() => {
-    return books.reduce((acc, b) => {
+    return books.filter(b => b.status !== 'planned').reduce((acc, b) => {
       const p = bookProgress(nodes, b.id)
       return { done: acc.done + p.done, total: acc.total + p.total }
     }, { done: 0, total: 0 })
@@ -70,8 +88,12 @@ export default function JlptHub() {
   const overallPct = overall.total === 0 ? 0 : Math.round((overall.done / overall.total) * 100)
 
   const needle = q.trim().toLowerCase()
+  const STATUS_RANK: Record<BookStatus, number> = { active: 0, planned: 1, done: 2 }
   const filteredBooks = useMemo(
-    () => needle ? books.filter(b => b.title.toLowerCase().includes(needle)) : books,
+    () => (needle ? books.filter(b => b.title.toLowerCase().includes(needle)) : books)
+      .slice()
+      .sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [books, needle],
   )
   const filteredTrainers = useMemo(() => {
@@ -160,7 +182,9 @@ export default function JlptHub() {
           <div>
             <div className="bg-gray-900 rounded-xl p-4 mb-5">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-gray-500 uppercase tracking-widest">전체 진도</span>
+                <span className="text-xs text-gray-500 uppercase tracking-widest">
+                  전체 진도<span className="normal-case tracking-normal text-[10px] text-gray-700 ml-1.5">예정 제외</span>
+                </span>
                 <span className="text-sm font-bold text-blue-400">
                   {overall.done}/{overall.total} · {overallPct}%
                 </span>
@@ -182,34 +206,90 @@ export default function JlptHub() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                  {books.map(b => {
-                    const p = bookProgress(nodes, b.id)
-                    const pct = p.total === 0 ? 0 : Math.round((p.done / p.total) * 100)
-                    return (
-                      <Link
-                        key={b.id}
-                        href={`/dashboard/jlpt-n4/books?book=${b.id}`}
-                        className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-4 transition"
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.color }} />
-                          {b.tag && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{b.tag}</span>}
-                          <span className="text-[10px] text-gray-600 ml-auto">
-                            {p.done}/{p.total}{p.weak > 0 && <span className="text-amber-500"> · 약점 {p.weak}</span>}
-                          </span>
-                        </div>
-                        <p className="font-bold text-sm leading-snug mb-2">{b.title}</p>
-                        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: b.color }} />
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </div>
+                {/* 진행 중 — 큰 카드 */}
+                {byStatus.active.length > 0 && (
+                  <>
+                    <BookSectionLabel sub={BOOK_STATUS_META.active.sub}>{BOOK_STATUS_META.active.label}</BookSectionLabel>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                      {byStatus.active.map(b => {
+                        const p = bookProgress(nodes, b.id)
+                        const pct = p.total === 0 ? 0 : Math.round((p.done / p.total) * 100)
+                        return (
+                          <Link
+                            key={b.id}
+                            href={`/dashboard/jlpt-n4/books?book=${b.id}`}
+                            className="block bg-gray-900 hover:bg-gray-800 rounded-2xl p-4 transition"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.color }} />
+                              {b.tag && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{b.tag}</span>}
+                              <span className="text-[10px] text-gray-600 ml-auto">
+                                {p.done}/{p.total}{p.weak > 0 && <span className="text-amber-500"> · 약점 {p.weak}</span>}
+                              </span>
+                            </div>
+                            <p className="font-bold text-sm leading-snug mb-2">{b.title}</p>
+                            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: b.color }} />
+                            </div>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {/* 예정 — 한 줄 */}
+                {byStatus.planned.length > 0 && (
+                  <>
+                    <BookSectionLabel sub={BOOK_STATUS_META.planned.sub}>{BOOK_STATUS_META.planned.label}</BookSectionLabel>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
+                      {byStatus.planned.map(b => {
+                        const p = bookProgress(nodes, b.id)
+                        return (
+                          <Link key={b.id} href={`/dashboard/jlpt-n4/books?book=${b.id}`}
+                            className="flex items-center gap-2.5 bg-gray-900/60 hover:bg-gray-800 rounded-xl px-3 py-2.5 transition">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[13px] font-semibold leading-tight truncate">{b.title}</p>
+                              <p className="text-[10px] text-gray-500 truncate">
+                                {b.tag ? `${b.tag} · ` : ''}{p.total > 0 ? `${p.done}/${p.total} 항목` : '목차 미입력'}
+                              </p>
+                            </div>
+                            <span className="text-gray-700 text-xs shrink-0">→</span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {/* 완료 — 최소 행 */}
+                {byStatus.done.length > 0 && (
+                  <>
+                    <BookSectionLabel sub={BOOK_STATUS_META.done.sub}>{BOOK_STATUS_META.done.label}</BookSectionLabel>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
+                      {byStatus.done.map(b => {
+                        const p = bookProgress(nodes, b.id)
+                        const pct = p.total === 0 ? 0 : Math.round((p.done / p.total) * 100)
+                        return (
+                          <Link key={b.id} href={`/dashboard/jlpt-n4/books?book=${b.id}`}
+                            className="flex items-center gap-2 bg-gray-900/40 hover:bg-gray-800/70 rounded-lg px-3 py-2 transition">
+                            <span className="w-2 h-2 rounded-full shrink-0 opacity-60" style={{ backgroundColor: b.color }} />
+                            <p className="text-xs text-gray-400 truncate flex-1">
+                              {b.title}
+                              {p.weak > 0 && <span className="text-amber-600/80 ml-2">약점 {p.weak}</span>}
+                            </p>
+                            <span className="text-[10px] text-gray-600 shrink-0 tabular-nums">{pct}%</span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
                 <Link href="/dashboard/jlpt-n4/books"
                   className="block text-center border border-dashed border-gray-800 hover:border-gray-600 text-gray-500 hover:text-gray-300 rounded-xl py-3 text-sm transition">
-                  + 교재 추가 · 목차 관리
+                  + 교재 추가 · 상태·목차 관리
                 </Link>
               </>
             )}

@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import {
+  BookStatus, BOOK_STATUS_ORDER, BOOK_STATUS_META, BOOK_STATUS_NEXT, normalizeBookStatus,
+} from '@/lib/constants-jlpt-books'
 
 // ───────────────────────────────────────────────────────────────
 // 자유 추가형 교재 진도 트래커
@@ -12,6 +15,8 @@ import { supabase } from '@/lib/supabase'
 //     예) 독해 실모 → 1회~5회 → 문제10~14 → 10번 세부문항 5개
 //   - 말단(자식 없는) 노드 상태: 미완 → 완료 → 약점 순환
 //   - 부모는 말단 완료 수를 자동 집계
+//   - 교재 자체는 홈 허브와 같은 3단(진행중/예정/완료)으로 묶어 본다
+//     · 상태 칩을 누르면 진행중 → 예정 → 완료 → 진행중 순환
 // ───────────────────────────────────────────────────────────────
 
 type Book = {
@@ -20,6 +25,7 @@ type Book = {
   tag: string | null
   color: string
   sort_order: number
+  status: BookStatus
 }
 
 type Node = {
@@ -119,6 +125,7 @@ function BooksPage() {
   const [newBookTitle, setNewBookTitle] = useState('')
   const [newBookTag, setNewBookTag] = useState('')
   const [newBookColor, setNewBookColor] = useState(BOOK_COLORS[0])
+  const [newBookStatus, setNewBookStatus] = useState<BookStatus>('active')
 
   // ── 로드 ────────────────────────────────────────────────────
   const loadBooks = useCallback(async () => {
@@ -127,7 +134,8 @@ function BooksPage() {
       .select('*')
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true })
-    setBooks((data as Book[]) || [])
+    // status 컬럼이 아직 없는 환경(마이그레이션 전)에서도 진행중으로 흡수
+    setBooks(((data as Book[]) || []).map(b => ({ ...b, status: normalizeBookStatus(b.status) })))
     setLoading(false)
   }, [])
 
@@ -150,11 +158,28 @@ function BooksPage() {
         tag: newBookTag.trim() || null,
         color: newBookColor,
         sort_order: nextOrder,
+        status: newBookStatus,
       })
       .select('*')
       .single()
-    if (data) setBooks(prev => [...prev, data as Book])
-    setNewBookTitle(''); setNewBookTag(''); setNewBookColor(BOOK_COLORS[0]); setShowAddBook(false)
+    if (data) setBooks(prev => [...prev, { ...(data as Book), status: normalizeBookStatus((data as Book).status) }])
+    setNewBookTitle(''); setNewBookTag(''); setNewBookColor(BOOK_COLORS[0])
+    setNewBookStatus('active'); setShowAddBook(false)
+  }
+
+  // 상태 변경 (낙관적) — 칩 클릭은 순환, 특정 상태로 바로 보낼 수도 있다
+  const setBookStatus = async (b: Book, next?: BookStatus) => {
+    const s = next ?? BOOK_STATUS_NEXT[b.status]
+    if (s === b.status) return
+    setBooks(prev => prev.map(x => x.id === b.id ? { ...x, status: s } : x))
+    const { error } = await supabase
+      .from('jp_books')
+      .update({ status: s, status_updated_at: new Date().toISOString() })
+      .eq('id', b.id)
+    if (error) {
+      setBooks(prev => prev.map(x => x.id === b.id ? { ...x, status: b.status } : x))
+      alert(`상태를 바꾸지 못했습니다.\n${error.message}\n\nsupabase/jp_books_status_migration.sql 을 먼저 실행했는지 확인하세요.`)
+    }
   }
 
   const renameBook = async (b: Book) => {
@@ -295,6 +320,13 @@ function BooksPage() {
   const tree = useMemo(() => buildTree(nodes.filter(n => n.book_id === activeBook)), [nodes, activeBook])
   const book = books.find(b => b.id === activeBook) || null
 
+  // 상태별 묶음 (각 그룹 안에서는 기존 sort_order 유지)
+  const byStatus = useMemo(() => ({
+    active: books.filter(b => b.status === 'active'),
+    planned: books.filter(b => b.status === 'planned'),
+    done: books.filter(b => b.status === 'done'),
+  }), [books])
+
   // ── 교재 목록 화면 ──────────────────────────────────────────
   if (!book) {
     return (
@@ -343,6 +375,22 @@ function BooksPage() {
                   />
                 ))}
               </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-gray-500">상태</span>
+                <div className="flex gap-0.5 bg-gray-950 rounded-lg p-0.5">
+                  {BOOK_STATUS_ORDER.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setNewBookStatus(s)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                        newBookStatus === s ? BOOK_STATUS_META[s].chip : 'text-gray-600 hover:text-gray-400'
+                      }`}
+                    >
+                      {BOOK_STATUS_META[s].short}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex gap-2">
                 <button onClick={addBook} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition">
                   만들기
@@ -362,34 +410,67 @@ function BooksPage() {
               <p className="text-xs">+ 새 교재로 시작하세요.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {books.map(b => {
-                const p = flatBookProgress(nodes, b.id)
-                const pct = p.total === 0 ? 0 : Math.round((p.done / p.total) * 100)
-                return (
-                  <button
-                    key={b.id}
-                    onClick={() => setActiveBook(b.id)}
-                    className="text-left bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.color }} />
-                      {b.tag && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{b.tag}</span>
-                      )}
-                      <span className="text-[10px] text-gray-600 ml-auto">
-                        {p.done}/{p.total}{p.weak > 0 && <span className="text-amber-500"> · 약점 {p.weak}</span>}
-                      </span>
-                    </div>
-                    <p className="font-bold leading-snug mb-2">{b.title}</p>
-                    <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: b.color }} />
-                    </div>
-                    <p className="text-[11px] text-gray-600 mt-1.5">{pct}% · 탭하여 목차 편집 →</p>
-                  </button>
-                )
-              })}
-            </div>
+            <>
+              {/* 진행 중 — 큰 카드 */}
+              {byStatus.active.length > 0 && (
+                <>
+                  <SectionLabel sub={BOOK_STATUS_META.active.sub}>{BOOK_STATUS_META.active.label}</SectionLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                    {byStatus.active.map(b => (
+                      <BookCard
+                        key={b.id}
+                        book={b}
+                        progress={flatBookProgress(nodes, b.id)}
+                        onOpen={() => setActiveBook(b.id)}
+                        onCycle={() => setBookStatus(b)}
+                        onFinish={() => setBookStatus(b, 'done')}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* 예정 — 한 줄 압축 행 */}
+              {byStatus.planned.length > 0 && (
+                <>
+                  <SectionLabel sub={BOOK_STATUS_META.planned.sub}>{BOOK_STATUS_META.planned.label}</SectionLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-8">
+                    {byStatus.planned.map(b => (
+                      <BookRow
+                        key={b.id}
+                        book={b}
+                        progress={flatBookProgress(nodes, b.id)}
+                        onOpen={() => setActiveBook(b.id)}
+                        onCycle={() => setBookStatus(b)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* 완료 — 최소 행 */}
+              {byStatus.done.length > 0 && (
+                <>
+                  <SectionLabel sub={BOOK_STATUS_META.done.sub}>{BOOK_STATUS_META.done.label}</SectionLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-8">
+                    {byStatus.done.map(b => (
+                      <BookDoneRow
+                        key={b.id}
+                        book={b}
+                        progress={flatBookProgress(nodes, b.id)}
+                        onOpen={() => setActiveBook(b.id)}
+                        onCycle={() => setBookStatus(b)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <p className="text-[10px] text-gray-700 leading-relaxed">
+                진행중 {byStatus.active.length} · 예정 {byStatus.planned.length} · 완료 {byStatus.done.length}
+                {' '}· 카드 오른쪽 위 상태 칩을 누르면 진행중 → 예정 → 완료 순으로 옮겨집니다.
+              </p>
+            </>
           )}
         </div>
       </main>
@@ -423,6 +504,7 @@ function BooksPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{book.title}</h1>
                 {book.tag && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{book.tag}</span>}
+                <StatusChip status={book.status} onCycle={() => setBookStatus(book)} />
               </div>
               <p className="text-gray-500 text-sm mt-1">
                 완료 {bookStats.done}/{bookStats.total}
@@ -445,6 +527,14 @@ function BooksPage() {
           <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
             <div className="h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
           </div>
+          {pct === 100 && bookStats.total > 0 && book.status !== 'done' && (
+            <button
+              onClick={() => setBookStatus(book, 'done')}
+              className="mt-3 w-full bg-green-900/40 hover:bg-green-900/70 text-green-400 rounded-lg py-2 text-xs font-semibold transition"
+            >
+              ✅ 이 교재를 완료로 옮기기
+            </button>
+          )}
         </div>
 
         {/* 사용법 안내 */}
@@ -475,6 +565,121 @@ function BooksPage() {
         <TopAdder onAdd={titles => addNodes(null, titles)} />
       </div>
     </main>
+  )
+}
+
+// ───────────────────────────────────────────────────────────────
+// 상태 3단 UI — 홈 허브(app/page.tsx)와 같은 어휘·밀도를 쓴다
+// ───────────────────────────────────────────────────────────────
+type Progress = { done: number; total: number; weak: number }
+const pctOf = (p: Progress) => (p.total === 0 ? 0 : Math.round((p.done / p.total) * 100))
+
+function SectionLabel({ children, sub }: { children: React.ReactNode; sub?: string }) {
+  return (
+    <div className="flex items-baseline gap-2 mb-3">
+      <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold">{children}</p>
+      {sub && <p className="text-[10px] text-gray-700">{sub}</p>}
+    </div>
+  )
+}
+
+/** 누르면 진행중 → 예정 → 완료 → 진행중 으로 순환 */
+function StatusChip({ status, onCycle, size = 'md' }: {
+  status: BookStatus; onCycle: () => void; size?: 'sm' | 'md'
+}) {
+  const m = BOOK_STATUS_META[status]
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onCycle() }}
+      title="눌러서 상태 바꾸기 (진행중 → 예정 → 완료)"
+      className={`shrink-0 rounded-full font-bold transition hover:brightness-125 ${m.chip} ${
+        size === 'sm' ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-0.5'
+      }`}
+    >
+      {m.short}
+    </button>
+  )
+}
+
+// 진행 중 — 진도 바까지 보이는 큰 카드
+function BookCard({ book, progress, onOpen, onCycle, onFinish }: {
+  book: Book; progress: Progress; onOpen: () => void; onCycle: () => void; onFinish: () => void
+}) {
+  const pct = pctOf(progress)
+  const finished = pct === 100 && progress.total > 0
+  return (
+    <div
+      onClick={onOpen}
+      className="cursor-pointer text-left bg-gray-900 hover:bg-gray-800 rounded-2xl p-5 transition"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: book.color }} />
+        {book.tag && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{book.tag}</span>
+        )}
+        <span className="text-[10px] text-gray-600 ml-auto">
+          {progress.done}/{progress.total}{progress.weak > 0 && <span className="text-amber-500"> · 약점 {progress.weak}</span>}
+        </span>
+        <StatusChip status={book.status} onCycle={onCycle} />
+      </div>
+      <p className="font-bold leading-snug mb-2">{book.title}</p>
+      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: book.color }} />
+      </div>
+      <div className="flex items-center gap-2 mt-1.5">
+        <p className="text-[11px] text-gray-600">{pct}% · 탭하여 목차 편집 →</p>
+        {finished && (
+          <button
+            onClick={e => { e.stopPropagation(); onFinish() }}
+            className="ml-auto text-[10px] text-green-500 hover:text-green-400 font-semibold"
+          >
+            완료로 옮기기 ↓
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// 예정 — 한 줄 압축 행
+function BookRow({ book, progress, onOpen, onCycle }: {
+  book: Book; progress: Progress; onOpen: () => void; onCycle: () => void
+}) {
+  return (
+    <div
+      onClick={onOpen}
+      className="cursor-pointer flex items-center gap-2.5 bg-gray-900/60 hover:bg-gray-800 rounded-xl px-3 py-2.5 transition"
+    >
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: book.color }} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold leading-tight truncate">{book.title}</p>
+        <p className="text-[10px] text-gray-500 truncate">
+          {book.tag ? `${book.tag} · ` : ''}{progress.total > 0 ? `${progress.done}/${progress.total} 항목` : '목차 미입력'}
+        </p>
+      </div>
+      <StatusChip status={book.status} onCycle={onCycle} size="sm" />
+      <span className="text-gray-700 text-xs shrink-0">→</span>
+    </div>
+  )
+}
+
+// 완료 — 최소 행 (아카이브)
+function BookDoneRow({ book, progress, onOpen, onCycle }: {
+  book: Book; progress: Progress; onOpen: () => void; onCycle: () => void
+}) {
+  return (
+    <div
+      onClick={onOpen}
+      className="cursor-pointer flex items-center gap-2 bg-gray-900/40 hover:bg-gray-800/70 rounded-lg px-3 py-2 transition"
+    >
+      <span className="w-2 h-2 rounded-full shrink-0 opacity-60" style={{ backgroundColor: book.color }} />
+      <p className="text-xs text-gray-400 truncate flex-1">
+        {book.title}
+        {progress.weak > 0 && <span className="text-amber-600/80 ml-2">약점 {progress.weak}</span>}
+      </p>
+      <span className="text-[10px] text-gray-600 shrink-0 tabular-nums">{pctOf(progress)}%</span>
+      <StatusChip status={book.status} onCycle={onCycle} size="sm" />
+    </div>
   )
 }
 
