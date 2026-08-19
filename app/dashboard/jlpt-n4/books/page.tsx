@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import {
   BookStatus, BOOK_STATUS_ORDER, BOOK_STATUS_META, BOOK_STATUS_NEXT, normalizeBookStatus,
 } from '@/lib/constants-jlpt-books'
+import BookStatusChip from '../_components/BookStatusChip'
 
 // ───────────────────────────────────────────────────────────────
 // 자유 추가형 교재 진도 트래커
@@ -112,12 +113,13 @@ function BooksPage() {
   const [books, setBooks] = useState<Book[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
   const [activeBook, setActiveBook] = useState<string | null>(null)
+  const [fromHub, setFromHub] = useState(false)   // 허브에서 바로 들어왔는지
   const [loading, setLoading] = useState(true)
 
   // 허브에서 ?book=<id> 로 들어오면 해당 교재 바로 열기 (최초 1회)
   useEffect(() => {
     const b = searchParams.get('book')
-    if (b) setActiveBook(b)
+    if (b) { setActiveBook(b); setFromHub(true) }
   }, [searchParams])
 
   // 교재 추가 폼
@@ -180,6 +182,42 @@ function BooksPage() {
       setBooks(prev => prev.map(x => x.id === b.id ? { ...x, status: b.status } : x))
       alert(`상태를 바꾸지 못했습니다.\n${error.message}\n\nsupabase/jp_books_status_migration.sql 을 먼저 실행했는지 확인하세요.`)
     }
+  }
+
+  // 진도대로 한 번에 정리 — 교재가 여러 권일 때 칩을 하나씩 누르는 게 일이라서
+  //   말단 0개 또는 0% → 예정 / 100% → 완료 / 그 사이 → 진행중
+  const [classifying, setClassifying] = useState(false)
+  const autoClassify = async () => {
+    const plan = books
+      .map(b => {
+        const p = flatBookProgress(nodes, b.id)
+        const next: BookStatus =
+          p.total === 0 || p.done === 0 ? 'planned' :
+          p.done >= p.total ? 'done' : 'active'
+        return { b, next }
+      })
+      .filter(x => x.next !== x.b.status)
+    if (plan.length === 0) { alert('진도 기준으로는 이미 정리된 상태입니다.'); return }
+    const preview = plan.map(x => `· ${x.b.title} → ${BOOK_STATUS_META[x.next].short}`).join('\n')
+    if (!confirm(`진도 기준으로 ${plan.length}권을 옮깁니다.\n\n${preview}\n\n진행할까요?`)) return
+
+    setClassifying(true)
+    const snapshot = books
+    setBooks(prev => prev.map(b => {
+      const hit = plan.find(x => x.b.id === b.id)
+      return hit ? { ...b, status: hit.next } : b
+    }))
+    const stamp = new Date().toISOString()
+    for (const { b, next } of plan) {
+      const { error } = await supabase.from('jp_books')
+        .update({ status: next, status_updated_at: stamp }).eq('id', b.id)
+      if (error) {
+        setBooks(snapshot)
+        alert(`정리하지 못했습니다.\n${error.message}`)
+        break
+      }
+    }
+    setClassifying(false)
   }
 
   const renameBook = async (b: Book) => {
@@ -340,12 +378,24 @@ function BooksPage() {
               <h1 className="text-2xl font-bold mb-1">📚 교재 진도</h1>
               <p className="text-gray-500 text-sm">교재를 자유롭게 추가하고, 목차·세부문항을 직접 구성하세요.</p>
             </div>
-            <button
-              onClick={() => setShowAddBook(v => !v)}
-              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition shrink-0"
-            >
-              + 새 교재
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {books.length > 0 && (
+                <button
+                  onClick={autoClassify}
+                  disabled={classifying}
+                  title="말단 0% → 예정 / 100% → 완료 / 그 사이 → 진행중"
+                  className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 px-3 py-2 rounded-lg text-xs text-gray-300 transition"
+                >
+                  {classifying ? '정리 중…' : '⚡ 진도대로 정리'}
+                </button>
+              )}
+              <button
+                onClick={() => setShowAddBook(v => !v)}
+                className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition"
+              >
+                + 새 교재
+              </button>
+            </div>
           </div>
 
           {showAddBook && (
@@ -490,10 +540,19 @@ function BooksPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-3xl mx-auto">
-        <div className="mb-2">
-          <button onClick={() => setActiveBook(null)} className="text-gray-400 hover:text-white text-sm">
-            ← 교재 목록
-          </button>
+        {/* 들어온 길로 되돌려보낸다 — 허브에서 왔는데 낯선 목록 화면이 뜨면 길을 잃는다 */}
+        <div className="mb-2 flex items-center gap-3">
+          {fromHub ? (
+            <>
+              <Link href="/dashboard/jlpt-n4" className="text-gray-400 hover:text-white text-sm">← JLPT 허브</Link>
+              <button onClick={() => { setFromHub(false); setActiveBook(null) }}
+                className="text-gray-600 hover:text-gray-400 text-xs">교재 목록 전체 →</button>
+            </>
+          ) : (
+            <button onClick={() => setActiveBook(null)} className="text-gray-400 hover:text-white text-sm">
+              ← 교재 목록
+            </button>
+          )}
         </div>
 
         {/* 교재 헤더 */}
@@ -504,7 +563,7 @@ function BooksPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{book.title}</h1>
                 {book.tag && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-bold">{book.tag}</span>}
-                <StatusChip status={book.status} onCycle={() => setBookStatus(book)} />
+                <BookStatusChip status={book.status} onCycle={() => setBookStatus(book)} />
               </div>
               <p className="text-gray-500 text-sm mt-1">
                 완료 {bookStats.done}/{bookStats.total}
@@ -583,24 +642,6 @@ function SectionLabel({ children, sub }: { children: React.ReactNode; sub?: stri
   )
 }
 
-/** 누르면 진행중 → 예정 → 완료 → 진행중 으로 순환 */
-function StatusChip({ status, onCycle, size = 'md' }: {
-  status: BookStatus; onCycle: () => void; size?: 'sm' | 'md'
-}) {
-  const m = BOOK_STATUS_META[status]
-  return (
-    <button
-      onClick={e => { e.stopPropagation(); onCycle() }}
-      title="눌러서 상태 바꾸기 (진행중 → 예정 → 완료)"
-      className={`shrink-0 rounded-full font-bold transition hover:brightness-125 ${m.chip} ${
-        size === 'sm' ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-0.5'
-      }`}
-    >
-      {m.short}
-    </button>
-  )
-}
-
 // 진행 중 — 진도 바까지 보이는 큰 카드
 function BookCard({ book, progress, onOpen, onCycle, onFinish }: {
   book: Book; progress: Progress; onOpen: () => void; onCycle: () => void; onFinish: () => void
@@ -620,7 +661,7 @@ function BookCard({ book, progress, onOpen, onCycle, onFinish }: {
         <span className="text-[10px] text-gray-600 ml-auto">
           {progress.done}/{progress.total}{progress.weak > 0 && <span className="text-amber-500"> · 약점 {progress.weak}</span>}
         </span>
-        <StatusChip status={book.status} onCycle={onCycle} />
+        <BookStatusChip status={book.status} onCycle={onCycle} />
       </div>
       <p className="font-bold leading-snug mb-2">{book.title}</p>
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -657,7 +698,7 @@ function BookRow({ book, progress, onOpen, onCycle }: {
           {book.tag ? `${book.tag} · ` : ''}{progress.total > 0 ? `${progress.done}/${progress.total} 항목` : '목차 미입력'}
         </p>
       </div>
-      <StatusChip status={book.status} onCycle={onCycle} size="sm" />
+      <BookStatusChip status={book.status} onCycle={onCycle} size="sm" />
       <span className="text-gray-700 text-xs shrink-0">→</span>
     </div>
   )
@@ -678,7 +719,7 @@ function BookDoneRow({ book, progress, onOpen, onCycle }: {
         {progress.weak > 0 && <span className="text-amber-600/80 ml-2">약점 {progress.weak}</span>}
       </p>
       <span className="text-[10px] text-gray-600 shrink-0 tabular-nums">{pctOf(progress)}%</span>
-      <StatusChip status={book.status} onCycle={onCycle} size="sm" />
+      <BookStatusChip status={book.status} onCycle={onCycle} size="sm" />
     </div>
   )
 }

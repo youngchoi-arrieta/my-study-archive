@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { TRAINERS, TRAINER_GROUPS } from '@/lib/constants-jlpt-trainers'
 import { MockRow, levelSpec, verdict } from '@/lib/constants-jlpt-mocks'
-import { BookStatus, BOOK_STATUS_META, normalizeBookStatus } from '@/lib/constants-jlpt-books'
+import { BookStatus, BOOK_STATUS_META, BOOK_STATUS_NEXT, normalizeBookStatus } from '@/lib/constants-jlpt-books'
+import BookStatusChip from './_components/BookStatusChip'
 
 // ───────────────────────────────────────────────────────────────
 // JLPT 허브 (목표: N2)
@@ -70,6 +71,19 @@ export default function JlptHub() {
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  // 허브에서도 바로 상태를 옮긴다. 교재 목록까지 들어가야만 분류할 수 있으면
+  // 정작 매일 여는 화면에서는 아무것도 못 바꾸는 셈이 된다.
+  const cycleStatus = async (b: Book) => {
+    const next = BOOK_STATUS_NEXT[b.status]
+    setBooks(prev => prev.map(x => x.id === b.id ? { ...x, status: next } : x))
+    const { error } = await supabase.from('jp_books')
+      .update({ status: next, status_updated_at: new Date().toISOString() }).eq('id', b.id)
+    if (error) {
+      setBooks(prev => prev.map(x => x.id === b.id ? { ...x, status: b.status } : x))
+      alert(`상태를 바꾸지 못했습니다.\n${error.message}`)
+    }
+  }
 
   const byStatus = useMemo(() => ({
     active: books.filter(b => b.status === 'active'),
@@ -206,6 +220,11 @@ export default function JlptHub() {
               </div>
             ) : (
               <>
+                <p className="text-[10px] text-gray-700 mb-3 leading-relaxed">
+                  카드 오른쪽의 상태 칩을 누르면 진행중 → 예정 → 완료 순으로 옮겨집니다.
+                  한 번에 정리하려면 아래 <span className="text-gray-500">교재 추가 · 상태·목차 관리</span>에서 「⚡ 진도대로 정리」를 쓰세요.
+                </p>
+
                 {/* 진행 중 — 큰 카드 */}
                 {byStatus.active.length > 0 && (
                   <>
@@ -226,6 +245,7 @@ export default function JlptHub() {
                               <span className="text-[10px] text-gray-600 ml-auto">
                                 {p.done}/{p.total}{p.weak > 0 && <span className="text-amber-500"> · 약점 {p.weak}</span>}
                               </span>
+                              <BookStatusChip status={b.status} onCycle={() => cycleStatus(b)} />
                             </div>
                             <p className="font-bold text-sm leading-snug mb-2">{b.title}</p>
                             <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -255,6 +275,7 @@ export default function JlptHub() {
                                 {b.tag ? `${b.tag} · ` : ''}{p.total > 0 ? `${p.done}/${p.total} 항목` : '목차 미입력'}
                               </p>
                             </div>
+                            <BookStatusChip status={b.status} onCycle={() => cycleStatus(b)} size="sm" />
                             <span className="text-gray-700 text-xs shrink-0">→</span>
                           </Link>
                         )
@@ -280,6 +301,7 @@ export default function JlptHub() {
                               {p.weak > 0 && <span className="text-amber-600/80 ml-2">약점 {p.weak}</span>}
                             </p>
                             <span className="text-[10px] text-gray-600 shrink-0 tabular-nums">{pct}%</span>
+                            <BookStatusChip status={b.status} onCycle={() => cycleStatus(b)} size="sm" />
                           </Link>
                         )
                       })}
