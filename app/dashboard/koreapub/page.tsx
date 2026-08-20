@@ -12,16 +12,23 @@ import {
   MockRow, MOCK_PARTS, EssayRow, pct,
   DocRow, DocKind, DOC_KINDS, docKind, toPreviewUrl,
 } from '@/lib/constants-koreapub'
+import {
+  NcsRow, normalizeNcsRow, pickedAreas, ncsArea,
+  totalQuestions, totalMinutes, secondsPerQuestion, paceTone,
+} from '@/lib/constants-koreapub-ncs'
+import WrittenTab from './_components/WrittenTab'
+import BookTracker from './_components/BookTracker'
 
 // ───────────────────────────────────────────────────────────────
 //  한국 공기업 전기직
 //    기업    서류 표준배점표를 그대로 놓고 내가 몇 점인지
+//    필기    기업 × NCS 영역 매트릭스 + 시험시간
 //    내 스펙  현실적으로 딸 수 있는 것만
 //    자소서   기업별 문항 + 답안
-//    모의고사 NCS / 전공 / 법령
+//    모의고사 채점 기록 + 교재 진도
 // ───────────────────────────────────────────────────────────────
 
-type Tab = 'companies' | 'spec' | 'essay' | 'mocks'
+type Tab = 'companies' | 'written' | 'spec' | 'essay' | 'mocks'
 type ObjAny = { data: unknown }
 
 interface RubricRow { company_id: string; groups: RuleGroup[]; memo: string | null }
@@ -34,25 +41,29 @@ export default function KoreaPubPage() {
   const [essays, setEssays] = useState<EssayRow[]>([])
   const [coRows, setCoRows] = useState<CompanyRow[]>([])
   const [docs, setDocs] = useState<DocRow[]>([])
+  const [ncs, setNcs] = useState<NcsRow[]>([])
+  const [bookCount, setBookCount] = useState(0)
   const [coError, setCoError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, co, { data: dc }] = await Promise.all([
+    const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, co, { data: dc }, { data: nc }] = await Promise.all([
       supabase.from('kp_specs').select('cert_key, has, value'),
       supabase.from('kp_rubrics').select('company_id, groups, memo'),
       supabase.from('kp_mocks').select('*').order('taken_on', { ascending: false }),
       supabase.from('kp_essays').select('*').order('idx', { ascending: true }),
       supabase.from('kp_companies').select('id, hidden, target, data, sort_order'),
       supabase.from('kp_docs').select('*').order('sort_order', { ascending: true }),
-    ]) as [ObjAny, ObjAny, ObjAny, ObjAny, { data: unknown; error: { message: string } | null }, ObjAny]
+      supabase.from('kp_ncs').select('*'),
+    ]) as [ObjAny, ObjAny, ObjAny, ObjAny, { data: unknown; error: { message: string } | null }, ObjAny, ObjAny]
     setSpecs((sp as SpecRow[]) || [])
     setRubrics((rb as RubricRow[]) || [])
     setMocks((mk as MockRow[]) || [])
     setEssays((es as EssayRow[]) || [])
     setCoRows((co.data as CompanyRow[]) || [])
     setDocs((dc as DocRow[]) || [])
+    setNcs((((nc as NcsRow[]) || [])).map(normalizeNcsRow))
     setCoError(co.error ? co.error.message : null)
     setLoading(false)
   }, [])
@@ -85,25 +96,27 @@ export default function KoreaPubPage() {
         </div>
         <p className="text-gray-500 text-sm mb-5">서류 배점표 · 내 점수 · 자소서 · NCS/전공 모의고사</p>
 
-        <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-5">
+        <div className="grid grid-cols-5 gap-1 bg-gray-900 rounded-xl p-1 mb-5">
           {([
             { key: 'companies', label: `🏢 기업 ${companies.length}` },
-            { key: 'spec', label: `🎫 내 스펙 ${Object.keys(spec).length}` },
+            { key: 'written', label: '🧩 필기' },
+            { key: 'spec', label: `🎫 스펙 ${Object.keys(spec).length}` },
             { key: 'essay', label: '✍️ 자소서' },
-            { key: 'mocks', label: `📊 모의 ${mocks.length}` },
+            { key: 'mocks', label: `📊 모의 ${mocks.length + bookCount}` },
           ] as const).map(({ key, label }) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+              className={`py-2 rounded-lg text-[10px] sm:text-xs font-medium transition truncate ${
                 tab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
               }`}>{label}</button>
           ))}
         </div>
 
         {loading && <p className="text-gray-500 text-sm">불러오는 중...</p>}
-        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} docs={docs} onSaved={fetchAll} />}
+        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} docs={docs} ncs={ncs} onSaved={fetchAll} />}
+        {!loading && tab === 'written' && <WrittenTab companies={companies} rows={ncs} onSaved={fetchAll} />}
         {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={fetchAll} />}
         {!loading && tab === 'essay' && <EssayTab essays={essays} companies={companies} onSaved={fetchAll} />}
-        {!loading && tab === 'mocks' && <MocksTab mocks={mocks} onSaved={fetchAll} />}
+        {!loading && tab === 'mocks' && <MocksHome mocks={mocks} onSaved={fetchAll} onBookCount={setBookCount} />}
       </div>
     </main>
   )
@@ -112,9 +125,9 @@ export default function KoreaPubPage() {
 // ═══════════════════════════════════════════════════════════════
 //  기업
 // ═══════════════════════════════════════════════════════════════
-function CompaniesTab({ results, spec, rubrics, coRows, coError, docs, onSaved }: {
+function CompaniesTab({ results, spec, rubrics, coRows, coError, docs, ncs, onSaved }: {
   results: CompanyResult[]; spec: SpecMap; rubrics: RubricRow[]
-  coRows: CompanyRow[]; coError: string | null; docs: DocRow[]; onSaved: () => void
+  coRows: CompanyRow[]; coError: string | null; docs: DocRow[]; ncs: NcsRow[]; onSaved: () => void
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [manage, setManage] = useState(false)
@@ -128,6 +141,7 @@ function CompaniesTab({ results, spec, rubrics, coRows, coError, docs, onSaved }
       rubric={rubrics.find(x => x.company_id === r.company.id)}
       custom={!!coRows.find(x => x.id === r.company.id)?.data}
       docs={docs.filter(d => d.company_id === r.company.id)}
+      ncs={ncs.find(x => x.company_id === r.company.id)}
       onSaved={onSaved} />
   ))
 
@@ -375,9 +389,9 @@ function CompanyManager({ coRows, onSaved }: { coRows: CompanyRow[]; onSaved: ()
   )
 }
 
-function CompanyCard({ r, spec, open, onToggle, rubric, custom, docs, onSaved }: {
+function CompanyCard({ r, spec, open, onToggle, rubric, custom, docs, ncs, onSaved }: {
   r: CompanyResult; spec: SpecMap; open: boolean; onToggle: () => void
-  rubric?: RubricRow; custom?: boolean; docs: DocRow[]; onSaved: () => void
+  rubric?: RubricRow; custom?: boolean; docs: DocRow[]; ncs?: NcsRow; onSaved: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const c = r.company
@@ -433,6 +447,7 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, docs, onSaved }:
           <DocsPanel companyId={c.id} docs={docs} onSaved={onSaved} />
 
           <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">필기</p>
+          {ncs && <WrittenSummary row={ncs} />}
           <div className="space-y-1 mb-2">
             {c.exam.parts.map(pt => (
               <div key={pt.name} className="flex items-baseline justify-between text-xs">
@@ -559,6 +574,38 @@ function CompanyCard({ r, spec, open, onToggle, rubric, custom, docs, onSaved }:
             {c.confirmed ? '✓ ' : '⚠ '}{c.verified}
           </p>
           {rubric?.memo && <p className="text-[10px] text-blue-400/70 mt-1">📌 {rubric.memo}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 필기 요약 (필기 탭에서 넣은 값) ──────────────────────────────
+// 「필기」 탭에 채워둔 NCS 영역·문항·시간을 기업 카드에서도 바로 본다.
+// 두 화면이 다른 얘기를 하면 어느 쪽을 믿을지 매번 헷갈린다.
+function WrittenSummary({ row }: { row: NcsRow }) {
+  const areas = pickedAreas(row)
+  const q = totalQuestions(row), m = totalMinutes(row), sec = secondsPerQuestion(row)
+  if (areas.length === 0 && q === null && m === null) return null
+  return (
+    <div className="bg-gray-950 rounded-xl p-3 mb-3">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <span className="text-[11px] text-gray-400">
+          {q ?? '—'}문항 · {m ?? '—'}분
+          {row.combined && <span className="text-gray-600 ml-1.5">통합 교시</span>}
+        </span>
+        <span className={`text-xs font-bold tabular-nums ${paceTone(sec)}`}>
+          {sec ? `${sec}초/문항` : '—'}
+        </span>
+      </div>
+      {areas.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {areas.map(k => (
+            <span key={k} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 font-bold">
+              {ncsArea(k)?.short}
+              {row.areas[k]?.q ? ` ${row.areas[k]!.q}` : ''}
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -1042,8 +1089,41 @@ function EssayCard({ row, onSaved }: { row: EssayRow; onSaved: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  모의고사
+//  모의 — 채점 기록 + 교재 진도
+//
+//  JLPT 쪽과 같은 구성으로 맞췄다.
+//    성적  회차별 채점 (NCS / 전공 / 법령)
+//    교재  진도 트리 (진행중 · 예정 · 완료)
+//  둘 다 "몇 점"이 아니라 "어디까지 왔나"를 보려고 있는 것이라
+//  한 탭 안에서 왔다갔다 하는 편이 낫다.
 // ═══════════════════════════════════════════════════════════════
+type MockView = 'scores' | 'books'
+
+function MocksHome({ mocks, onSaved, onBookCount }: {
+  mocks: MockRow[]; onSaved: () => void; onBookCount: (n: number) => void
+}) {
+  const [view, setView] = useState<MockView>('scores')
+  return (
+    <div>
+      <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-5">
+        {([
+          { key: 'scores', label: `📊 채점 기록 ${mocks.length}` },
+          { key: 'books', label: '📚 교재 진도' },
+        ] as const).map(({ key, label }) => (
+          <button key={key} onClick={() => setView(key)}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${
+              view === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
+            }`}>{label}</button>
+        ))}
+      </div>
+      {view === 'scores'
+        ? <MocksTab mocks={mocks} onSaved={onSaved} />
+        : <BookTracker onCount={onBookCount} />}
+    </div>
+  )
+}
+
+// ── 채점 기록 ───────────────────────────────────────────────────
 type Cell = { got: string; total: string }
 type Draft = { company_id: string; title: string; taken_on: string; nums: Record<string, Cell> }
 
