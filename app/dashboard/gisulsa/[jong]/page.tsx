@@ -15,7 +15,7 @@ import {
   GISULSA_MAP, SESSION_SPECS, PICK_TOTAL, DROP_TOTAL,
   type GisulsaSlug, type GisulsaQuestion,
 } from '@/lib/constants-gisulsa'
-import { GROUP_META, TOPIC_MAP, TOPIC_GROUPS } from '@/lib/constants-topics'
+import { GROUP_META, TOPIC_GROUPS, tagLabel, tagTopic } from '@/lib/constants-topics'
 import {
   seedOf, loadDbQuestions, mergeQuestions, loadPapers, savePaper,
   type ExamPaper,
@@ -57,11 +57,12 @@ export default function JongPage() {
   }, [spec, jong])
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  // 분포는 논점 단위로 센다 — '변압기 25문'보다 '변압기/시험·정수 6문'이 쓸모 있다
   const topicDist = useMemo(() => {
     const m = new Map<string, number>()
-    questions.forEach(q => q.topics.forEach(c => m.set(c, (m.get(c) ?? 0) + 1)))
+    questions.forEach(q => q.topics.forEach(raw => m.set(raw, (m.get(raw) ?? 0) + 1)))
     return [...m.entries()]
-      .map(([code, n]) => ({ code, n, topic: TOPIC_MAP.get(code) }))
+      .map(([tag, n]) => ({ tag, n, label: tagLabel(tag), topic: tagTopic(tag) }))
       .filter(x => x.topic)
       .sort((a, b) => b.n - a.n)
   }, [questions])
@@ -116,7 +117,7 @@ export default function JongPage() {
         {/* 토픽 분포 */}
         {groupDist.length > 0 && (
           <>
-            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📊 이 종목의 출제 분포</p>
+            <p className="text-xs text-gray-600 uppercase tracking-widest font-semibold mb-3">📊 이 종목의 출제 분포 (논점 단위)</p>
             <div className="bg-gray-900 rounded-2xl p-4 mb-6">
               <div className="flex h-3 rounded-full overflow-hidden mb-3">
                 {groupDist.map(g => (
@@ -134,12 +135,12 @@ export default function JongPage() {
                 ))}
               </div>
               <div className="space-y-1">
-                {topicDist.slice(0, 12).map(t => (
-                  <Link key={t.code} href={`/dashboard/gisulsa/subnote/${t.code}`}
+                {topicDist.slice(0, 15).map(t => (
+                  <Link key={t.tag} href={`/dashboard/gisulsa/subnote/${t.tag.split('/').map(encodeURIComponent).join('/')}`}
                     className="flex items-center gap-3 group">
-                    <span className="w-8 shrink-0 text-[10px] font-mono text-gray-600">{t.code}</span>
-                    <span className="w-44 shrink-0 text-[11px] text-gray-400 group-hover:text-white truncate transition">
-                      {t.topic!.name}
+                    <span className="w-24 shrink-0 text-[10px] text-gray-700 truncate text-right">{t.topic!.key}</span>
+                    <span className="w-40 shrink-0 text-[11px] text-gray-400 group-hover:text-white truncate transition">
+                      {t.label}
                     </span>
                     <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
                       <div className="h-full rounded-full"

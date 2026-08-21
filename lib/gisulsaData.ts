@@ -3,7 +3,7 @@ import {
   GisulsaSlug, GisulsaQuestion, GISULSA_SPECS, qKey, examDocId,
 } from '@/lib/constants-gisulsa'
 import { BALSONG_SEED } from '@/lib/data-gisulsa-balsong'
-import { TOPICS, Topic, guessTopicCodes } from '@/lib/constants-topics'
+import { TOPICS, Topic, guessTopicCodes, parseTag } from '@/lib/constants-topics'
 
 // 기술사 데이터 계층
 // -------------------------------------------------------------------
@@ -152,6 +152,19 @@ export async function loadDenkenRefs(): Promise<Map<string, DenkenRef[]>> {
 }
 
 // ── 보드 집계 ───────────────────────────────────────────────────────
+// 보드의 행은 대주제(43개)다. 電験 매칭이 이 단위로 걸리기 때문이다.
+// 서브노트를 실제로 쓰는 단위인 논점은 행을 펼쳤을 때 안에 나온다.
+
+/** 논점 하나 = 서브노트 한 장 */
+export interface PointRow {
+  tag: string            // '변압기/병렬운전' 또는 '회로이론'
+  label: string          // '병렬운전' 또는 '회로이론'
+  count: number
+  points: number
+  questions: GisulsaQuestion[]
+  status: number
+}
+
 export interface BoardRow {
   topic: Topic
   krCount: number
@@ -159,9 +172,12 @@ export interface BoardRow {
   /** 종목별 문항 수 — 어느 기술사 종목에서 나왔는지 */
   byJong: Record<string, number>
   questions: GisulsaQuestion[]
+  /** 이 대주제 아래 논점들. 서브노트 장수는 이것의 길이다 */
+  points_: PointRow[]
   jpRefs: DenkenRef[]
   jpCount: number
-  status: number          // 0 미착수 / 1 작성중 / 2 완료
+  /** 논점 진행에서 파생 — 전부 완료면 2, 하나라도 손댔으면 1 */
+  status: number
   score: number
 }
 
@@ -171,19 +187,44 @@ export function buildBoard(
   status: Record<string, number>,
 ): BoardRow[] {
   const rows = TOPICS.map(topic => {
-    const qs = questions.filter(q => q.topics.includes(topic.code))
+    const qs = questions.filter(q =>
+      q.topics.some(t => parseTag(t).topic === topic.key))
+
     const byJong: Record<string, number> = {}
     qs.forEach(q => { byJong[q.jong] = (byJong[q.jong] ?? 0) + 1 })
-    const jpRefs = refs.get(topic.code) ?? []
+
+    // 이 대주제로 달린 태그를 모아 논점 행을 만든다
+    const tagMap = new Map<string, GisulsaQuestion[]>()
+    qs.forEach(q => q.topics.forEach(raw => {
+      const t = parseTag(raw)
+      if (t.topic !== topic.key) return
+      const arr = tagMap.get(t.raw) ?? []
+      arr.push(q); tagMap.set(t.raw, arr)
+    }))
+    const points_: PointRow[] = [...tagMap.entries()]
+      .map(([tag, list]) => ({
+        tag,
+        label: parseTag(tag).point ?? topic.name,
+        count: list.length,
+        points: list.reduce((a, q) => a + q.points, 0),
+        questions: list,
+        status: status[tag] ?? 0,
+      }))
+      .sort((a, b) => b.points - a.points || a.label.localeCompare(b.label))
+
+    const jpRefs = refs.get(topic.key) ?? []
+    const done = points_.filter(p => p.status === 2).length
+    const touched = points_.filter(p => p.status > 0).length
+    const topicStatus = points_.length === 0 ? (status[topic.key] ?? 0)
+      : done === points_.length ? 2 : touched > 0 ? 1 : 0
+
     return {
       topic,
       krCount: qs.length,
       krPoints: qs.reduce((a, q) => a + q.points, 0),
-      byJong,
-      questions: qs,
-      jpRefs,
-      jpCount: jpRefs.length,
-      status: status[topic.code] ?? 0,
+      byJong, questions: qs, points_,
+      jpRefs, jpCount: jpRefs.length,
+      status: topicStatus,
       score: 0,
     }
   })
@@ -195,6 +236,16 @@ export function buildBoard(
   const jpDen = Math.max(12, ...rows.map(r => r.jpCount))
   rows.forEach(r => { r.score = 0.6 * (r.krPoints / maxKP) + 0.4 * (r.jpCount / jpDen) })
   return rows
+}
+
+/** 기출에 실제로 등장한 논점 목록 — 태깅 화면에서 골라 쓰라고 */
+export function knownPoints(questions: GisulsaQuestion[], topicKey: string): string[] {
+  const s = new Set<string>()
+  questions.forEach(q => q.topics.forEach(raw => {
+    const t = parseTag(raw)
+    if (t.topic === topicKey && t.point) s.add(t.point)
+  }))
+  return [...s].sort()
 }
 
 // ── 서브노트 진행 ───────────────────────────────────────────────────
@@ -216,10 +267,10 @@ export async function loadSubnotes(): Promise<Map<string, SubnoteRow>> {
 }
 
 export async function saveSubnote(
-  code: string, patch: Partial<Pick<SubnoteRow, 'status' | 'body' | 'diagram_ids'>>,
+  tag: string, patch: Partial<Pick<SubnoteRow, 'status' | 'body' | 'diagram_ids'>>,
 ): Promise<string | null> {
   const { error } = await supabase.from('gs_subnotes').upsert({
-    topic_code: code, ...patch, updated_at: new Date().toISOString(),
+    topic_code: tag, ...patch, updated_at: new Date().toISOString(),
   }, { onConflict: 'topic_code' })
   return error ? error.message : null
 }

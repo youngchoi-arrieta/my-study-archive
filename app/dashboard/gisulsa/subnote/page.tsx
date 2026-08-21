@@ -22,8 +22,9 @@ import { GISULSA_MAP } from '@/lib/constants-gisulsa'
 import {
   allSeed, loadDbQuestions, mergeQuestions, loadDenkenRefs,
   loadSubnotes, saveSubnote, buildBoard, STATUS_META,
-  type BoardRow,
+  type BoardRow, type DenkenRef,
 } from '@/lib/gisulsaData'
+import type { GisulsaQuestion } from '@/lib/constants-gisulsa'
 
 type Sort = 'combined' | 'kr' | 'krN' | 'jp' | 'code'
 type Overlap = '' | 'both' | 'kronly' | 'jponly'
@@ -33,7 +34,7 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: 'kr',       label: '기술사 배점' },
   { key: 'krN',      label: '기술사 출제수' },
   { key: 'jp',       label: '電験 출제수' },
-  { key: 'code',     label: '토픽 코드' },
+  { key: 'code',     label: '가나다순' },
 ]
 
 /** 눈금 하나 = 문항 하나. 막대가 아니라 세는 단위를 그대로 그린다 */
@@ -71,8 +72,9 @@ function Ticks({ row, side }: { row: BoardRow; side: 'kr' | 'jp' }) {
 }
 
 export default function SubnoteBoard() {
-  const [rows, setRows] = useState<BoardRow[]>([])
-  const [, setStatus] = useState<Record<string, number>>({})
+  const [questions, setQuestions] = useState<GisulsaQuestion[]>([])
+  const [refs, setRefs] = useState<Map<string, DenkenRef[]>>(new Map())
+  const [status, setStatus] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [sort, setSort] = useState<Sort>('combined')
   const [group, setGroup] = useState<TopicGroup | ''>('')
@@ -83,23 +85,28 @@ export default function SubnoteBoard() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [db, refs, notes] = await Promise.all([
+    const [db, r, notes] = await Promise.all([
       loadDbQuestions(), loadDenkenRefs(), loadSubnotes(),
     ])
     const st: Record<string, number> = {}
     notes.forEach((v, k) => { st[k] = v.status })
+    setQuestions(mergeQuestions(allSeed(), db))
+    setRefs(r)
     setStatus(st)
-    setRows(buildBoard(mergeQuestions(allSeed(), db), refs, st))
     setLoading(false)
   }, [])
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const setTopicStatus = async (code: string, s: number) => {
+  const rows = useMemo(
+    () => buildBoard(questions, refs, status),
+    [questions, refs, status])
+
+  // 상태는 논점(태그) 단위로 저장한다. 대주제 상태는 거기서 파생된다.
+  const setTagStatus = async (tag: string, s: number) => {
     if (busy) return
     setBusy(true)
-    setStatus(p => ({ ...p, [code]: s }))
-    setRows(p => p.map(r => r.topic.code === code ? { ...r, status: s } : r))
-    await saveSubnote(code, { status: s })
+    setStatus(prev => ({ ...prev, [tag]: s }))
+    await saveSubnote(tag, { status: s })
     setBusy(false)
   }
 
@@ -112,7 +119,7 @@ export default function SubnoteBoard() {
       if (q.trim()) {
         const n = q.trim().toLowerCase()
         const hay = [
-          r.topic.code, r.topic.name, r.topic.group, r.topic.note ?? '',
+          r.topic.key, r.topic.name, r.topic.group, r.topic.note ?? '',
           ...r.questions.map(x => x.title),
           ...r.jpRefs.map(x => `${x.topic ?? ''} ${x.keywords.join(' ')}`),
         ].join(' ').toLowerCase()
@@ -125,7 +132,7 @@ export default function SubnoteBoard() {
       kr:       (a, b) => b.krPoints - a.krPoints,
       krN:      (a, b) => b.krCount - a.krCount,
       jp:       (a, b) => b.jpCount - a.jpCount,
-      code:     (a, b) => a.topic.code.localeCompare(b.topic.code),
+      code:     (a, b) => a.topic.key.localeCompare(b.topic.key),
     }
     return [...out].sort(by[sort])
   }, [rows, group, overlap, q, sort])
@@ -148,9 +155,11 @@ export default function SubnoteBoard() {
           <h1 className="text-2xl font-bold">서브노트 우선순위 보드</h1>
         </div>
         <p className="text-gray-500 text-sm mb-4 leading-relaxed">
-          가운데를 기준으로 <span className="text-blue-400 font-semibold">왼쪽은 기술사</span>,
+          행은 <b className="text-gray-300">대주제</b>고, 펼치면 그 안의 <b className="text-gray-300">논점</b>이 나온다.
+          서브노트 한 장은 대주제가 아니라 논점 단위로 쓴다 — 변압기 25문항은 시험·정수, 병렬운전,
+          결선·각변위… 로 갈리지 한 장이 아니다.<br />
+          가운데를 기준으로 <span className="text-blue-400 font-semibold">왼쪽 눈금은 기술사</span>,
           <span className="text-violet-400 font-semibold"> 오른쪽은 電験</span> 출제.
-          눈금 하나가 문항 하나고, 양쪽으로 뻗은 토픽이 서브노트 한 장의 수익률이 가장 높다.
         </p>
 
         <div className="flex flex-wrap gap-3 text-[11px] mb-4">
@@ -214,17 +223,19 @@ export default function SubnoteBoard() {
         ) : (
           <div className="bg-gray-900 rounded-2xl p-3 md:p-4 space-y-1">
             {filtered.map((r, i) => {
-              const isOpen = open === r.topic.code
+              const isOpen = open === r.topic.key
               const st = STATUS_META[r.status] ?? STATUS_META[0]
               return (
-                <div key={r.topic.code}
+                <div key={r.topic.key}
                   className={`rounded-xl transition ${isOpen ? 'bg-gray-950' : 'hover:bg-gray-950/60'}`}>
-                  <button onClick={() => setOpen(isOpen ? null : r.topic.code)}
+                  <button onClick={() => setOpen(isOpen ? null : r.topic.key)}
                     className="w-full grid grid-cols-1 md:grid-cols-[1fr_290px_1fr] gap-2 md:gap-3 items-center px-2 py-2 text-left">
                     <div className="hidden md:block"><Ticks row={r} side="kr" /></div>
                     <div className="min-w-0 md:text-center">
-                      <p className="text-[10px] text-gray-600 font-mono">
-                        {sort !== 'code' && <>{String(i + 1).padStart(2, '0')} · </>}{r.topic.code}
+                      <p className="text-[10px] text-gray-600">
+                        {sort !== 'code' && <span className="font-mono">{String(i + 1).padStart(2, '0')} · </span>}
+                        <span style={{ color: GROUP_META[r.topic.group].accent }}>{r.topic.group}</span>
+                        {r.topic.jp.length > 0 && <span className="text-gray-700"> · {r.topic.jp.join('·')}</span>}
                       </p>
                       <p className={`text-[13px] font-semibold truncate ${r.status === 2 ? 'text-green-400' : ''}`}>
                         <i className="inline-block w-[7px] h-[7px] rounded-full mr-1.5 align-middle"
@@ -235,6 +246,7 @@ export default function SubnoteBoard() {
                       </p>
                       <p className="text-[10px] text-gray-600 font-mono tabular-nums">
                         기술사 {r.krCount}문 {r.krPoints}점 · 電験 {r.jpCount}문
+                        {r.points_.length > 1 && <span className="text-gray-500"> · 논점 {r.points_.length}</span>}
                       </p>
                     </div>
                     <div className="md:block"><Ticks row={r} side="jp" /></div>
@@ -246,32 +258,51 @@ export default function SubnoteBoard() {
                         <p className="text-[11px] text-gray-500 mb-3">💡 {r.topic.note}</p>
                       )}
 
-                      <div className="flex flex-wrap gap-1.5 mb-4">
-                        {STATUS_META.map((m, idx) => (
-                          <button key={idx} onClick={() => setTopicStatus(r.topic.code, idx)} disabled={busy}
-                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition disabled:opacity-50 ${
-                              r.status === idx ? m.chip : 'bg-gray-800 text-gray-600 hover:text-gray-400'
-                            }`}>{m.label}</button>
+                      {/* 논점 — 서브노트를 실제로 쓰는 단위 */}
+                      <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">
+                        논점 {r.points_.length}개 · 서브노트 {r.points_.length}장
+                      </p>
+                      <div className="space-y-1 mb-4">
+                        {r.points_.map(pt => (
+                          <div key={pt.tag} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-gray-900/70">
+                            <i className="shrink-0 w-[7px] h-[7px] rounded-full"
+                              style={{ backgroundColor: (STATUS_META[pt.status] ?? STATUS_META[0]).dot }} />
+                            <Link href={`/dashboard/gisulsa/subnote/${pt.tag.split('/').map(encodeURIComponent).join('/')}`}
+                              className="min-w-0 flex-1 text-[12.5px] font-semibold hover:text-blue-300 transition truncate">
+                              {pt.label}
+                            </Link>
+                            <span className="shrink-0 text-[10px] font-mono text-gray-600 tabular-nums">
+                              {pt.count}문 {pt.points}점
+                            </span>
+                            <div className="shrink-0 flex gap-0.5">
+                              {STATUS_META.map((m, idx) => (
+                                <button key={idx} onClick={() => setTagStatus(pt.tag, idx)} disabled={busy}
+                                  title={m.label}
+                                  className={`w-6 h-6 rounded-md text-[10px] font-bold transition disabled:opacity-50 ${
+                                    pt.status === idx ? m.chip : 'bg-gray-800 text-gray-700 hover:text-gray-400'
+                                  }`}>{['·', '△', '✓'][idx]}</button>
+                              ))}
+                            </div>
+                          </div>
                         ))}
-                        <Link href={`/dashboard/gisulsa/subnote/${r.topic.code}`}
-                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-blue-600/80 hover:bg-blue-600 text-white transition">
-                          서브노트 열기 →
-                        </Link>
+                        {r.points_.length === 0 && (
+                          <p className="text-[11px] text-gray-600 px-1">아직 이 대주제로 태깅된 문항이 없습니다.</p>
+                        )}
                       </div>
 
                       {r.krCount > 0 && (
-                        <>
-                          <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold mb-2">
-                            기술사 · {r.krCount}문항 {r.krPoints}점
+                        <details className="mb-4">
+                          <summary className="text-[10px] text-gray-600 uppercase tracking-widest font-bold cursor-pointer hover:text-gray-400 transition">
+                            기술사 기출 {r.krCount}문항 {r.krPoints}점
                             {Object.keys(r.byJong).length > 1 && (
                               <span className="ml-2 font-normal normal-case tracking-normal">
                                 ({Object.entries(r.byJong).map(([j, n]) => `${GISULSA_MAP.get(j)?.short ?? j} ${n}`).join(' · ')})
                               </span>
                             )}
-                          </p>
-                          <div className="space-y-1 mb-4">
-                            {r.questions.slice(0, 30).map(x => (
-                              <div key={`${x.exam}-${x.session}-${x.no}`} className="flex items-start gap-2.5">
+                          </summary>
+                          <div className="space-y-1 mt-2">
+                            {r.questions.map(x => (
+                              <div key={`${x.jong}-${x.exam}-${x.session}-${x.no}`} className="flex items-start gap-2.5">
                                 <Link href={`/dashboard/gisulsa/${x.jong}/${x.exam}`}
                                   className="shrink-0 w-28 text-[10px] font-mono text-gray-600 hover:text-blue-300 transition pt-0.5">
                                   {x.exam}회 {x.session}-{x.no} · {x.points}점
@@ -280,7 +311,7 @@ export default function SubnoteBoard() {
                               </div>
                             ))}
                           </div>
-                        </>
+                        </details>
                       )}
 
                       {r.jpCount > 0 ? (

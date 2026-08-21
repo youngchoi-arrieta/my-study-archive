@@ -39,7 +39,8 @@ export default function GisulsaHub() {
   }, [db])
 
   const totalQ = Object.values(perJong).reduce((a, v) => a + v.length, 0)
-  const tagged = new Set(Object.values(perJong).flat().flatMap(q => q.topics)).size
+  // 서브노트 장수 = 기출에 실제로 등장한 태그(논점) 수
+  const sheets = new Set(Object.values(perJong).flat().flatMap(q => q.topics)).size
   const krOnly = TOPICS.filter(isKoreaOnly).length
 
   return (
@@ -67,14 +68,15 @@ export default function GisulsaHub() {
               <p className="text-[10px] text-blue-300/70 tracking-widest uppercase mb-1">Subnote priority board</p>
               <h2 className="text-lg font-bold mb-1">📐 서브노트 우선순위 보드</h2>
               <p className="text-gray-400 text-xs leading-relaxed">
-                기술사 기출과 電験 1·2종 출제를 같은 토픽 코드로 묶어, 서브노트 한 장이
-                양쪽에서 동시에 쓰이는 순서대로 정렬한다.
+                기술사 기출과 電験 1·2종 출제를 같은 주제 체계로 묶는다. 대주제로 분류하고
+                논점으로 쪼개, 서브노트 한 장이 양쪽에서 동시에 쓰이는 순서대로 정렬한다.
               </p>
             </div>
             <span className="text-gray-600 shrink-0">→</span>
           </div>
           <div className="flex flex-wrap gap-4 mt-4 text-[11px]">
-            <span className="text-gray-500">토픽 <b className="text-gray-200">{tagged}</b>/{TOPICS.length}</span>
+            <span className="text-gray-500">대주제 <b className="text-gray-200">{TOPICS.length}</b></span>
+            <span className="text-gray-500">서브노트 <b className="text-gray-200">{sheets}</b>장</span>
             <span className="text-gray-500">태깅된 기술사 문항 <b className="text-blue-300">{totalQ}</b></span>
             <span className="text-gray-500">電験 참조 <b className="text-violet-300">{loaded ? jpCount : '…'}</b></span>
             <span className="text-gray-500">한국 전용 토픽 <b className="text-amber-300">{krOnly}</b></span>

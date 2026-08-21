@@ -15,9 +15,9 @@ import { useParams, notFound } from 'next/navigation'
 import {
   GISULSA_MAP, SESSION_SPECS, type GisulsaSlug, type GisulsaQuestion,
 } from '@/lib/constants-gisulsa'
-import { TOPICS, TOPIC_MAP, TOPIC_GROUPS, GROUP_META } from '@/lib/constants-topics'
+import { TOPICS, TOPIC_GROUPS, GROUP_META, parseTag, tagLabel, tagTopic, makeTag } from '@/lib/constants-topics'
 import {
-  seedOf, loadDbQuestions, mergeQuestions, saveQuestion, loadPapers, savePaper,
+  seedOf, loadDbQuestions, mergeQuestions, saveQuestion, loadPapers, savePaper, knownPoints,
 } from '@/lib/gisulsaData'
 
 interface Draft {
@@ -28,37 +28,99 @@ interface Draft {
   topics: string[]
 }
 
-function TopicPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+// 태그 고르기 — 대주제를 고른 뒤 논점까지 정한다.
+// 논점은 미리 정한 목록이 아니라 기출에서 실제로 나온 것만 제안하고,
+// 없으면 새로 쓴다. 대주제만 달고 논점을 비워도 된다.
+function TagPicker({
+  value, onChange, all,
+}: { value: string[]; onChange: (v: string[]) => void; all: GisulsaQuestion[] }) {
   const [group, setGroup] = useState<string>(TOPIC_GROUPS[0])
-  const toggle = (code: string) => {
-    onChange(value.includes(code) ? value.filter(c => c !== code) : [...value, code])
+  const [topicKey, setTopicKey] = useState<string | null>(null)
+  const [point, setPoint] = useState('')
+
+  const suggestions = topicKey ? knownPoints(all, topicKey) : []
+
+  const add = (tag: string) => {
+    if (!value.includes(tag)) onChange([...value, tag])
+    setTopicKey(null); setPoint('')
   }
+  const remove = (tag: string) => onChange(value.filter(t => t !== tag))
+
   return (
     <div>
-      <div className="flex flex-wrap gap-1 mb-2">
-        {TOPIC_GROUPS.map(g => (
-          <button key={g} type="button" onClick={() => setGroup(g)}
-            className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
-              group === g ? 'text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'
-            }`}
-            style={group === g ? { backgroundColor: GROUP_META[g].accent } : {}}>{g}</button>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {TOPICS.filter(t => t.group === group).map(t => (
-          <button key={t.code} type="button" onClick={() => toggle(t.code)}
-            title={t.name}
-            className={`px-2 py-1 rounded text-[10px] font-bold transition ${
-              value.includes(t.code) ? 'text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'
-            }`}
-            style={value.includes(t.code) ? { backgroundColor: GROUP_META[t.group].accent } : {}}>
-            <span className="font-mono mr-1">{t.code}</span>{t.name.split('(')[0]}
-          </button>
-        ))}
-      </div>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {value.map(tag => {
+            const t = tagTopic(tag)
+            const a = t ? GROUP_META[t.group].accent : '#374151'
+            return (
+              <button key={tag} type="button" onClick={() => remove(tag)}
+                className="px-2 py-1 rounded text-[11px] font-bold text-white transition hover:brightness-110"
+                style={{ backgroundColor: a }} title="눌러서 제거">
+                {parseTag(tag).topic}
+                {parseTag(tag).point && <span className="opacity-80"> / {parseTag(tag).point}</span>}
+                <span className="ml-1.5 opacity-60">×</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {!topicKey ? (
+        <>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {TOPIC_GROUPS.map(g => (
+              <button key={g} type="button" onClick={() => setGroup(g)}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                  group === g ? 'text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                }`}
+                style={group === g ? { backgroundColor: GROUP_META[g].accent } : {}}>{g}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {TOPICS.filter(t => t.group === group).map(t => (
+              <button key={t.key} type="button" onClick={() => setTopicKey(t.key)} title={t.name}
+                className="px-2 py-1 rounded text-[11px] font-bold bg-gray-800 text-gray-400 hover:text-white transition">
+                {t.key}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="bg-gray-950 rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[12px] font-bold">{topicKey}</span>
+            <span className="text-gray-700 text-[11px]">›</span>
+            <span className="text-[11px] text-gray-500">논점을 고르거나 새로 쓰세요</span>
+            <button type="button" onClick={() => setTopicKey(null)}
+              className="ml-auto text-[10px] text-gray-600 hover:text-gray-300 transition">대주제 다시 고르기</button>
+          </div>
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {suggestions.map(sug => (
+                <button key={sug} type="button" onClick={() => add(makeTag(topicKey, sug))}
+                  className="px-2 py-1 rounded text-[11px] bg-gray-800 text-gray-300 hover:bg-gray-700 transition">
+                  {sug}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <input value={point} onChange={e => setPoint(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(makeTag(topicKey, point)) } }}
+              placeholder="새 논점 (비우면 대주제만 단다)"
+              className="flex-1 min-w-0 bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-lg px-2.5 py-1.5 text-[12px] outline-none transition placeholder:text-gray-700" />
+            <button type="button" onClick={() => add(makeTag(topicKey, point))}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-blue-600 text-white transition">
+              달기
+            </button>
+          </div>
+        </div>
+      )}
+
       {value.length > 2 && (
         <p className="text-[10px] text-amber-500/80 mt-2">
-          토픽 3개 이상은 빈도표를 흐립니다. 주토픽 1개 + 필요할 때만 부토픽 1개를 권합니다.
+          태그 3개 이상은 빈도표를 흐립니다. 주 1개 + 필요할 때만 부 1개를 권합니다.
         </p>
       )}
     </div>
@@ -88,9 +150,12 @@ export default function ExamDetail() {
   }, [spec, jong, exam])
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  // 논점 제안은 이 종목 전체 기출에서 뽑는다 (이 회차만으로는 표본이 없다)
+  const allQuestions = useMemo(
+    () => spec ? mergeQuestions(seedOf(jong), db.filter(q => q.jong === jong)) : [],
+    [spec, jong, db])
   const questions = useMemo(
-    () => spec ? mergeQuestions(seedOf(jong), db.filter(q => q.jong === jong)).filter(q => q.exam === exam) : [],
-    [spec, jong, exam, db])
+    () => allQuestions.filter(q => q.exam === exam), [allQuestions, exam])
 
   if (!spec || !exam) return notFound()
 
@@ -142,7 +207,7 @@ export default function ExamDetail() {
           )}
         </div>
         <p className="text-gray-500 text-sm mb-6">
-          태깅된 문항 {questions.length}개 · 여기서 단 토픽이 서브노트 보드의 눈금이 됩니다.
+          태깅된 문항 {questions.length}개 · 여기서 단 태그가 서브노트 보드의 눈금이 됩니다.
           {msg && <span className="ml-2 text-gray-400">{msg}</span>}
         </p>
 
@@ -173,18 +238,19 @@ export default function ExamDetail() {
                       <p className="text-[12.5px] text-gray-200 leading-snug">{q.title}</p>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {q.topics.map(c => {
-                          const t = TOPIC_MAP.get(c)
+                          const t = tagTopic(c)
+                          const a = t ? GROUP_META[t.group].accent : '#9ca3af'
                           return (
-                            <Link key={c} href={`/dashboard/gisulsa/subnote/${c}`}
+                            <Link key={c} href={`/dashboard/gisulsa/subnote/${c.split('/').map(encodeURIComponent).join('/')}`}
                               className="text-[10px] px-1.5 py-0.5 rounded font-bold transition hover:brightness-125"
-                              style={{ backgroundColor: `${t ? GROUP_META[t.group].accent : '#374151'}35`,
-                                       color: t ? GROUP_META[t.group].accent : '#9ca3af' }}>
-                              <span className="font-mono">{c}</span> {t?.name.split('(')[0] ?? ''}
+                              style={{ backgroundColor: `${a}35`, color: a }}>
+                              {parseTag(c).topic}
+                              {parseTag(c).point && <span className="opacity-75"> / {tagLabel(c)}</span>}
                             </Link>
                           )
                         })}
                         {q.topics.length === 0 && (
-                          <span className="text-[10px] text-amber-500/70">토픽 미지정</span>
+                          <span className="text-[10px] text-amber-500/70">태그 미지정</span>
                         )}
                       </div>
                     </div>
@@ -234,8 +300,8 @@ export default function ExamDetail() {
                   className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2.5 py-2 text-sm outline-none transition resize-none placeholder:text-gray-700" />
               </label>
 
-              <p className="text-[10px] text-gray-600 mb-2">토픽 · 주토픽 1개 + 필요할 때만 부토픽 1개</p>
-              <TopicPicker value={draft.topics} onChange={v => setDraft({ ...draft, topics: v })} />
+              <p className="text-[10px] text-gray-600 mb-2">태그 · 대주제를 고른 뒤 논점까지 정합니다</p>
+              <TagPicker value={draft.topics} onChange={v => setDraft({ ...draft, topics: v })} all={allQuestions} />
 
               <div className="flex gap-2 mt-5">
                 <button onClick={submit} disabled={!draft.title.trim() || busy}
