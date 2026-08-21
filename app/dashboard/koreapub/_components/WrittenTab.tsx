@@ -7,7 +7,9 @@ import {
   NcsAreaKey, NcsRow, NCS_AREAS, ALL_AREA_KEYS, AREA_PRESETS,
   emptyNcsRow, isOn, cellQ, pickedAreas, areaFrequency,
   ncsQuestions, totalQuestions, totalMinutes, secondsPerQuestion, paceTone,
+  ncsLabel, majorLabel, NCS_LABEL_DEFAULT, MAJOR_LABEL_DEFAULT,
 } from '@/lib/constants-koreapub-ncs'
+import { presetFor, applyPreset as presetToRow, isUnverified } from '@/lib/constants-koreapub-presets'
 
 // ───────────────────────────────────────────────────────────────
 //  필기 한눈에
@@ -267,6 +269,8 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
   const set = (p: Partial<NcsRow>) => setD(x => ({ ...x, ...p }))
   const setQ = (k: NcsAreaKey, v: string) =>
     setD(x => ({ ...x, areas: { ...x.areas, [k]: { on: true, q: num(v) } } }))
+  const setExtra = (i: number, patch: Partial<{ label: string; q: number | null; min: number | null }>) =>
+    setD(x => ({ ...x, extras: x.extras.map((e, k) => k === i ? { ...e, ...patch } : e) }))
 
   const save = async () => {
     setSaving(true)
@@ -276,6 +280,7 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
   }
 
   const picked = pickedAreas(d)
+  const preset = presetFor(c.id, c.name)
   const inp = 'w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs text-center outline-none transition tabular-nums'
   const lab = 'text-[10px] text-gray-600 mb-1 block'
 
@@ -306,9 +311,30 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
           </select>
         )}
       </div>
-      <p className="text-[10px] text-gray-700 mb-4">
+      <p className="text-[10px] text-gray-700 mb-3">
         프리셋은 &quot;영역이 몇 개짜리 시험이냐&quot;는 모양일 뿐입니다. 실제 영역은 공고를 보고 매트릭스에서 고치세요.
       </p>
+
+      {/* 조사표 기반 참고값 — 자동으로 안 들어간다. 눌러야 들어오고, 미확인 표시가 붙는다 */}
+      {preset && (
+        <div className="bg-amber-950/30 border border-amber-900/40 rounded-xl p-3 mb-4">
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <p className="text-[11px] font-bold text-amber-300">📋 조사표 참고값이 있습니다</p>
+            <button onClick={() => setD(presetToRow(c.id, preset, d))}
+              className="shrink-0 text-[10px] bg-amber-600/80 hover:bg-amber-600 text-white font-bold rounded-lg px-2.5 py-1 transition">
+              불러오기
+            </button>
+          </div>
+          <p className="text-[10px] text-amber-200/70 leading-relaxed">
+            {preset.ratio} · {preset.style} · NCS {preset.ncsQ ?? '—'}문 / 전공 {preset.majorQ ?? '—'}문
+            {preset.totalMin ? ` · 총 ${preset.totalMin}분` : ''}
+          </p>
+          <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">{preset.major}</p>
+          <p className="text-[9px] text-gray-600 mt-1.5">
+            공식 공고가 아니라 별도 조사 자료입니다. 불러온 뒤 공고로 확인하고 메모의 ⚠ 표시를 지우세요.
+          </p>
+        </div>
+      )}
 
       {/* 영역별 문항수 */}
       {picked.length > 0 && (
@@ -330,25 +356,35 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
       )}
 
       {/* 과목별 문항 · 시간 */}
-      <p className={lab}>과목별 문항수 · 시간(분)</p>
-      <div className="space-y-2 mb-3">
-        <PartRow label="NCS 직업기초" color="#60a5fa"
+      {/* 과목 이름은 기업마다 다르다 — 한전은 「직무능력검사」, 코레일은
+          「직업기초능력평가」. 그래서 이름 칸도 전부 고칠 수 있게 열어둔다. */}
+      <p className={lab}>과목별 문항수 · 시간(분) <span className="text-gray-700">(이름도 고칠 수 있습니다)</span></p>
+      <div className="space-y-2 mb-2">
+        <PartRow color="#60a5fa"
+          label={d.ncs_label ?? ''} labelPlaceholder={NCS_LABEL_DEFAULT}
+          onLabel={v => set({ ncs_label: v || null })}
           q={d.ncs_q} min={d.ncs_min}
           qPlaceholder={ncsQuestions(d) !== null && d.ncs_q === null ? String(ncsQuestions(d)) : '—'}
           onQ={v => set({ ncs_q: num(v) })} onMin={v => set({ ncs_min: num(v) })} />
-        <PartRow label="전공 (직무수행)" color="#34d399"
+        <PartRow color="#34d399"
+          label={d.major_label ?? ''} labelPlaceholder={MAJOR_LABEL_DEFAULT}
+          onLabel={v => set({ major_label: v || null })}
           q={d.major_q} min={d.major_min}
           onQ={v => set({ major_q: num(v) })} onMin={v => set({ major_min: num(v) })} />
-        <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
-          <input value={d.extra_label ?? ''} placeholder="제3과목 (예: 철도관련법령)"
-            onChange={e => set({ extra_label: e.target.value || null })}
-            className="bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs outline-none transition placeholder:text-gray-700" />
-          <input inputMode="numeric" placeholder="문항" className={`${inp} w-16`}
-            value={d.extra_q ?? ''} onChange={e => set({ extra_q: num(e.target.value) })} />
-          <input inputMode="numeric" placeholder="분" className={`${inp} w-16`}
-            value={d.extra_min ?? ''} onChange={e => set({ extra_min: num(e.target.value) })} />
-        </div>
+
+        {d.extras.map((ex, i) => (
+          <PartRow key={i} color="#fbbf24"
+            label={ex.label} labelPlaceholder="추가 과목 (예: 한국사, 철도관련법령)"
+            onLabel={v => setExtra(i, { label: v })}
+            q={ex.q} min={ex.min}
+            onQ={v => setExtra(i, { q: num(v) })} onMin={v => setExtra(i, { min: num(v) })}
+            onRemove={() => set({ extras: d.extras.filter((_, k) => k !== i) })} />
+        ))}
       </div>
+      <button onClick={() => set({ extras: [...d.extras, { label: '', q: null, min: null }] })}
+        className="text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg px-2.5 py-1 mb-3 transition">
+        + 과목 추가
+      </button>
 
       {/* 통합 시간 */}
       <label className="flex items-center gap-2 mb-3 cursor-pointer">
@@ -395,19 +431,41 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
   )
 }
 
-function PartRow({ label, color, q, min, qPlaceholder, onQ, onMin }: {
-  label: string; color: string; q: number | null; min: number | null
+function PartRow({
+  label, labelPlaceholder, onLabel, color, q, min, qPlaceholder, onQ, onMin, onRemove,
+}: {
+  label: string
+  labelPlaceholder?: string
+  onLabel?: (v: string) => void
+  color: string
+  q: number | null
+  min: number | null
   qPlaceholder?: string
-  onQ: (v: string) => void; onMin: (v: string) => void
+  onQ: (v: string) => void
+  onMin: (v: string) => void
+  onRemove?: () => void
 }) {
-  const inp = 'w-16 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs text-center outline-none transition tabular-nums'
+  const inp = 'bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs outline-none transition placeholder:text-gray-700 w-full'
   return (
-    <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
-      <span className="text-xs" style={{ color }}>{label}</span>
-      <input inputMode="numeric" placeholder={qPlaceholder ?? '문항'} className={inp}
+    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <i className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+        {onLabel ? (
+          <input value={label} placeholder={labelPlaceholder}
+            onChange={e => onLabel(e.target.value)}
+            className={`${inp} font-semibold`} style={{ color }} />
+        ) : (
+          <span className="text-xs font-semibold truncate" style={{ color }}>{label}</span>
+        )}
+      </div>
+      <input inputMode="numeric" placeholder={qPlaceholder ?? '문항'} className={`${inp} w-16`}
         value={q ?? ''} onChange={e => onQ(e.target.value)} />
-      <input inputMode="numeric" placeholder="분" className={inp}
+      <input inputMode="numeric" placeholder="분" className={`${inp} w-16`}
         value={min ?? ''} onChange={e => onMin(e.target.value)} />
+      {onRemove ? (
+        <button onClick={onRemove} title="이 과목 지우기"
+          className="w-6 h-6 rounded-md text-[11px] text-gray-700 hover:text-red-400 hover:bg-gray-800 transition">×</button>
+      ) : <span className="w-6" />}
     </div>
   )
 }
@@ -419,12 +477,12 @@ function TimeRow({ c, row, onOpen }: { c: Company; row: NcsRow; onOpen: () => vo
   const q = totalQuestions(row), m = totalMinutes(row)
   const sec = secondsPerQuestion(row)
   const parts: { label: string; q: number | null; min: number | null; color: string }[] = [
-    { label: 'NCS', q: ncsQuestions(row), min: row.ncs_min, color: '#60a5fa' },
-    { label: '전공', q: row.major_q, min: row.major_min, color: '#34d399' },
+    { label: ncsLabel(row), q: ncsQuestions(row), min: row.ncs_min, color: '#60a5fa' },
+    { label: majorLabel(row), q: row.major_q, min: row.major_min, color: '#34d399' },
+    ...row.extras
+      .filter(e => e.label || e.q || e.min)
+      .map(e => ({ label: e.label || '기타', q: e.q, min: e.min, color: '#fbbf24' })),
   ]
-  if (row.extra_label || row.extra_q || row.extra_min) {
-    parts.push({ label: row.extra_label || '기타', q: row.extra_q, min: row.extra_min, color: '#fbbf24' })
-  }
   const empty = q === null && m === null
 
   return (
@@ -435,6 +493,7 @@ function TimeRow({ c, row, onOpen }: { c: Company; row: NcsRow; onOpen: () => vo
           <p className="text-sm font-bold truncate">
             {c.short || c.name}
             {row.combined && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 font-bold">통합 교시</span>}
+            {isUnverified(row) && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 font-bold" title="참고 프리셋 값입니다. 공고로 확인한 뒤 메모의 ⚠ 표시를 지우세요">⚠ 미확인</span>}
           </p>
           <p className="text-[10px] text-gray-600 mt-0.5">
             {empty ? '아직 입력 안 함 — 눌러서 채우세요' : `${q ?? '—'}문항 · ${m ?? '—'}분`}

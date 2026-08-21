@@ -60,16 +60,27 @@ export interface NcsCell {
 
 export type NcsAreas = Partial<Record<NcsAreaKey, NcsCell>>
 
+/** 과목 한 줄 — NCS·전공 말고 추가로 보는 것들 */
+export interface ExtraSubject {
+  label: string
+  q: number | null
+  min: number | null
+}
+
 export interface NcsRow {
   company_id: string
   areas: NcsAreas
-  /** NCS 직업기초 */
+  /** NCS 직업기초 — 기업마다 이름이 다르다(직무능력검사, 직업기초능력평가 …) */
+  ncs_label: string | null
   ncs_q: number | null
   ncs_min: number | null
-  /** 전공 (직무수행능력) */
+  /** 전공 (직무수행능력) — 이것도 이름이 제각각이다 */
+  major_label: string | null
   major_q: number | null
   major_min: number | null
-  /** 제3과목 — 코레일 철도관련법령처럼 */
+  /** 추가 과목 — 한국사·회사상식·철도법령처럼. 개수 제한 없음 */
+  extras: ExtraSubject[]
+  /** @deprecated extras 로 옮겨감. 예전 데이터를 읽기 위해서만 남겨둔다 */
   extra_label: string | null
   extra_q: number | null
   extra_min: number | null
@@ -83,11 +94,31 @@ export interface NcsRow {
 
 export const emptyNcsRow = (company_id: string): NcsRow => ({
   company_id, areas: {},
-  ncs_q: null, ncs_min: null,
-  major_q: null, major_min: null,
+  ncs_label: null, ncs_q: null, ncs_min: null,
+  major_label: null, major_q: null, major_min: null,
+  extras: [],
   extra_label: null, extra_q: null, extra_min: null,
   combined: false, total_min: null, cutoff: null, memo: null,
 })
+
+export const NCS_LABEL_DEFAULT = 'NCS 직업기초'
+export const MAJOR_LABEL_DEFAULT = '전공 (직무수행)'
+export const ncsLabel = (r: NcsRow | undefined) => r?.ncs_label?.trim() || NCS_LABEL_DEFAULT
+export const majorLabel = (r: NcsRow | undefined) => r?.major_label?.trim() || MAJOR_LABEL_DEFAULT
+
+/** DB의 느슨한 jsonb를 과목 배열로 */
+function normalizeExtras(v: unknown): ExtraSubject[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap(raw => {
+    if (!raw || typeof raw !== 'object') return []
+    const o = raw as { label?: unknown; q?: unknown; min?: unknown }
+    const label = typeof o.label === 'string' ? o.label : ''
+    const q = typeof o.q === 'number' && o.q > 0 ? o.q : null
+    const min = typeof o.min === 'number' && o.min > 0 ? o.min : null
+    if (!label && q === null && min === null) return []
+    return [{ label, q, min }]
+  })
+}
 
 /** DB에서 온 느슨한 jsonb를 안전한 모양으로 */
 export function normalizeAreas(v: unknown): NcsAreas {
@@ -108,11 +139,14 @@ export function normalizeAreas(v: unknown): NcsAreas {
   return out
 }
 
-export const normalizeNcsRow = (r: Partial<NcsRow> & { company_id: string }): NcsRow => ({
-  ...emptyNcsRow(r.company_id),
-  ...r,
-  areas: normalizeAreas(r.areas),
-})
+export const normalizeNcsRow = (r: Partial<NcsRow> & { company_id: string }): NcsRow => {
+  const extras = normalizeExtras(r.extras)
+  // 예전 단일 extra_* 칸에만 값이 있는 행은 배열 첫 칸으로 옮겨 읽는다
+  if (extras.length === 0 && (r.extra_label || r.extra_q || r.extra_min)) {
+    extras.push({ label: r.extra_label ?? '', q: r.extra_q ?? null, min: r.extra_min ?? null })
+  }
+  return { ...emptyNcsRow(r.company_id), ...r, extras, areas: normalizeAreas(r.areas) }
+}
 
 // ── 파생값 ──────────────────────────────────────────────────────
 export const isOn = (row: NcsRow | undefined, k: NcsAreaKey) => !!row?.areas[k]?.on
@@ -138,12 +172,12 @@ export const sumOrNull = (...xs: (number | null)[]) => {
 }
 
 export const totalQuestions = (row: NcsRow | undefined) =>
-  row ? sumOrNull(ncsQuestions(row), row.major_q, row.extra_q) : null
+  row ? sumOrNull(ncsQuestions(row), row.major_q, ...row.extras.map(e => e.q)) : null
 
 export function totalMinutes(row: NcsRow | undefined): number | null {
   if (!row) return null
   if (row.total_min && row.total_min > 0) return row.total_min
-  return sumOrNull(row.ncs_min, row.major_min, row.extra_min)
+  return sumOrNull(row.ncs_min, row.major_min, ...row.extras.map(e => e.min))
 }
 
 /** 문항당 몇 초를 쓸 수 있는가 — 페이스 감각이 여기서 나온다 */

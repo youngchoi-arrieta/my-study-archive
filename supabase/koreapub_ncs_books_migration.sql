@@ -28,7 +28,11 @@ create table if not exists kp_ncs (
   major_q     int,                       -- 전공(직무수행) 문항수
   major_min   int,                       -- 전공 시간(분)
 
-  extra_label text,                      -- 제3과목 이름 (예: 철도관련법령)
+  ncs_label   text,                      -- NCS 과목명 (기업마다 다름: 직무능력검사 등)
+  major_label text,                      -- 전공 과목명
+  extras      jsonb not null default '[]'::jsonb,  -- 추가 과목 [{label,q,min}, ...]
+
+  extra_label text,                      -- (레거시) 단일 제3과목
   extra_q     int,
   extra_min   int,
 
@@ -39,6 +43,11 @@ create table if not exists kp_ncs (
 
   updated_at  timestamptz default now()
 );
+
+-- 이미 만들어 둔 테이블에 뒤늦게 붙이는 경우
+alter table kp_ncs add column if not exists ncs_label   text;
+alter table kp_ncs add column if not exists major_label text;
+alter table kp_ncs add column if not exists extras      jsonb not null default '[]'::jsonb;
 
 alter table kp_ncs disable row level security;
 
