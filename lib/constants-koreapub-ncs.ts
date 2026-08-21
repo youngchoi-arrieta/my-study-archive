@@ -54,7 +54,12 @@ export const AREA_PRESETS: { label: string; desc: string; keys: NcsAreaKey[] }[]
 // ── 행 ──────────────────────────────────────────────────────────
 export interface NcsCell {
   on: boolean
-  /** 영역별 문항수 — 공고에 안 나오는 경우가 더 많아서 없어도 된다 */
+  /**
+   * @deprecated 영역별 문항수 — 화면에서 뺐다.
+   * PSAT형·피듈형은 공고가 영역별 문항수를 아예 안 밝히고, 안다 해도 결국
+   * 전 영역을 다 공부해야 한다. 빈칸만 남는 자리였다.
+   * 예전에 넣어둔 값을 읽기 위해서만 남겨둔다.
+   */
   q: number | null
 }
 

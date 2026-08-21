@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Company } from '@/lib/constants-koreapub'
 import {
   NcsAreaKey, NcsRow, NCS_AREAS, ALL_AREA_KEYS, AREA_PRESETS,
-  emptyNcsRow, isOn, cellQ, pickedAreas, areaFrequency,
+  emptyNcsRow, isOn, pickedAreas, areaFrequency,
   ncsQuestions, totalQuestions, totalMinutes, secondsPerQuestion, paceTone,
   ncsLabel, majorLabel, NCS_LABEL_DEFAULT, MAJOR_LABEL_DEFAULT,
 } from '@/lib/constants-koreapub-ncs'
@@ -159,7 +159,6 @@ export default function WrittenTab({ companies, rows, onSaved }: {
                         </td>
                         {NCS_AREAS.map(a => {
                           const on = isOn(r, a.key)
-                          const q = cellQ(r, a.key)
                           return (
                             <td key={a.key} className="px-1 py-2 text-center">
                               <button
@@ -170,7 +169,7 @@ export default function WrittenTab({ companies, rows, onSaved }: {
                                     ? a.core ? 'bg-blue-600/80 text-white' : 'bg-blue-800/60 text-blue-200'
                                     : edit ? 'bg-gray-950 text-gray-800 hover:bg-gray-800' : 'text-gray-800'
                                 }`}>
-                                {on ? (q ?? '●') : '·'}
+                                {on ? '●' : '·'}
                               </button>
                             </td>
                           )
@@ -209,7 +208,7 @@ export default function WrittenTab({ companies, rows, onSaved }: {
 
           <p className="text-[10px] text-gray-700 leading-relaxed mb-6">
             {edit
-              ? '칸을 눌러 켜고 끕니다. 기업 이름 아래 「자세히」에서 영역별 문항수와 시험시간을 넣으세요.'
+              ? '칸을 눌러 켜고 끕니다. 기업 이름 아래 「자세히」에서 과목별 문항수와 시험시간을 넣으세요.'
               : '맨 아래 막대는 지금 목록에서 그 영역을 내는 기업 수입니다 — 높은 쪽이 먼저 볼 영역.'}
             {' '}칸 안 숫자는 그 영역의 문항수(넣었을 때만).
           </p>
@@ -267,8 +266,12 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
 
   const num = (v: string) => { const n = Number(v.replace(/\D/g, '')); return n > 0 ? n : null }
   const set = (p: Partial<NcsRow>) => setD(x => ({ ...x, ...p }))
-  const setQ = (k: NcsAreaKey, v: string) =>
-    setD(x => ({ ...x, areas: { ...x.areas, [k]: { on: true, q: num(v) } } }))
+  const toggleArea = (k: NcsAreaKey) => setD(x => {
+    const areas = { ...x.areas }
+    if (areas[k]?.on) delete areas[k]
+    else areas[k] = { on: true, q: null }
+    return { ...x, areas }
+  })
   const setExtra = (i: number, patch: Partial<{ label: string; q: number | null; min: number | null }>) =>
     setD(x => ({ ...x, extras: x.extras.map((e, k) => k === i ? { ...e, ...patch } : e) }))
 
@@ -279,10 +282,9 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
     onSaved()
   }
 
-  const picked = pickedAreas(d)
   const preset = presetFor(c.id, c.name)
   const inp = 'w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs text-center outline-none transition tabular-nums'
-  const lab = 'text-[10px] text-gray-600 mb-1 block'
+  const lab = 'text-[11px] text-gray-400 mb-1.5 block font-medium'
 
   return (
     <div className="bg-gray-900 rounded-2xl p-5 mb-6 border border-blue-900/60">
@@ -299,20 +301,20 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
       <div className="flex flex-wrap gap-1.5 mb-2">
         {AREA_PRESETS.map(p => (
           <button key={p.label} onClick={() => onPreset(p.keys)} title={p.desc}
-            className="text-[10px] px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition">
+            className="text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition">
             {p.label}
           </button>
         ))}
         {others.length > 0 && (
           <select defaultValue="" onChange={e => { if (e.target.value) { onCopy(e.target.value); e.target.value = '' } }}
-            className="text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg px-2 py-1 outline-none transition">
+            className="text-[11px] bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-2.5 py-1.5 outline-none transition">
             <option value="">다른 기업에서 복사…</option>
             {others.map(o => <option key={o.id} value={o.id}>{o.short || o.name}</option>)}
           </select>
         )}
       </div>
-      <p className="text-[10px] text-gray-700 mb-3">
-        프리셋은 &quot;영역이 몇 개짜리 시험이냐&quot;는 모양일 뿐입니다. 실제 영역은 공고를 보고 매트릭스에서 고치세요.
+      <p className="text-[11px] text-gray-500 mb-3">
+        프리셋은 &quot;영역이 몇 개짜리 시험이냐&quot;는 모양일 뿐입니다. 실제 영역은 공고를 보고 아래에서 고르세요.
       </p>
 
       {/* 조사표 기반 참고값 — 자동으로 안 들어간다. 눌러야 들어오고, 미확인 표시가 붙는다 */}
@@ -336,29 +338,31 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
         </div>
       )}
 
-      {/* 영역별 문항수 */}
-      {picked.length > 0 && (
-        <>
-          <p className={lab}>영역별 문항수 <span className="text-gray-700">(모르면 비워두세요)</span></p>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
-            {picked.map(k => {
-              const a = NCS_AREAS.find(x => x.key === k)!
-              return (
-                <div key={k}>
-                  <span className="text-[9px] text-gray-500 block mb-0.5 truncate">{a.short}</span>
-                  <input inputMode="numeric" placeholder="—" className={inp}
-                    value={d.areas[k]?.q ?? ''} onChange={e => setQ(k, e.target.value)} />
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
+      {/* 출제 영역 — 눌러서 켜고 끈다.
+          영역별 문항수 칸은 없앴다. PSAT형·피듈형은 공고가 영역별 문항수를
+          아예 안 밝히고, 안다 해도 결국 전 영역을 다 공부해야 해서
+          빈칸만 남는 자리였다. 여기서 필요한 건 "무엇이 나오는가"뿐이다. */}
+      <p className={lab}>출제 영역 <span className="text-gray-500">공고에 적힌 것만 켜세요</span></p>
+      <div className="flex flex-wrap gap-1.5 mb-5">
+        {NCS_AREAS.map(a => {
+          const on = !!d.areas[a.key]?.on
+          return (
+            <button key={a.key} onClick={() => toggleArea(a.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                on
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-950 border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
+              }`}>
+              {a.short}
+            </button>
+          )
+        })}
+      </div>
 
       {/* 과목별 문항 · 시간 */}
       {/* 과목 이름은 기업마다 다르다 — 한전은 「직무능력검사」, 코레일은
           「직업기초능력평가」. 그래서 이름 칸도 전부 고칠 수 있게 열어둔다. */}
-      <p className={lab}>과목별 문항수 · 시간(분) <span className="text-gray-700">(이름도 고칠 수 있습니다)</span></p>
+      <p className={lab}>과목별 문항수 · 시간(분) <span className="text-gray-500">이름도 고칠 수 있습니다</span></p>
       <div className="space-y-2 mb-2">
         <PartRow color="#60a5fa"
           label={d.ncs_label ?? ''} labelPlaceholder={NCS_LABEL_DEFAULT}
@@ -382,7 +386,7 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
         ))}
       </div>
       <button onClick={() => set({ extras: [...d.extras, { label: '', q: null, min: null }] })}
-        className="text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg px-2.5 py-1 mb-3 transition">
+        className="text-[11px] bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-3 py-1.5 mb-4 transition">
         + 과목 추가
       </button>
 
@@ -396,7 +400,7 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
 
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div>
-          <span className={lab}>총 시간(분) <span className="text-gray-700">직접 지정</span></span>
+          <span className={lab}>총 시간(분) <span className="text-gray-500">직접 지정</span></span>
           <input inputMode="numeric" placeholder={String(totalMinutes(d) ?? '—')} className={inp}
             value={d.total_min ?? ''} onChange={e => set({ total_min: num(e.target.value) })} />
         </div>
