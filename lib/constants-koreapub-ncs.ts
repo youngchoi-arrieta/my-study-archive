@@ -43,13 +43,10 @@ export const NCS_AREAS: NcsArea[] = [
 export const ALL_AREA_KEYS = NCS_AREAS.map(a => a.key)
 export const ncsArea = (k: string) => NCS_AREAS.find(a => a.key === k)
 
-/** 모양만 잡아주는 프리셋 — 특정 기업이 이렇다는 주장이 아니다 */
-export const AREA_PRESETS: { label: string; desc: string; keys: NcsAreaKey[] }[] = [
-  { label: '3영역', desc: '의사소통 · 수리 · 문제해결', keys: ['comm', 'math', 'solve'] },
-  { label: '5영역', desc: '3영역 + 자원관리 · 정보', keys: ['comm', 'math', 'solve', 'resource', 'info'] },
-  { label: '6영역', desc: '5영역 + 기술', keys: ['comm', 'math', 'solve', 'resource', 'info', 'tech'] },
-  { label: '전체', desc: '10영역 모두', keys: ALL_AREA_KEYS },
-]
+// 「3영역 / 5영역 / 6영역」 같은 개수 프리셋은 뺐다.
+// 같은 6영역이어도 어느 6개인지가 기업마다 달라서, 개수만 맞춰봐야
+// 결국 전부 다시 고쳐야 했다. 기업별 실제 구성은
+// lib/constants-koreapub-presets.ts 에 있다.
 
 // ── 행 ──────────────────────────────────────────────────────────
 export interface NcsCell {

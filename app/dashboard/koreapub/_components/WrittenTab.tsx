@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Company } from '@/lib/constants-koreapub'
 import {
-  NcsAreaKey, NcsRow, NCS_AREAS, ALL_AREA_KEYS, AREA_PRESETS,
+  NcsAreaKey, NcsRow, NCS_AREAS, ALL_AREA_KEYS,
   emptyNcsRow, isOn, pickedAreas, areaFrequency,
   ncsQuestions, totalQuestions, totalMinutes, secondsPerQuestion, paceTone,
   ncsLabel, majorLabel, NCS_LABEL_DEFAULT, MAJOR_LABEL_DEFAULT,
@@ -34,8 +34,17 @@ export default function WrittenTab({ companies, rows, onSaved }: {
   // 서버 값이 새로 오면 로컬 덮어쓰기를 버린다 (저장이 끝난 뒤라 안전)
   useEffect(() => { setLocal({}) }, [rows])
 
+  // 저장된 행이 없으면 조사표 프리셋을 기본값으로 쓴다.
+  // DB에 쓰지는 않는다 — 화면에만 채워두고, 공고 보고 고쳐서 저장하면 그때 행이 생긴다.
+  // 프리셋에서 온 값은 memo 의 ⚠ 표시로 구분된다.
+  const presetRow = (id: string): NcsRow | null => {
+    const c = companies.find(x => x.id === id)
+    const p = presetFor(id, c?.name)
+    return p ? presetToRow(id, p) : null
+  }
+
   const rowOf = (id: string): NcsRow =>
-    local[id] ?? rows.find(r => r.company_id === id) ?? emptyNcsRow(id)
+    local[id] ?? rows.find(r => r.company_id === id) ?? presetRow(id) ?? emptyNcsRow(id)
 
   const shown = useMemo(
     () => (scope === 'target' ? companies.filter(c => c.target) : companies),
@@ -58,14 +67,6 @@ export default function WrittenTab({ companies, rows, onSaved }: {
     const areas = { ...r.areas }
     if (cur?.on) delete areas[k]
     else areas[k] = { on: true, q: cur?.q ?? null }
-    write({ ...r, areas })
-  }
-
-  const applyPreset = (id: string, keys: NcsAreaKey[]) => {
-    const r = rowOf(id)
-    const areas = Object.fromEntries(
-      keys.map(k => [k, { on: true, q: r.areas[k]?.q ?? null }])
-    ) as NcsRow['areas']
     write({ ...r, areas })
   }
 
@@ -221,7 +222,6 @@ export default function WrittenTab({ companies, rows, onSaved }: {
               row={rowOf(openId)}
               others={shown.filter(x => x.id !== openId)}
               onWrite={write}
-              onPreset={keys => applyPreset(openId, keys)}
               onCopy={from => copyFrom(openId, from)}
               onClose={() => setOpenId(null)}
               onSaved={onSaved}
@@ -252,10 +252,9 @@ export default function WrittenTab({ companies, rows, onSaved }: {
 // ═══════════════════════════════════════════════════════════════
 //  기업별 상세 — 영역 문항수 · 시험시간
 // ═══════════════════════════════════════════════════════════════
-function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSaved }: {
+function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
   c: Company; row: NcsRow; others: Company[]
   onWrite: (r: NcsRow) => void
-  onPreset: (keys: NcsAreaKey[]) => void
   onCopy: (fromId: string) => void
   onClose: () => void
   onSaved: () => void
@@ -282,7 +281,6 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
     onSaved()
   }
 
-  const preset = presetFor(c.id, c.name)
   const inp = 'w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs text-center outline-none transition tabular-nums'
   const lab = 'text-[11px] text-gray-400 mb-1.5 block font-medium'
 
@@ -296,45 +294,24 @@ function CompanyPanel({ c, row, others, onWrite, onPreset, onCopy, onClose, onSa
         <button onClick={onClose} className="text-gray-600 hover:text-white text-xs shrink-0">닫기 ✕</button>
       </div>
 
-      {/* 프리셋 · 복사 */}
-      <p className={lab}>영역 한 번에 채우기</p>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {AREA_PRESETS.map(p => (
-          <button key={p.label} onClick={() => onPreset(p.keys)} title={p.desc}
-            className="text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition">
-            {p.label}
-          </button>
-        ))}
-        {others.length > 0 && (
+      {isUnverified(d) && (
+        <p className="text-[11px] text-amber-300/90 bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2 mb-4 leading-relaxed">
+          ⚠ 조사표에서 미리 채운 값입니다. 공고와 대조해 고친 뒤 저장하고,
+          맨 아래 메모의 <span className="font-mono">⚠</span> 문구를 지우면 이 표시가 사라집니다.
+        </p>
+      )}
+
+      {/* 다른 기업에서 복사 — 계열사처럼 시험이 같은 곳끼리는 쓸모가 있다.
+          「3영역/5영역/6영역」 같은 개수 프리셋은 뺐다. 같은 6영역이어도
+          어느 6개인지가 기업마다 달라서, 개수만 맞춰봐야 결국 다시 고쳐야 한다. */}
+      {others.length > 0 && (
+        <div className="mb-5">
+          <p className={lab}>다른 기업에서 영역 복사</p>
           <select defaultValue="" onChange={e => { if (e.target.value) { onCopy(e.target.value); e.target.value = '' } }}
             className="text-[11px] bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-2.5 py-1.5 outline-none transition">
-            <option value="">다른 기업에서 복사…</option>
+            <option value="">기업 선택…</option>
             {others.map(o => <option key={o.id} value={o.id}>{o.short || o.name}</option>)}
           </select>
-        )}
-      </div>
-      <p className="text-[11px] text-gray-500 mb-3">
-        프리셋은 &quot;영역이 몇 개짜리 시험이냐&quot;는 모양일 뿐입니다. 실제 영역은 공고를 보고 아래에서 고르세요.
-      </p>
-
-      {/* 조사표 기반 참고값 — 자동으로 안 들어간다. 눌러야 들어오고, 미확인 표시가 붙는다 */}
-      {preset && (
-        <div className="bg-amber-950/30 border border-amber-900/40 rounded-xl p-3 mb-4">
-          <div className="flex items-start justify-between gap-2 mb-1.5">
-            <p className="text-[11px] font-bold text-amber-300">📋 조사표 참고값이 있습니다</p>
-            <button onClick={() => setD(presetToRow(c.id, preset, d))}
-              className="shrink-0 text-[10px] bg-amber-600/80 hover:bg-amber-600 text-white font-bold rounded-lg px-2.5 py-1 transition">
-              불러오기
-            </button>
-          </div>
-          <p className="text-[10px] text-amber-200/70 leading-relaxed">
-            {preset.ratio} · {preset.style} · NCS {preset.ncsQ ?? '—'}문 / 전공 {preset.majorQ ?? '—'}문
-            {preset.totalMin ? ` · 총 ${preset.totalMin}분` : ''}
-          </p>
-          <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">{preset.major}</p>
-          <p className="text-[9px] text-gray-600 mt-1.5">
-            공식 공고가 아니라 별도 조사 자료입니다. 불러온 뒤 공고로 확인하고 메모의 ⚠ 표시를 지우세요.
-          </p>
         </div>
       )}
 
@@ -530,7 +507,7 @@ function TimeRow({ c, row, onOpen }: { c: Company; row: NcsRow; onOpen: () => vo
         ))}
       </div>
       {row.cutoff && <p className="text-[10px] text-red-400/70 mt-1.5">과락 {row.cutoff}</p>}
-      {row.memo && <p className="text-[10px] text-gray-700 mt-0.5">📌 {row.memo}</p>}
+      {row.memo && <p className="text-[10px] text-gray-500 mt-0.5">📌 {row.memo}</p>}
     </button>
   )
 }
