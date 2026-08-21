@@ -103,6 +103,13 @@ export const CERTS: Cert[] = [
     defaultStatus: 'planned',
   },
   {
+    slug: 'gisulsa-kr', href: '/dashboard/gisulsa', emoji: '📐', flag: '🇰🇷',
+    org: '한국산업인력공단', title: '한국 기술사 (전기·전자)',
+    desc: '발송배전 · 건축전기 · 전기응용 · 전기안전 · 토픽 서브노트',
+    meta: '연 3회 · 4교시 논술 · 합산 60%',
+    defaultStatus: 'planned',
+  },
+  {
     slug: 'gosi', href: '/dashboard/exam/gosi', emoji: '🎓', flag: '🇰🇷',
     org: '인사혁신처', title: '기술고시 전기직',
     desc: '2차 논술 3과목', meta: '5급 공채 · 2차 논술 3과목',
