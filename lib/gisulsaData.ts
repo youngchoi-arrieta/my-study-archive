@@ -252,7 +252,8 @@ export function knownPoints(questions: GisulsaQuestion[], topicKey: string): str
 export interface SubnoteRow {
   topic_code: string
   status: number
-  body: string | null
+  /** 서브노트 PDF(구글 드라이브 등). 본문은 앱에서 안 쓴다 — Overleaf 로 쓴다 */
+  pdf_url: string | null
   diagram_ids: string[] | null
   updated_at?: string
 }
@@ -260,14 +261,14 @@ export interface SubnoteRow {
 export async function loadSubnotes(): Promise<Map<string, SubnoteRow>> {
   const { data } = await supabase
     .from('gs_subnotes')
-    .select('topic_code, status, body, diagram_ids, updated_at')
+    .select('topic_code, status, pdf_url, diagram_ids, updated_at')
   const m = new Map<string, SubnoteRow>()
   ;((data as SubnoteRow[]) ?? []).forEach(r => m.set(r.topic_code, r))
   return m
 }
 
 export async function saveSubnote(
-  tag: string, patch: Partial<Pick<SubnoteRow, 'status' | 'body' | 'diagram_ids'>>,
+  tag: string, patch: Partial<Pick<SubnoteRow, 'status' | 'pdf_url' | 'diagram_ids'>>,
 ): Promise<string | null> {
   const { error } = await supabase.from('gs_subnotes').upsert({
     topic_code: tag, ...patch, updated_at: new Date().toISOString(),

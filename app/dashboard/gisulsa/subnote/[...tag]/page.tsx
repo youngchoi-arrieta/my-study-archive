@@ -13,22 +13,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, notFound } from 'next/navigation'
-import DenkenMemoEditor from '@/app/components/DenkenMemoEditor'
+import { QuestionCard } from '@/app/dashboard/gisulsa/_components/QuestionCard'
 import { TOPIC_MAP, GROUP_META, isKoreaOnly, parseTag, tagLabel } from '@/lib/constants-topics'
-import { GISULSA_MAP } from '@/lib/constants-gisulsa'
+import { type GisulsaSlug } from '@/lib/constants-gisulsa'
 import type { GisulsaQuestion } from '@/lib/constants-gisulsa'
 import {
   allSeed, loadDbQuestions, mergeQuestions, loadDenkenRefs,
-  loadSubnotes, saveSubnote, STATUS_META, type DenkenRef,
+  loadSubnotes, saveSubnote, loadPapers, STATUS_META, type DenkenRef,
 } from '@/lib/gisulsaData'
 
-const TEMPLATE = `<h2>0. 정보 흐름</h2><p>무엇을 알면 무엇이 따라 나오는가 — 한 줄 사슬로.</p>
-<h2>1. 원리 (공통)</h2><p></p>
-<h2>2. 도식</h2><ul><li>등가회로</li><li>벡터도</li><li>특성곡선</li></ul>
-<h2>3. 수식 유도</h2><p>시험장에서 손으로 다시 쓸 수 있는 최소 경로만.</p>
-<h2>4. 기술사 출구</h2><p>1교시형 1페이지 / 논술형 3페이지 골격.</p>
-<h2>5. 電験 출구</h2><p>계산 패턴 · 論説 지뢰 · 용어 대응표.</p>
-<h2>6. 오답</h2><p></p>`
+// 구글 드라이브 공유링크를 미리보기용 embed 주소로 바꾼다.
+// (.../file/d/{id}/view  →  .../file/d/{id}/preview)
+function embedUrl(url: string): string | null {
+  const m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/)
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`
+  if (/\.pdf($|\?)/i.test(url)) return url
+  return null
+}
 
 export default function SubnotePage() {
   const params = useParams()
@@ -38,7 +39,9 @@ export default function SubnotePage() {
 
   const [kr, setKr] = useState<GisulsaQuestion[]>([])
   const [jp, setJp] = useState<DenkenRef[]>([])
-  const [body, setBody] = useState('')
+  const [pdf, setPdf] = useState('')
+  const [papers, setPapers] = useState<Map<number, string | null>>(new Map())
+  const [editing, setEditing] = useState(false)
   const [status, setStatus] = useState(0)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState<string | null>(null)
@@ -50,10 +53,21 @@ export default function SubnotePage() {
       loadDbQuestions(), loadDenkenRefs(), loadSubnotes(),
     ])
     const all = mergeQuestions(allSeed(), db)
-    setKr(all.filter(q => q.topics.includes(raw)))
+    const mine = all.filter(q => q.topics.includes(raw))
+    setKr(mine)
+
+    // 이 논점에 걸린 회차의 문제지 PDF 만 가져온다 (그림 문항용 링크)
+    const byJong = new Map<string, number[]>()
+    mine.forEach(q => byJong.set(q.jong, [...(byJong.get(q.jong) ?? []), q.exam]))
+    const pm = new Map<number, string | null>()
+    await Promise.all([...byJong.entries()].map(async ([jong, exams]) => {
+      const got = await loadPapers(jong as GisulsaSlug, [...new Set(exams)])
+      got.forEach((v, k) => pm.set(k, v.questionUrl))
+    }))
+    setPapers(pm)
     setJp(refs.get(parsed.topic) ?? [])
     const n = notes.get(raw)
-    setBody(n?.body ?? '')
+    setPdf(n?.pdf_url ?? '')
     setStatus(n?.status ?? 0)
     setLoading(false)
   }, [topic, raw, parsed.topic])
@@ -63,7 +77,7 @@ export default function SubnotePage() {
 
   const accent = GROUP_META[topic.group].accent
 
-  const persist = async (patch: { body?: string; status?: number }) => {
+  const persist = async (patch: { pdf_url?: string | null; status?: number }) => {
     const err = await saveSubnote(raw, patch)
     setSaved(err ? `저장 실패 — ${err}` : '저장됨')
     setTimeout(() => setSaved(null), 2000)
@@ -99,26 +113,56 @@ export default function SubnotePage() {
                 status === idx ? m.chip : 'bg-gray-900 text-gray-600 hover:text-gray-400'
               }`}>{m.label}</button>
           ))}
-          {!body && (
-            <button onClick={() => { setBody(TEMPLATE); persist({ body: TEMPLATE }) }}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-gray-900 text-gray-400 hover:text-white transition">
-              📄 표준 양식 넣기
-            </button>
-          )}
           {saved && <span className="text-[11px] text-gray-500">{saved}</span>}
         </div>
 
-        {/* 본문 */}
+        {/* 서브노트 PDF — 본문은 Overleaf 로 쓰고 링크만 건다 */}
         <div className="bg-gray-900 rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-xs font-bold text-gray-300">📄 서브노트 PDF</p>
+            {pdf && !editing && (
+              <div className="flex gap-1.5">
+                <a href={pdf} target="_blank" rel="noopener noreferrer"
+                  className="text-[11px] px-2 py-1 rounded-lg bg-blue-900/40 text-blue-300 hover:bg-blue-800/50 transition">
+                  새 탭에서 열기 ↗
+                </a>
+                <button onClick={() => setEditing(true)}
+                  className="text-[11px] px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition">
+                  링크 수정
+                </button>
+              </div>
+            )}
+          </div>
+
           {loading ? (
             <p className="text-gray-600 text-sm">불러오는 중...</p>
+          ) : !pdf || editing ? (
+            <>
+              <div className="flex gap-1.5">
+                <input value={pdf} onChange={e => setPdf(e.target.value)} autoFocus={editing}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { persist({ pdf_url: pdf.trim() || null }); setEditing(false) }
+                    if (e.key === 'Escape') setEditing(false)
+                  }}
+                  placeholder="구글 드라이브 공유 링크를 붙여넣으세요"
+                  className="flex-1 min-w-0 bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-sm outline-none transition placeholder:text-gray-700" />
+                <button onClick={() => { persist({ pdf_url: pdf.trim() || null }); setEditing(false) }}
+                  className="px-4 py-2 rounded-lg text-[12px] font-bold bg-blue-600 hover:bg-blue-500 text-white transition">
+                  저장
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-600 mt-2 leading-relaxed">
+                본문은 Overleaf 에서 쓰고 PDF 만 드라이브에 올린 뒤 링크를 겁니다.
+                드라이브 링크는 <span className="text-gray-500">공유 → 링크가 있는 모든 사용자</span> 로 두면 아래에 바로 미리보기가 뜹니다.
+              </p>
+            </>
+          ) : embedUrl(pdf) ? (
+            <iframe src={embedUrl(pdf)!} className="w-full h-[70vh] rounded-lg bg-gray-950" allow="autoplay" />
           ) : (
-            <DenkenMemoEditor
-              content={body}
-              onChange={setBody}
-              onBlur={() => persist({ body })}
-              placeholder="원리 → 도식 → 유도 → 시험별 출구 순으로. 도식이 없는 서브노트는 미완성으로 친다."
-            />
+            <p className="text-[11px] text-gray-500 leading-relaxed">
+              미리보기를 지원하지 않는 주소입니다. 위 「새 탭에서 열기」로 확인하세요.
+              구글 드라이브라면 <span className="text-gray-400">파일 → 공유 → 링크 복사</span> 로 받은 주소를 쓰면 여기 바로 뜹니다.
+            </p>
           )}
         </div>
 
@@ -129,18 +173,15 @@ export default function SubnotePage() {
             {kr.length === 0 ? (
               <p className="text-[11px] text-gray-600">이 논점으로 태깅된 기술사 문항이 없습니다.</p>
             ) : (
-              <div className="space-y-2">
-                {kr.map(x => (
-                  <div key={`${x.jong}-${x.exam}-${x.session}-${x.no}`} className="flex items-start gap-2.5">
-                    <Link href={`/dashboard/gisulsa/${x.jong}/${x.exam}`}
-                      className="shrink-0 w-24 text-[10px] font-mono text-gray-600 hover:text-blue-300 transition pt-0.5">
-                      {x.exam}회 {x.session}-{x.no}
-                      <span className="block text-gray-700">{x.points}점 · {GISULSA_MAP.get(x.jong)?.short}</span>
-                    </Link>
-                    <p className="text-[12px] text-gray-300 leading-snug min-w-0">{x.title}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                <p className="text-[10px] text-gray-600 mb-2">문항을 누르면 문제 전문이 펼쳐집니다.</p>
+                <div className="space-y-0.5">
+                  {kr.map(x => (
+                    <QuestionCard key={`${x.jong}-${x.exam}-${x.session}-${x.no}`}
+                      q={x} paperUrl={papers.get(x.exam) ?? null} />
+                  ))}
+                </div>
+              </>
             )}
           </div>
 

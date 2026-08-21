@@ -19,6 +19,7 @@ import {
   TOPIC_GROUPS, GROUP_META, isKoreaOnly, type TopicGroup,
 } from '@/lib/constants-topics'
 import { GISULSA_MAP } from '@/lib/constants-gisulsa'
+import { QuestionCard } from '@/app/dashboard/gisulsa/_components/QuestionCard'
 import {
   allSeed, loadDbQuestions, mergeQuestions, loadDenkenRefs,
   loadSubnotes, saveSubnote, buildBoard, STATUS_META,
@@ -300,15 +301,9 @@ export default function SubnoteBoard() {
                               </span>
                             )}
                           </summary>
-                          <div className="space-y-1 mt-2">
+                          <div className="space-y-0.5 mt-2">
                             {r.questions.map(x => (
-                              <div key={`${x.jong}-${x.exam}-${x.session}-${x.no}`} className="flex items-start gap-2.5">
-                                <Link href={`/dashboard/gisulsa/${x.jong}/${x.exam}`}
-                                  className="shrink-0 w-28 text-[10px] font-mono text-gray-600 hover:text-blue-300 transition pt-0.5">
-                                  {x.exam}회 {x.session}-{x.no} · {x.points}점
-                                </Link>
-                                <p className="text-[12px] text-gray-300 leading-snug min-w-0">{x.title}</p>
-                              </div>
+                              <QuestionCard key={`${x.jong}-${x.exam}-${x.session}-${x.no}`} q={x} />
                             ))}
                           </div>
                         </details>

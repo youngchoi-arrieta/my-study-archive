@@ -32,13 +32,17 @@ create index if not exists gs_questions_jong_idx   on gs_questions (jong, exam);
 -- 토픽 하나에 한 장. status 0 미착수 / 1 작성중 / 2 완료.
 -- body 는 TipTap HTML (DenkenMemoEditor 와 같은 포맷).
 -- 서브노트 한 장 = 태그 하나('변압기/병렬운전'). 대주제만 단 태그도 한 장이다.
+-- 본문은 앱에서 쓰지 않는다. Overleaf 로 쓰고 구글 드라이브에 올린 PDF 링크만 건다.
+-- (body 는 초기 버전 호환용으로 남겨두되 화면에서는 안 쓴다)
 create table if not exists gs_subnotes (
   topic_code   text primary key,          -- '변압기/병렬운전', '회로이론' ...
   status       smallint not null default 0,
-  body         text,
+  pdf_url      text,                      -- 구글 드라이브 등 서브노트 PDF
+  body         text,                      -- 레거시
   diagram_ids  uuid[] default '{}',       -- diagram_cards 참조 (도식 슬롯)
   updated_at   timestamptz default now()
 );
+alter table gs_subnotes add column if not exists pdf_url text;
 
 -- ── 3. 덴켄 1·2종 문항에 토픽 코드 달기 ────────────────────────────
 -- 이미 쌓여 있는 topic/keywords 자유 텍스트는 앱이 일본어 단서로 추정 매칭하지만,

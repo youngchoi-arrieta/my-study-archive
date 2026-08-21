@@ -15,7 +15,8 @@ import { useParams, notFound } from 'next/navigation'
 import {
   GISULSA_MAP, SESSION_SPECS, type GisulsaSlug, type GisulsaQuestion,
 } from '@/lib/constants-gisulsa'
-import { TOPICS, TOPIC_GROUPS, GROUP_META, parseTag, tagLabel, tagTopic, makeTag } from '@/lib/constants-topics'
+import { TOPICS, TOPIC_GROUPS, GROUP_META, parseTag, tagTopic, makeTag } from '@/lib/constants-topics'
+import { QuestionCard } from '@/app/dashboard/gisulsa/_components/QuestionCard'
 import {
   seedOf, loadDbQuestions, mergeQuestions, saveQuestion, loadPapers, savePaper, knownPoints,
 } from '@/lib/gisulsaData'
@@ -232,30 +233,12 @@ export default function ExamDetail() {
                   <p className="text-[11px] text-gray-600 px-1 py-2">아직 없습니다.</p>
                 )}
                 {qs.map(q => (
-                  <div key={q.no} className="flex items-start gap-2.5 px-1 py-1.5 rounded-lg hover:bg-gray-950/60 transition">
-                    <span className="shrink-0 w-10 text-[11px] font-mono text-gray-600 pt-0.5">{q.no}번</span>
+                  <div key={q.no} className="flex items-start gap-1">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12.5px] text-gray-200 leading-snug">{q.title}</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {q.topics.map(c => {
-                          const t = tagTopic(c)
-                          const a = t ? GROUP_META[t.group].accent : '#9ca3af'
-                          return (
-                            <Link key={c} href={`/dashboard/gisulsa/subnote/${c.split('/').map(encodeURIComponent).join('/')}`}
-                              className="text-[10px] px-1.5 py-0.5 rounded font-bold transition hover:brightness-125"
-                              style={{ backgroundColor: `${a}35`, color: a }}>
-                              {parseTag(c).topic}
-                              {parseTag(c).point && <span className="opacity-75"> / {tagLabel(c)}</span>}
-                            </Link>
-                          )
-                        })}
-                        {q.topics.length === 0 && (
-                          <span className="text-[10px] text-amber-500/70">태그 미지정</span>
-                        )}
-                      </div>
+                      <QuestionCard q={q} paperUrl={paperUrl} showTags compact />
                     </div>
                     <button onClick={() => editDraft(q)}
-                      className="shrink-0 text-[10px] text-gray-700 hover:text-gray-400 transition pt-0.5">
+                      className="shrink-0 text-[10px] text-gray-700 hover:text-gray-400 transition pt-2.5 pr-1">
                       수정
                     </button>
                   </div>
