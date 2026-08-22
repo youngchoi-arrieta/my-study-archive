@@ -10,18 +10,31 @@ import {
   TB_STATUS_ORDER,
   type TextbookStatus,
 } from '@/lib/constants-textbook'
+import { RatioTab, type ChapterProblem, type ExamTagCount } from './_components/RatioTab'
 
-type ProblemRow = { subject: string; status: TextbookStatus }
+type ProblemRow = { subject: string; chapter: string; status: TextbookStatus }
+type Tab = 'chapters' | 'ratio'
 
 export default function TextbookHub() {
   const router = useRouter()
   const [problems, setProblems] = useState<ProblemRow[]>([])
+  const [examTags, setExamTags] = useState<ExamTagCount | null>(null)
+  const [tab, setTab] = useState<Tab>('chapters')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('textbook_problems').select('subject, status')
+    const [{ data }, { data: tagRows }] = await Promise.all([
+      supabase.from('textbook_problems').select('subject, chapter, status'),
+      // 機械만 기출 태깅이 있다 — 없으면 조용히 넘어간다
+      supabase.from('denken_kikai_answers').select('tag_id').not('tag_id', 'is', null),
+    ])
     setProblems((data || []) as ProblemRow[])
+    if (tagRows && tagRows.length) {
+      const m: ExamTagCount = new Map()
+      ;(tagRows as { tag_id: number }[]).forEach(r => m.set(r.tag_id, (m.get(r.tag_id) ?? 0) + 1))
+      setExamTags(m)
+    } else setExamTags(null)
     setLoading(false)
   }, [])
 
@@ -39,13 +52,23 @@ export default function TextbookHub() {
 
   return (
     <main className="min-h-screen bg-[#050d1a] text-white p-5 md:p-8">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <Link href="/dashboard/denken" className="text-gray-500 hover:text-white text-xs transition">← 電験三種</Link>
         <div className="flex items-center gap-3 mb-1 mt-2">
           <span className="text-2xl">📚</span>
           <h1 className="text-2xl font-bold tracking-tight">N제 교재</h1>
         </div>
         <p className="text-gray-600 text-sm mb-6">기출과 별개 · 교재 문제별 학습 상태 + 핵심 토픽 + 정리 노트</p>
+
+        {/* 탭 */}
+        <div className="flex gap-1.5 mb-5">
+          {([['chapters', '단원'], ['ratio', '비중']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                tab === k ? 'bg-blue-600 text-white' : 'bg-gray-800/70 text-gray-500 hover:text-gray-300'
+              }`}>{label}</button>
+          ))}
+        </div>
 
         {/* 상태 범례 */}
         <div className="flex items-center gap-4 mb-5 text-xs">
@@ -59,6 +82,8 @@ export default function TextbookHub() {
 
         {loading ? (
           <p className="text-gray-600 text-sm">불러오는 중...</p>
+        ) : tab === 'ratio' ? (
+          <RatioTab problems={problems as ChapterProblem[]} examTags={examTags} />
         ) : (
           <div className="space-y-3">
             {TEXTBOOK_SUBJECTS.map(subject => {
