@@ -112,7 +112,7 @@ export default function AchievementsPage() {
             <div className="bg-gray-900/60 rounded-2xl p-4 mb-5 overflow-x-auto">
               <div className="relative flex items-end gap-0 min-w-max pb-1">
                 {/* 가로선 */}
-                <div className="absolute left-0 right-0 h-px bg-gray-800" style={{ bottom: '2.15rem' }} />
+                <div className="absolute left-0 right-0 h-px bg-gray-800" style={{ bottom: '2.6rem' }} />
 
                 {sorted.map((it, i) => {
                   const meta = KIND_META[it.kind] ?? KIND_META.milestone
@@ -120,24 +120,33 @@ export default function AchievementsPage() {
                   const newYear = i === 0 || yearOf(sorted[i - 1].happened_on) !== yearOf(it.happened_on)
                   return (
                     <button key={it.id} onClick={() => setActiveId(it.id)}
-                      className="relative flex flex-col items-center px-3 group shrink-0"
-                      style={{ width: 96 }}>
-                      <span className={`text-[10px] mb-1 truncate max-w-[5.5rem] transition ${
-                        on ? 'text-white font-bold' : 'text-gray-600 group-hover:text-gray-400'
-                      }`}>{it.title}</span>
-                      <span className="text-sm mb-1">{meta.emoji}</span>
+                      className="relative flex flex-col items-center px-2 group shrink-0"
+                      style={{ width: 132 }}>
+                      {/* 이름은 두 줄까지 — 자격증 이름이 길어 한 줄로는 늘 잘렸다 */}
+                      <span className={`text-[11px] leading-tight mb-1.5 h-8 flex items-end text-center transition ${
+                        on ? 'text-white font-bold' : 'text-gray-400 group-hover:text-gray-200'
+                      }`}
+                        style={{
+                          display: '-webkit-box', WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        }}>{it.title}</span>
+                      <span className={`mb-1 transition ${on ? 'text-base' : 'text-sm opacity-70'}`}>{meta.emoji}</span>
                       <span className={`rounded-full transition ${on ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'}`}
                         style={{
                           backgroundColor: meta.accent,
                           boxShadow: on ? `0 0 0 4px ${meta.accent}33` : 'none',
                         }} />
-                      <span className={`text-[10px] mt-1.5 tabular-nums transition ${
-                        on ? 'text-gray-300' : 'text-gray-700'
+                      <span className={`text-[11px] mt-2 tabular-nums transition ${
+                        on ? 'text-white font-bold' : 'text-gray-500 group-hover:text-gray-300'
                       }`}>
-                        {newYear
-                          ? <b className="text-gray-400">{yearOf(it.happened_on)}</b>
-                          : it.happened_on.slice(5).replace('-', '.')}
+                        {it.happened_on.slice(5).replace('-', '.')}
                       </span>
+                      {newYear && (
+                        <span className="text-[10px] font-bold tracking-wider mt-0.5"
+                          style={{ color: on ? meta.accent : '#64748b' }}>
+                          {yearOf(it.happened_on)}
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -149,21 +158,32 @@ export default function AchievementsPage() {
               <div className="bg-gray-900 rounded-2xl p-5 mb-5">
                 <div className="flex items-start justify-between gap-3 mb-4">
                   <div className="min-w-0">
-                    <p className="text-[11px] mb-1" style={{ color: KIND_META[active.kind]?.accent }}>
+                    <p className="text-[12px] mb-1.5 font-medium" style={{ color: KIND_META[active.kind]?.accent }}>
                       {KIND_META[active.kind]?.emoji} {KIND_META[active.kind]?.label}
                       {active.issuer && <span className="text-gray-600"> · {active.issuer}</span>}
                     </p>
-                    <h2 className="text-xl font-bold mb-1">{active.title}</h2>
-                    <p className="text-sm text-gray-400">
+                    <h2 className="text-2xl font-bold mb-1.5 leading-tight">{active.title}</h2>
+                    <p className="text-[15px] text-gray-200 font-medium">
                       {longDate(active.happened_on)}
-                      <span className="text-gray-600"> · 그날로부터 {daysSince(active.happened_on).toLocaleString()}일</span>
+                      <span className="text-gray-500 font-normal text-sm"> · 그날로부터 {daysSince(active.happened_on).toLocaleString()}일</span>
                     </p>
                     {(active.score || active.ref_no) && (
-                      <p className="text-[12px] text-gray-500 mt-1">
-                        {active.score}
-                        {active.score && active.ref_no && ' · '}
-                        {active.ref_no && <span className="font-mono">{active.ref_no}</span>}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {active.score && (
+                          <span className="text-[12px] font-bold px-2 py-1 rounded-lg"
+                            style={{
+                              backgroundColor: `${KIND_META[active.kind]?.accent}22`,
+                              color: KIND_META[active.kind]?.accent,
+                            }}>
+                            {active.score}
+                          </span>
+                        )}
+                        {active.ref_no && (
+                          <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-gray-800 text-gray-400">
+                            {active.ref_no}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-1.5 shrink-0">
