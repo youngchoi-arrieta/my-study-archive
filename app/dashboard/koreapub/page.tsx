@@ -45,9 +45,14 @@ export default function KoreaPubPage() {
   const [bookCount, setBookCount] = useState(0)
   const [coError, setCoError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** 자소서 탭에서 보고 있던 기업 — 탭을 오가거나 저장해도 유지되도록 여기 둔다 */
+  const [essayCid, setEssayCid] = useState('')
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
+  // 첫 로드에만 '불러오는 중'을 띄운다.
+  // 저장 뒤 재조회에서도 loading 을 켜면 탭이 통째로 언마운트됐다 다시 붙으면서
+  // 탭 안의 선택 상태(자소서 기업 드롭다운 등)가 초기화된다.
+  const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     const [{ data: sp }, { data: rb }, { data: mk }, { data: es }, co, { data: dc }, { data: nc }] = await Promise.all([
       supabase.from('kp_specs').select('cert_key, has, value'),
       supabase.from('kp_rubrics').select('company_id, groups, memo'),
@@ -67,6 +72,10 @@ export default function KoreaPubPage() {
     setCoError(co.error ? co.error.message : null)
     setLoading(false)
   }, [])
+
+  /** 저장 뒤 갱신용 — 화면을 내리지 않고 데이터만 새로 받는다 */
+  const refresh = useCallback(() => fetchAll({ silent: true }), [fetchAll])
+
   useEffect(() => { fetchAll() }, [fetchAll])
 
   const spec: SpecMap = useMemo(() => toSpecMap(specs), [specs])
@@ -112,11 +121,14 @@ export default function KoreaPubPage() {
         </div>
 
         {loading && <p className="text-gray-500 text-sm">불러오는 중...</p>}
-        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} docs={docs} ncs={ncs} onSaved={fetchAll} />}
-        {!loading && tab === 'written' && <WrittenTab companies={companies} rows={ncs} onSaved={fetchAll} />}
-        {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={fetchAll} />}
-        {!loading && tab === 'essay' && <EssayTab essays={essays} companies={companies} onSaved={fetchAll} />}
-        {!loading && tab === 'mocks' && <MocksHome mocks={mocks} onSaved={fetchAll} onBookCount={setBookCount} />}
+        {!loading && tab === 'companies' && <CompaniesTab results={results} spec={spec} rubrics={rubrics} coRows={coRows} coError={coError} docs={docs} ncs={ncs} onSaved={refresh} />}
+        {!loading && tab === 'written' && <WrittenTab companies={companies} rows={ncs} onSaved={refresh} />}
+        {!loading && tab === 'spec' && <SpecTab specs={specs} spec={spec} onSaved={refresh} />}
+        {!loading && tab === 'essay' && (
+          <EssayTab essays={essays} companies={companies}
+            cid={essayCid} setCid={setEssayCid} onSaved={refresh} />
+        )}
+        {!loading && tab === 'mocks' && <MocksHome mocks={mocks} onSaved={refresh} onBookCount={setBookCount} />}
       </div>
     </main>
   )
@@ -972,30 +984,40 @@ function SpecTab({ specs, spec, onSaved }: { specs: SpecRow[]; spec: SpecMap; on
 // ═══════════════════════════════════════════════════════════════
 //  자기소개서
 // ═══════════════════════════════════════════════════════════════
-function EssayTab({ essays, companies, onSaved }: { essays: EssayRow[]; companies: Company[]; onSaved: () => void }) {
-  const [cid, setCid] = useState(companies[0]?.id ?? '')
-  const rows = essays.filter(e => e.company_id === cid)
-  const c = companies.find(x => x.id === cid)
+function EssayTab({ essays, companies, cid, setCid, onSaved }: {
+  essays: EssayRow[]; companies: Company[]
+  cid: string; setCid: (v: string) => void
+  onSaved: () => void
+}) {
+  // 아직 고른 적이 없거나 고른 기업이 목록에서 사라졌을 때만 첫 기업으로 맞춘다
+  const valid = companies.some(x => x.id === cid)
+  useEffect(() => {
+    if (!valid && companies[0]) setCid(companies[0].id)
+  }, [valid, companies, setCid])
+
+  const active = valid ? cid : (companies[0]?.id ?? '')
+  const rows = essays.filter(e => e.company_id === active)
+  const c = companies.find(x => x.id === active)
   if (!c) return <p className="text-gray-600 text-sm text-center py-10">기업을 먼저 추가하세요.</p>
 
   const seed = async () => {
     const prompts = c.essayPrompts ?? []
     if (!prompts.length) return
     await supabase.from('kp_essays').insert(prompts.map((p, i) => ({
-      company_id: cid, idx: i + 1, prompt: p, min_chars: 500, max_chars: 1000,
+      company_id: active, idx: i + 1, prompt: p, min_chars: 500, max_chars: 1000,
     })))
     onSaved()
   }
   const addBlank = async () => {
     await supabase.from('kp_essays').insert({
-      company_id: cid, idx: rows.length + 1, prompt: '', min_chars: 500, max_chars: 1000,
+      company_id: active, idx: rows.length + 1, prompt: '', min_chars: 500, max_chars: 1000,
     })
     onSaved()
   }
 
   return (
     <div>
-      <select value={cid} onChange={e => setCid(e.target.value)}
+      <select value={active} onChange={e => setCid(e.target.value)}
         className="w-full bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-xl px-3 py-2.5 text-sm outline-none transition mb-4">
         {companies.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
       </select>
