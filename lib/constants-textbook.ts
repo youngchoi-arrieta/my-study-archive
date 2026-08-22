@@ -57,6 +57,26 @@ const HOKI_CHAPTERS: TextbookChapter[] = [
   { slug: 'facility',     name: '전기시설관리',              start: 70, end: 103, accent: '#0369a1' },
 ]
 
+// ── 電力 단원 ──────────────────────────────────────────────────
+// 電力은 「발전 → 송변전 → 배전 → 재료」로 설비를 따라 내려간 뒤,
+// 뒤쪽에 계산 단원이 몰려 있는 구성이다.
+// 전력계산(141~168)이 28문제로 가장 크고, 그 뒤 선로계산·이도가 붙는다.
+// 앞쪽 발전 단원은 논설·암기 성격이라 성격이 완전히 다르니 따로 본다.
+const DENRYOKU_CHAPTERS: TextbookChapter[] = [
+  { slug: 'hydro',      name: '수력발전',        start: 1,   end: 12,  accent: '#0369a1' },
+  { slug: 'thermal',    name: '화력발전',        start: 13,  end: 42,  accent: '#b91c1c' },
+  { slug: 'nuclear',    name: '원자력발전',      start: 43,  end: 56,  accent: '#7c3aed' },
+  { slug: 'other-gen',  name: '그 외의 발전',    start: 57,  end: 68,  accent: '#047857' },
+  { slug: 'substation', name: '변전소',          start: 69,  end: 89,  accent: '#0e7490' },
+  { slug: 'transmission', name: '송전',          start: 90,  end: 101, accent: '#1d4ed8' },
+  { slug: 'distribution', name: '배전',          start: 102, end: 117, accent: '#0d9488' },
+  { slug: 'underground',  name: '지중전선로',    start: 118, end: 125, accent: '#4338ca' },
+  { slug: 'materials',    name: '전기재료',      start: 126, end: 140, accent: '#a16207' },
+  { slug: 'power-calc',   name: '전력계산',      start: 141, end: 168, accent: '#be123c' },
+  { slug: 'line-calc',    name: '선로계산',      start: 169, end: 172, accent: '#c2410c' },
+  { slug: 'sag-stay',     name: '전선 이도와 지선', start: 173, end: 175, accent: '#4d7c0f' },
+]
+
 export const TEXTBOOK_SUBJECTS: TextbookSubject[] = [
   {
     slug: 'kikai',
@@ -74,7 +94,15 @@ export const TEXTBOOK_SUBJECTS: TextbookSubject[] = [
     accent: '#b45309',
     chapters: HOKI_CHAPTERS,
   },
-  // 추후: 理論 / 電力 동일 패턴으로 추가
+  {
+    slug: 'denryoku',
+    name: '電力',
+    emoji: '⚡',
+    desc: '수력·화력·원자력·그외 발전 · 변전소·송전·배전·지중전선로 · 전기재료 · 전력계산·선로계산·이도와 지선',
+    accent: '#1d4ed8',
+    chapters: DENRYOKU_CHAPTERS,
+  },
+  // 추후: 理論 동일 패턴으로 추가
 ]
 
 export const TB_SUBJECT_MAP = new Map<string, TextbookSubject>(
