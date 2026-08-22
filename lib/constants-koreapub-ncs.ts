@@ -79,9 +79,12 @@ export interface NcsRow {
   ncs_q: number | null
   ncs_min: number | null
   /**
-   * 배점. 문항수 비율과 다른 경우가 흔하다 —
-   * 한전KPS 는 NCS 50문·전공 50문(1:1)인데 배점은 100점·50점(2:1)이다.
-   * 문항수만 보고 시간을 배분하면 손해를 본다.
+   * 필기 반영비율. 공고에 적힌 숫자를 그대로 넣는다 —
+   * 40/60 처럼 %로 넣어도 되고 100/50 처럼 배점으로 넣어도 된다.
+   * 어차피 합계로 나눠 비율을 내므로 단위는 상관없다.
+   *
+   * 문항수 비율과 어긋나는 경우가 흔하다. 한전KPS 는 NCS 50문·전공 50문(1:1)인데
+   * 반영은 100:50(2:1)이다. 문항수만 보고 시간을 반씩 쓰면 손해다.
    */
   ncs_score: number | null
   /** 전공 (직무수행능력) — 이것도 이름이 제각각이다 */
@@ -192,8 +195,8 @@ export function totalMinutes(row: NcsRow | undefined): number | null {
   return sumOrNull(row.ncs_min, row.major_min, ...row.extras.map(e => e.min))
 }
 
-// ── 배점 ────────────────────────────────────────────────────────
-// 문항수 비율과 배점 비율이 어긋나는 기업이 있다.
+// ── 반영비율 ────────────────────────────────────────────────────
+// 문항수 비율과 반영비율이 어긋나는 기업이 있다.
 // 한전KPS 는 NCS 50문·전공 50문(문항수 1:1)인데 배점은 100점:50점(2:1)이다.
 // 이럴 때 시간과 노력은 문항수가 아니라 배점을 따라가야 한다.
 
@@ -201,9 +204,9 @@ export interface SubjectWeight {
   label: string
   q: number | null
   score: number | null
-  /** 문항 하나가 몇 점인가 */
+  /** 문항 하나가 몇 점인가 (반영비율을 점수로 볼 때) */
   perQ: number | null
-  /** 전체 배점에서 차지하는 비율(%) */
+  /** 필기 전체에서 이 과목이 차지하는 반영비율(%) */
   sharePct: number | null
   /** 전체 문항수에서 차지하는 비율(%) — sharePct 와 벌어지면 그게 신호다 */
   qPct: number | null
@@ -233,7 +236,7 @@ export function subjectWeights(row: NcsRow | undefined): SubjectWeight[] {
 }
 
 /**
- * 문항수 비율과 배점 비율이 갈리는가.
+ * 문항수 비율과 반영비율이 갈리는가.
  * 갈리면 시험장에서 시간을 어디에 쓸지가 바뀌므로 화면에서 눈에 띄게 알린다.
  * 기준은 5%포인트.
  */

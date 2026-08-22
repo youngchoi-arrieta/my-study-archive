@@ -8,7 +8,7 @@ import {
   emptyNcsRow, isOn, pickedAreas, areaFrequency,
   ncsQuestions, totalQuestions, totalMinutes, secondsPerQuestion, paceTone,
   ncsLabel, majorLabel, NCS_LABEL_DEFAULT, MAJOR_LABEL_DEFAULT,
-  totalScore, subjectWeights, weightDiverges,
+  subjectWeights, weightDiverges,
 } from '@/lib/constants-koreapub-ncs'
 import { presetFor, applyPreset as presetToRow, isUnverified } from '@/lib/constants-koreapub-presets'
 
@@ -283,6 +283,7 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
   }
 
   const weights = subjectWeights(d)
+  const ratioSum = (d.ncs_score ?? 0) + (d.major_score ?? 0) + d.extras.reduce((a, e) => a + (e.score ?? 0), 0)
   const inp = 'w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs text-center outline-none transition tabular-nums'
   const lab = 'text-[11px] text-gray-400 mb-1.5 block font-medium'
 
@@ -342,7 +343,7 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
       {/* 과목 이름은 기업마다 다르다 — 한전은 「직무능력검사」, 코레일은
           「직업기초능력평가」. 그래서 이름 칸도 전부 고칠 수 있게 열어둔다. */}
       <p className={lab}>
-        과목별 <span className="text-gray-500">이름 · 문항 · 분 · 배점</span>
+        과목별 <span className="text-gray-500">이름 · 문항 · 분 · 반영비율</span>
       </p>
       <div className="space-y-2 mb-2">
         <PartRow color="#60a5fa"
@@ -369,6 +370,12 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
             onRemove={() => set({ extras: d.extras.filter((_, k) => k !== i) })} />
         ))}
       </div>
+      <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+        반영비율은 공고에 적힌 대로 넣으세요 — <span className="text-gray-400">40 / 60</span> 처럼 %로 넣어도 되고,
+        <span className="text-gray-400"> 100 / 50</span> 처럼 배점 그대로 넣어도 알아서 비율로 환산합니다.
+        {ratioSum > 0 && <span className="text-gray-400"> (지금 합계 {ratioSum})</span>}
+      </p>
+
       <button onClick={() => set({ extras: [...d.extras, { label: '', q: null, min: null, score: null }] })}
         className="text-[11px] bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-3 py-1.5 mb-4 transition">
         + 과목 추가
@@ -408,7 +415,7 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
         <div className="flex items-baseline justify-between mb-1">
           <span className="text-[11px] text-gray-400">
             {totalQuestions(d) ?? '—'}문항 · {totalMinutes(d) ?? '—'}분
-            {totalScore(d) && <span className="text-gray-600"> · {totalScore(d)}점</span>}
+
           </span>
           <span className={`text-sm font-bold tabular-nums ${paceTone(secondsPerQuestion(d))}`}>
             {secondsPerQuestion(d) ? `${secondsPerQuestion(d)}초 / 문항` : '—'}
@@ -424,10 +431,12 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
                   문항 {w.qPct !== null ? `${w.qPct}%` : '—'}
                 </span>
                 <span className="w-24 shrink-0 tabular-nums text-blue-300">
-                  배점 {w.sharePct !== null ? `${w.sharePct}%` : '—'}
+                  반영 {w.sharePct !== null ? `${w.sharePct}%` : '—'}
                 </span>
                 <span className="tabular-nums text-gray-500">
-                  {w.perQ !== null ? `${w.perQ}점/문항` : ''}
+                  {w.qPct !== null && w.sharePct !== null && w.qPct > 0
+                    ? `문항 하나의 값 ×${Math.round((w.sharePct / w.qPct) * 100) / 100}`
+                    : ''}
                 </span>
               </div>
             ))}
@@ -436,8 +445,8 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
 
         {weightDiverges(d) && (
           <p className="text-[11px] text-amber-300 mt-2 leading-relaxed">
-            ⚠ 문항수 비율과 배점 비율이 다릅니다. 시간 배분은 문항수가 아니라
-            배점을 따라가는 게 유리합니다.
+            ⚠ 문항수 비율과 반영비율이 다릅니다. 시간 배분은 문항수가 아니라
+            반영비율을 따라가는 게 유리합니다.
           </p>
         )}
       </div>
@@ -483,7 +492,7 @@ function PartRow({
         value={q ?? ''} onChange={e => onQ(e.target.value)} />
       <input inputMode="numeric" placeholder="분" className={`${inp} w-16`}
         value={min ?? ''} onChange={e => onMin(e.target.value)} />
-      <input inputMode="numeric" placeholder="배점" className={`${inp} w-16`}
+      <input inputMode="numeric" placeholder="비율" className={`${inp} w-16`}
         value={score ?? ''} onChange={e => onScore(e.target.value)} />
       {onRemove ? (
         <button onClick={onRemove} title="이 과목 지우기"
@@ -516,7 +525,7 @@ function TimeRow({ c, row, onOpen }: { c: Company; row: NcsRow; onOpen: () => vo
           <p className="text-sm font-bold truncate">
             {c.short || c.name}
             {row.combined && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 font-bold">통합 교시</span>}
-            {weightDiverges(row) && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 font-bold" title="문항수 비율과 배점 비율이 다릅니다">배점≠문항</span>}
+            {weightDiverges(row) && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 font-bold" title="문항수 비율과 반영비율이 다릅니다">비율≠문항</span>}
             {isUnverified(row) && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 font-bold" title="참고 프리셋 값입니다. 공고로 확인한 뒤 메모의 ⚠ 표시를 지우세요">⚠ 미확인</span>}
           </p>
           <p className="text-[10px] text-gray-600 mt-0.5">

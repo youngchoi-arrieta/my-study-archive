@@ -32,7 +32,7 @@ export interface WrittenPreset {
   ncsLabel?: string
   ncsQ: number | null
   ncsMin: number | null
-  /** 배점 — 문항수와 다를 때만 넣는다 */
+  /** 반영비율 — 문항수 비율과 다를 때만 넣는다 */
   ncsScore?: number | null
   majorLabel?: string
   majorQ: number | null
@@ -53,7 +53,7 @@ export const WRITTEN_PRESETS: WrittenPreset[] = [
   {
     id: 'kesco', name: '한국전기안전공사',
     areas: ['comm', 'math', 'solve', 'resource', 'info', 'org'],
-    ncsQ: 50, ncsMin: 60, majorQ: 50, majorMin: 60,
+    ncsQ: 50, ncsMin: 60, ncsScore: 50, majorQ: 50, majorMin: 60, majorScore: 50,
     ratio: '50 : 50', style: '모듈형~피듈형',
     major: '전기기사 5과목 + 전기사업법·전기안전관리법 등 관련 법규 출제',
   },
@@ -68,14 +68,14 @@ export const WRITTEN_PRESETS: WrittenPreset[] = [
   {
     id: 'kepco', name: '한국전력공사',
     areas: ['comm', 'math', 'solve', 'resource', 'info'],
-    ncsQ: 40, ncsMin: null, majorQ: 15, majorMin: null, totalMin: 70, combined: true,
+    ncsQ: 40, ncsMin: null, ncsScore: 40, majorQ: 15, majorMin: null, majorScore: 60, totalMin: 70, combined: true,
     ratio: '40 : 60', style: 'PSAT형~피듈형',
     major: '전기기사 5과목. 감점제(-0.2~0.25점) 적용으로 전략적 풀이 필요',
   },
   {
     id: 'khnp', aliases: ['한국수력원자력', '한수원'], name: '한국수력원자력',
     areas: ['comm', 'math', 'solve', 'resource', 'org'],
-    ncsQ: 50, ncsMin: null, majorQ: 30, majorMin: null, totalMin: 90, combined: true,
+    ncsQ: 50, ncsMin: null, ncsScore: 30, majorQ: 30, majorMin: null, majorScore: 70, totalMin: 90, combined: true,
     ratio: '30 : 70', style: 'PSAT형',
     major: '전기기사 범위 + 회사상식 및 한국사 일부 포함',
   },
@@ -83,7 +83,7 @@ export const WRITTEN_PRESETS: WrittenPreset[] = [
     id: 'komipo', aliases: ['발전5사', '남동발전', '남부발전', '동서발전', '서부발전', '중부발전'],
     name: '발전 5사 (남동·남부·동서·서부·중부)',
     areas: ['comm', 'math', 'solve', 'resource', 'tech', 'info'],
-    ncsQ: 30, ncsMin: null, majorQ: 50, majorMin: null, totalMin: 85, combined: true,
+    ncsQ: 30, ncsMin: null, ncsScore: 25, majorQ: 50, majorMin: null, majorScore: 75, totalMin: 85, combined: true,
     ratio: '20~30 : 70~80', style: '피듈형~PSAT형',
     major: '전기기사 5과목 + 제어공학·전기응용 일부 추가. 전공 배점 높음. 회차별로 70~80문항 / 80~90분 사이에서 조정됨',
   },
@@ -104,7 +104,7 @@ export const WRITTEN_PRESETS: WrittenPreset[] = [
   {
     id: 'kogas', aliases: ['한국가스공사', '가스공사'], name: '한국가스공사',
     areas: ['comm', 'math', 'solve', 'info', 'tech'],
-    ncsQ: 16, ncsMin: null, majorQ: 64, majorMin: null, totalMin: 90, combined: true,
+    ncsQ: 16, ncsMin: null, ncsScore: 20, majorQ: 64, majorMin: null, majorScore: 80, totalMin: 90, combined: true,
     ratio: '20 : 80', style: '피듈형',
     major: '전공 비중 및 계산 난이도가 매우 높음 (전기기사 + 전기응용)',
   },
