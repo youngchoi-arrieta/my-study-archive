@@ -4,10 +4,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Company } from '@/lib/constants-koreapub'
 import {
-  NcsAreaKey, NcsRow, NCS_AREAS, ALL_AREA_KEYS,
+  NcsAreaKey, NcsRow, ExtraSubject, NCS_AREAS, ALL_AREA_KEYS,
   emptyNcsRow, isOn, pickedAreas, areaFrequency,
   ncsQuestions, totalQuestions, totalMinutes, secondsPerQuestion, paceTone,
   ncsLabel, majorLabel, NCS_LABEL_DEFAULT, MAJOR_LABEL_DEFAULT,
+  totalScore, subjectWeights, weightDiverges,
 } from '@/lib/constants-koreapub-ncs'
 import { presetFor, applyPreset as presetToRow, isUnverified } from '@/lib/constants-koreapub-presets'
 
@@ -271,7 +272,7 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
     else areas[k] = { on: true, q: null }
     return { ...x, areas }
   })
-  const setExtra = (i: number, patch: Partial<{ label: string; q: number | null; min: number | null }>) =>
+  const setExtra = (i: number, patch: Partial<ExtraSubject>) =>
     setD(x => ({ ...x, extras: x.extras.map((e, k) => k === i ? { ...e, ...patch } : e) }))
 
   const save = async () => {
@@ -281,6 +282,7 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
     onSaved()
   }
 
+  const weights = subjectWeights(d)
   const inp = 'w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs text-center outline-none transition tabular-nums'
   const lab = 'text-[11px] text-gray-400 mb-1.5 block font-medium'
 
@@ -339,30 +341,35 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
       {/* 과목별 문항 · 시간 */}
       {/* 과목 이름은 기업마다 다르다 — 한전은 「직무능력검사」, 코레일은
           「직업기초능력평가」. 그래서 이름 칸도 전부 고칠 수 있게 열어둔다. */}
-      <p className={lab}>과목별 문항수 · 시간(분) <span className="text-gray-500">이름도 고칠 수 있습니다</span></p>
+      <p className={lab}>
+        과목별 <span className="text-gray-500">이름 · 문항 · 분 · 배점</span>
+      </p>
       <div className="space-y-2 mb-2">
         <PartRow color="#60a5fa"
           label={d.ncs_label ?? ''} labelPlaceholder={NCS_LABEL_DEFAULT}
           onLabel={v => set({ ncs_label: v || null })}
-          q={d.ncs_q} min={d.ncs_min}
+          q={d.ncs_q} min={d.ncs_min} score={d.ncs_score}
           qPlaceholder={ncsQuestions(d) !== null && d.ncs_q === null ? String(ncsQuestions(d)) : '—'}
-          onQ={v => set({ ncs_q: num(v) })} onMin={v => set({ ncs_min: num(v) })} />
+          onQ={v => set({ ncs_q: num(v) })} onMin={v => set({ ncs_min: num(v) })}
+          onScore={v => set({ ncs_score: num(v) })} />
         <PartRow color="#34d399"
           label={d.major_label ?? ''} labelPlaceholder={MAJOR_LABEL_DEFAULT}
           onLabel={v => set({ major_label: v || null })}
-          q={d.major_q} min={d.major_min}
-          onQ={v => set({ major_q: num(v) })} onMin={v => set({ major_min: num(v) })} />
+          q={d.major_q} min={d.major_min} score={d.major_score}
+          onQ={v => set({ major_q: num(v) })} onMin={v => set({ major_min: num(v) })}
+          onScore={v => set({ major_score: num(v) })} />
 
         {d.extras.map((ex, i) => (
           <PartRow key={i} color="#fbbf24"
             label={ex.label} labelPlaceholder="추가 과목 (예: 한국사, 철도관련법령)"
             onLabel={v => setExtra(i, { label: v })}
-            q={ex.q} min={ex.min}
+            q={ex.q} min={ex.min} score={ex.score}
             onQ={v => setExtra(i, { q: num(v) })} onMin={v => setExtra(i, { min: num(v) })}
+            onScore={v => setExtra(i, { score: num(v) })}
             onRemove={() => set({ extras: d.extras.filter((_, k) => k !== i) })} />
         ))}
       </div>
-      <button onClick={() => set({ extras: [...d.extras, { label: '', q: null, min: null }] })}
+      <button onClick={() => set({ extras: [...d.extras, { label: '', q: null, min: null, score: null }] })}
         className="text-[11px] bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-3 py-1.5 mb-4 transition">
         + 과목 추가
       </button>
@@ -394,14 +401,45 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
         onChange={e => set({ memo: e.target.value || null })}
         className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs outline-none transition placeholder:text-gray-700 mb-4" />
 
-      {/* 미리보기 */}
-      <div className="bg-gray-950 rounded-xl p-3 mb-4 flex items-baseline justify-between">
-        <span className="text-[10px] text-gray-600">
-          {totalQuestions(d) ?? '—'}문항 · {totalMinutes(d) ?? '—'}분
-        </span>
-        <span className={`text-sm font-bold tabular-nums ${paceTone(secondsPerQuestion(d))}`}>
-          {secondsPerQuestion(d) ? `${secondsPerQuestion(d)}초 / 문항` : '—'}
-        </span>
+      {/* 미리보기 — 문항수 비율과 배점 비율을 나란히 둔다.
+          둘이 갈리면(예: 한전KPS 문항 1:1 / 배점 2:1) 시간을 어디에 쓸지가
+          달라지므로 경고를 띄운다. */}
+      <div className="bg-gray-950 rounded-xl p-3 mb-4">
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="text-[11px] text-gray-400">
+            {totalQuestions(d) ?? '—'}문항 · {totalMinutes(d) ?? '—'}분
+            {totalScore(d) && <span className="text-gray-600"> · {totalScore(d)}점</span>}
+          </span>
+          <span className={`text-sm font-bold tabular-nums ${paceTone(secondsPerQuestion(d))}`}>
+            {secondsPerQuestion(d) ? `${secondsPerQuestion(d)}초 / 문항` : '—'}
+          </span>
+        </div>
+
+        {weights.length > 0 && (
+          <div className="space-y-1 mt-2 pt-2 border-t border-gray-900">
+            {weights.map((w, i) => (
+              <div key={i} className="flex items-center gap-2 text-[11px]">
+                <span className="w-28 shrink-0 truncate text-gray-400">{w.label}</span>
+                <span className="w-24 shrink-0 tabular-nums text-gray-600">
+                  문항 {w.qPct !== null ? `${w.qPct}%` : '—'}
+                </span>
+                <span className="w-24 shrink-0 tabular-nums text-blue-300">
+                  배점 {w.sharePct !== null ? `${w.sharePct}%` : '—'}
+                </span>
+                <span className="tabular-nums text-gray-500">
+                  {w.perQ !== null ? `${w.perQ}점/문항` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {weightDiverges(d) && (
+          <p className="text-[11px] text-amber-300 mt-2 leading-relaxed">
+            ⚠ 문항수 비율과 배점 비율이 다릅니다. 시간 배분은 문항수가 아니라
+            배점을 따라가는 게 유리합니다.
+          </p>
+        )}
       </div>
 
       <button onClick={save} disabled={saving}
@@ -413,7 +451,7 @@ function CompanyPanel({ c, row, others, onWrite, onCopy, onClose, onSaved }: {
 }
 
 function PartRow({
-  label, labelPlaceholder, onLabel, color, q, min, qPlaceholder, onQ, onMin, onRemove,
+  label, labelPlaceholder, onLabel, color, q, min, score, qPlaceholder, onQ, onMin, onScore, onRemove,
 }: {
   label: string
   labelPlaceholder?: string
@@ -421,14 +459,16 @@ function PartRow({
   color: string
   q: number | null
   min: number | null
+  score: number | null
   qPlaceholder?: string
   onQ: (v: string) => void
   onMin: (v: string) => void
+  onScore: (v: string) => void
   onRemove?: () => void
 }) {
   const inp = 'bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-2 py-1.5 text-xs outline-none transition placeholder:text-gray-700 w-full'
   return (
-    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+    <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center">
       <div className="flex items-center gap-1.5 min-w-0">
         <i className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
         {onLabel ? (
@@ -443,6 +483,8 @@ function PartRow({
         value={q ?? ''} onChange={e => onQ(e.target.value)} />
       <input inputMode="numeric" placeholder="분" className={`${inp} w-16`}
         value={min ?? ''} onChange={e => onMin(e.target.value)} />
+      <input inputMode="numeric" placeholder="배점" className={`${inp} w-16`}
+        value={score ?? ''} onChange={e => onScore(e.target.value)} />
       {onRemove ? (
         <button onClick={onRemove} title="이 과목 지우기"
           className="w-6 h-6 rounded-md text-[11px] text-gray-700 hover:text-red-400 hover:bg-gray-800 transition">×</button>
@@ -474,6 +516,7 @@ function TimeRow({ c, row, onOpen }: { c: Company; row: NcsRow; onOpen: () => vo
           <p className="text-sm font-bold truncate">
             {c.short || c.name}
             {row.combined && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 font-bold">통합 교시</span>}
+            {weightDiverges(row) && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300 font-bold" title="문항수 비율과 배점 비율이 다릅니다">배점≠문항</span>}
             {isUnverified(row) && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 font-bold" title="참고 프리셋 값입니다. 공고로 확인한 뒤 메모의 ⚠ 표시를 지우세요">⚠ 미확인</span>}
           </p>
           <p className="text-[10px] text-gray-600 mt-0.5">

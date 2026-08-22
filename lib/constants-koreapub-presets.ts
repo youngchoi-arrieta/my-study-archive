@@ -32,10 +32,13 @@ export interface WrittenPreset {
   ncsLabel?: string
   ncsQ: number | null
   ncsMin: number | null
+  /** 배점 — 문항수와 다를 때만 넣는다 */
+  ncsScore?: number | null
   majorLabel?: string
   majorQ: number | null
   majorMin: number | null
-  extras?: { label: string; q: number | null; min: number | null }[]
+  majorScore?: number | null
+  extras?: { label: string; q: number | null; min: number | null; score: number | null }[]
   totalMin?: number | null
   combined?: boolean
   /** NCS : 전공 배점 비율 */
@@ -57,7 +60,8 @@ export const WRITTEN_PRESETS: WrittenPreset[] = [
   {
     id: 'kps', name: '한전KPS',
     areas: ['comm', 'math', 'solve', 'resource', 'info'],
-    ncsQ: 50, ncsMin: 50, majorQ: 50, majorMin: 50,
+    ncsQ: 50, ncsMin: 50, ncsScore: 100,
+    majorQ: 50, majorMin: 50, majorScore: 50,
     ratio: '66.7 : 33.3 (NCS 100점 : 전공 50점)', style: '피듈형',
     major: '전기기사 5과목 중심. NCS 배점 비중이 전공의 2배로 매우 높음',
   },
@@ -132,9 +136,9 @@ export function applyPreset(companyId: string, p: WrittenPreset, base?: NcsRow):
     ...row,
     areas: Object.fromEntries(p.areas.map(k => [k, { on: true, q: null }])),
     ncs_label: p.ncsLabel ?? row.ncs_label,
-    ncs_q: p.ncsQ, ncs_min: p.ncsMin,
+    ncs_q: p.ncsQ, ncs_min: p.ncsMin, ncs_score: p.ncsScore ?? null,
     major_label: p.majorLabel ?? row.major_label,
-    major_q: p.majorQ, major_min: p.majorMin,
+    major_q: p.majorQ, major_min: p.majorMin, major_score: p.majorScore ?? null,
     extras: p.extras ?? [],
     combined: p.combined ?? false,
     total_min: p.totalMin ?? null,

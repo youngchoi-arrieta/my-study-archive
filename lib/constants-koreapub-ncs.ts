@@ -67,6 +67,8 @@ export interface ExtraSubject {
   label: string
   q: number | null
   min: number | null
+  /** 배점 — 문항수 비율과 다른 경우가 흔하다 */
+  score: number | null
 }
 
 export interface NcsRow {
@@ -76,10 +78,17 @@ export interface NcsRow {
   ncs_label: string | null
   ncs_q: number | null
   ncs_min: number | null
+  /**
+   * 배점. 문항수 비율과 다른 경우가 흔하다 —
+   * 한전KPS 는 NCS 50문·전공 50문(1:1)인데 배점은 100점·50점(2:1)이다.
+   * 문항수만 보고 시간을 배분하면 손해를 본다.
+   */
+  ncs_score: number | null
   /** 전공 (직무수행능력) — 이것도 이름이 제각각이다 */
   major_label: string | null
   major_q: number | null
   major_min: number | null
+  major_score: number | null
   /** 추가 과목 — 한국사·회사상식·철도법령처럼. 개수 제한 없음 */
   extras: ExtraSubject[]
   /** @deprecated extras 로 옮겨감. 예전 데이터를 읽기 위해서만 남겨둔다 */
@@ -96,8 +105,8 @@ export interface NcsRow {
 
 export const emptyNcsRow = (company_id: string): NcsRow => ({
   company_id, areas: {},
-  ncs_label: null, ncs_q: null, ncs_min: null,
-  major_label: null, major_q: null, major_min: null,
+  ncs_label: null, ncs_q: null, ncs_min: null, ncs_score: null,
+  major_label: null, major_q: null, major_min: null, major_score: null,
   extras: [],
   extra_label: null, extra_q: null, extra_min: null,
   combined: false, total_min: null, cutoff: null, memo: null,
@@ -113,12 +122,13 @@ function normalizeExtras(v: unknown): ExtraSubject[] {
   if (!Array.isArray(v)) return []
   return v.flatMap(raw => {
     if (!raw || typeof raw !== 'object') return []
-    const o = raw as { label?: unknown; q?: unknown; min?: unknown }
+    const o = raw as { label?: unknown; q?: unknown; min?: unknown; score?: unknown }
     const label = typeof o.label === 'string' ? o.label : ''
     const q = typeof o.q === 'number' && o.q > 0 ? o.q : null
     const min = typeof o.min === 'number' && o.min > 0 ? o.min : null
-    if (!label && q === null && min === null) return []
-    return [{ label, q, min }]
+    const score = typeof o.score === 'number' && o.score > 0 ? o.score : null
+    if (!label && q === null && min === null && score === null) return []
+    return [{ label, q, min, score }]
   })
 }
 
@@ -145,7 +155,7 @@ export const normalizeNcsRow = (r: Partial<NcsRow> & { company_id: string }): Nc
   const extras = normalizeExtras(r.extras)
   // 예전 단일 extra_* 칸에만 값이 있는 행은 배열 첫 칸으로 옮겨 읽는다
   if (extras.length === 0 && (r.extra_label || r.extra_q || r.extra_min)) {
-    extras.push({ label: r.extra_label ?? '', q: r.extra_q ?? null, min: r.extra_min ?? null })
+    extras.push({ label: r.extra_label ?? '', q: r.extra_q ?? null, min: r.extra_min ?? null, score: null })
   }
   return { ...emptyNcsRow(r.company_id), ...r, extras, areas: normalizeAreas(r.areas) }
 }
@@ -180,6 +190,57 @@ export function totalMinutes(row: NcsRow | undefined): number | null {
   if (!row) return null
   if (row.total_min && row.total_min > 0) return row.total_min
   return sumOrNull(row.ncs_min, row.major_min, ...row.extras.map(e => e.min))
+}
+
+// ── 배점 ────────────────────────────────────────────────────────
+// 문항수 비율과 배점 비율이 어긋나는 기업이 있다.
+// 한전KPS 는 NCS 50문·전공 50문(문항수 1:1)인데 배점은 100점:50점(2:1)이다.
+// 이럴 때 시간과 노력은 문항수가 아니라 배점을 따라가야 한다.
+
+export interface SubjectWeight {
+  label: string
+  q: number | null
+  score: number | null
+  /** 문항 하나가 몇 점인가 */
+  perQ: number | null
+  /** 전체 배점에서 차지하는 비율(%) */
+  sharePct: number | null
+  /** 전체 문항수에서 차지하는 비율(%) — sharePct 와 벌어지면 그게 신호다 */
+  qPct: number | null
+}
+
+export const totalScore = (row: NcsRow | undefined) =>
+  row ? sumOrNull(row.ncs_score, row.major_score, ...row.extras.map(e => e.score)) : null
+
+export function subjectWeights(row: NcsRow | undefined): SubjectWeight[] {
+  if (!row) return []
+  const list: SubjectWeight[] = [
+    { label: ncsLabel(row), q: ncsQuestions(row), score: row.ncs_score, perQ: null, sharePct: null, qPct: null },
+    { label: majorLabel(row), q: row.major_q, score: row.major_score, perQ: null, sharePct: null, qPct: null },
+    ...row.extras.filter(e => e.label || e.q || e.score).map(e => ({
+      label: e.label || '기타', q: e.q, score: e.score, perQ: null, sharePct: null, qPct: null,
+    })),
+  ].filter(x => x.q !== null || x.score !== null)
+
+  const sT = list.reduce((a, x) => a + (x.score ?? 0), 0)
+  const qT = list.reduce((a, x) => a + (x.q ?? 0), 0)
+  list.forEach(x => {
+    x.perQ = x.score && x.q ? Math.round((x.score / x.q) * 100) / 100 : null
+    x.sharePct = x.score && sT > 0 ? Math.round((x.score / sT) * 1000) / 10 : null
+    x.qPct = x.q && qT > 0 ? Math.round((x.q / qT) * 1000) / 10 : null
+  })
+  return list
+}
+
+/**
+ * 문항수 비율과 배점 비율이 갈리는가.
+ * 갈리면 시험장에서 시간을 어디에 쓸지가 바뀌므로 화면에서 눈에 띄게 알린다.
+ * 기준은 5%포인트.
+ */
+export function weightDiverges(row: NcsRow | undefined): boolean {
+  const w = subjectWeights(row).filter(x => x.qPct !== null && x.sharePct !== null)
+  if (w.length < 2) return false
+  return w.some(x => Math.abs((x.qPct as number) - (x.sharePct as number)) > 5)
 }
 
 /** 문항당 몇 초를 쓸 수 있는가 — 페이스 감각이 여기서 나온다 */

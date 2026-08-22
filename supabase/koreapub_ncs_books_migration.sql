@@ -29,8 +29,10 @@ create table if not exists kp_ncs (
   major_min   int,                       -- 전공 시간(분)
 
   ncs_label   text,                      -- NCS 과목명 (기업마다 다름: 직무능력검사 등)
+  ncs_score   int,                       -- NCS 배점
   major_label text,                      -- 전공 과목명
-  extras      jsonb not null default '[]'::jsonb,  -- 추가 과목 [{label,q,min}, ...]
+  major_score int,                       -- 전공 배점
+  extras      jsonb not null default '[]'::jsonb,  -- 추가 과목 [{label,q,min,score}, ...]
 
   extra_label text,                      -- (레거시) 단일 제3과목
   extra_q     int,
@@ -45,8 +47,12 @@ create table if not exists kp_ncs (
 );
 
 -- 이미 만들어 둔 테이블에 뒤늦게 붙이는 경우
+-- 배점은 문항수와 따로 둔다. 한전KPS 처럼 문항수 50:50 인데 배점 100:50 인
+-- 기업이 있어서, 문항수만으로는 어디에 시간을 쓸지 판단이 안 된다.
 alter table kp_ncs add column if not exists ncs_label   text;
+alter table kp_ncs add column if not exists ncs_score   int;
 alter table kp_ncs add column if not exists major_label text;
+alter table kp_ncs add column if not exists major_score int;
 alter table kp_ncs add column if not exists extras      jsonb not null default '[]'::jsonb;
 
 alter table kp_ncs disable row level security;
