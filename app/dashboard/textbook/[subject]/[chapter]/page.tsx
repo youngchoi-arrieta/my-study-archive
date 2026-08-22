@@ -16,6 +16,7 @@ import {
   PROBLEM_TYPE_ORDER,
   type TextbookStatus,
   type ProblemType,
+  CHAPTER_SORTS, sortChapters, loadChapterSort, saveChapterSort, type ChapterSort,
 } from '@/lib/constants-textbook'
 
 type Problem = {
@@ -46,6 +47,9 @@ export default function ChapterProblemGrid() {
   const dragStartW = useRef(440)
 
   const qNums = chapter ? chapterQNums(chapter) : []
+  const [sort, setSort] = useState<ChapterSort>('order')
+
+  useEffect(() => { setSort(loadChapterSort()) }, [])
 
   // ── 현재 단원 로드 ──────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -206,6 +210,7 @@ export default function ChapterProblemGrid() {
   qNums.forEach(q => { const p = problems.get(q); if (p) counts[p.status]++ })
 
   const activeProblem = activeQ !== null ? problems.get(activeQ) ?? null : null
+  const sortedChapters = subject ? sortChapters(subject.chapters, sort) : []
 
   return (
     <main className="min-h-screen bg-[#050d1a] text-white flex flex-col" style={{ height: '100dvh' }}>
@@ -229,9 +234,17 @@ export default function ChapterProblemGrid() {
       {/* ── 바디: 사이드바 + 그리드 + 노트 ─────────────────────────── */}
       <div className="flex flex-1 min-h-0">
 
-        {/* 단원 사이드바 */}
-        <div className="w-40 shrink-0 bg-[#080f1e] border-r border-white/5 overflow-y-auto py-2">
-          {subject.chapters.map(ch => {
+        {/* 단원 사이드바 — 정렬은 허브와 같은 값을 쓴다(localStorage 공유) */}
+        <div className="w-40 shrink-0 bg-[#080f1e] border-r border-white/5 overflow-y-auto">
+          <div className="flex gap-1 px-2 py-2 sticky top-0 bg-[#080f1e] border-b border-white/5 z-10">
+            {CHAPTER_SORTS.map(({ key: k, label }) => (
+              <button key={k} onClick={() => { setSort(k); saveChapterSort(k) }}
+                className={`flex-1 px-1.5 py-1 rounded-md text-[10px] font-bold transition ${
+                  sort === k ? 'bg-blue-600 text-white' : 'bg-gray-800/60 text-gray-500 hover:text-gray-300'
+                }`}>{label}</button>
+            ))}
+          </div>
+          {sortedChapters.map(ch => {
             const chQ = ch.end - ch.start + 1
             const st = allStats.get(ch.slug) ?? { untouched: 0, correct: 0, wrong: 0, unsure: 0 }
             const solved = st.correct + st.wrong + st.unsure
@@ -243,6 +256,7 @@ export default function ChapterProblemGrid() {
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ch.accent }} />
                   <span className={`text-[12px] font-bold truncate ${isActive ? 'text-white' : 'text-gray-400'}`}>{ch.name}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-gray-600 tabular-nums">{chQ}</span>
                 </div>
                 <div className="h-1 bg-gray-800 rounded-full overflow-hidden flex ml-3.5">
                   <div className="h-full" style={{ width: `${(st.correct / chQ) * 100}%`, backgroundColor: TB_STATUS_META.correct.accent }} />

@@ -71,8 +71,8 @@ const DENRYOKU_CHAPTERS: TextbookChapter[] = [
   { slug: 'transmission', name: '송전',          start: 90,  end: 101, accent: '#1d4ed8' },
   { slug: 'distribution', name: '배전',          start: 102, end: 117, accent: '#0d9488' },
   { slug: 'underground',  name: '지중전선로',    start: 118, end: 125, accent: '#4338ca' },
-  { slug: 'materials',    name: '전기재료',      start: 126, end: 140, accent: '#a16207' },
-  { slug: 'power-calc',   name: '전력계산',      start: 141, end: 168, accent: '#be123c' },
+  { slug: 'materials',    name: '전기재료',      start: 126, end: 141, accent: '#a16207' },
+  { slug: 'power-calc',   name: '전력계산',      start: 142, end: 168, accent: '#be123c' },
   { slug: 'line-calc',    name: '선로계산',      start: 169, end: 172, accent: '#c2410c' },
   { slug: 'sag-stay',     name: '전선 이도와 지선', start: 173, end: 175, accent: '#4d7c0f' },
 ]
@@ -111,6 +111,36 @@ export const TB_SUBJECT_MAP = new Map<string, TextbookSubject>(
 
 export function getChapter(subject: TextbookSubject, chapterSlug: string): TextbookChapter | undefined {
   return subject.chapters.find(c => c.slug === chapterSlug)
+}
+
+// ── 단원 정렬 ──────────────────────────────────────────────────
+// 교재 순서대로 보는 게 기본이지만, 큰 단원부터 붙는 게 실제 공부 순서에
+// 가까울 때가 많다. 허브(단원 목록)와 채점 화면(왼쪽 사이드바)이 같은 규칙을
+// 쓰도록 여기 한 곳에 둔다. 선택은 localStorage 에 남겨 두 화면이 공유한다.
+
+export type ChapterSort = 'order' | 'count'
+
+export const CHAPTER_SORTS: { key: ChapterSort; label: string }[] = [
+  { key: 'order', label: '교재 순서' },
+  { key: 'count', label: '문제수순' },
+]
+
+export const chapterSize = (ch: TextbookChapter) => ch.end - ch.start + 1
+
+export function sortChapters(chapters: TextbookChapter[], sort: ChapterSort): TextbookChapter[] {
+  if (sort !== 'count') return chapters
+  return [...chapters].sort((a, b) => chapterSize(b) - chapterSize(a))
+}
+
+const SORT_KEY = 'textbook.chapterSort'
+
+export function loadChapterSort(): ChapterSort {
+  if (typeof window === 'undefined') return 'order'
+  return localStorage.getItem(SORT_KEY) === 'count' ? 'count' : 'order'
+}
+
+export function saveChapterSort(v: ChapterSort) {
+  if (typeof window !== 'undefined') localStorage.setItem(SORT_KEY, v)
 }
 
 export function chapterQNums(ch: TextbookChapter): number[] {

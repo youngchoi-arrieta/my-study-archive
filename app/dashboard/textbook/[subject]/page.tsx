@@ -9,6 +9,7 @@ import {
   TB_STATUS_META,
   TB_STATUS_ORDER,
   type TextbookStatus,
+  CHAPTER_SORTS, sortChapters, loadChapterSort, saveChapterSort, type ChapterSort,
 } from '@/lib/constants-textbook'
 
 type ProblemRow = { chapter: string; status: TextbookStatus }
@@ -22,7 +23,9 @@ export default function SubjectChapterDashboard() {
 
   const [problems, setProblems] = useState<ProblemRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [sort, setSort] = useState<'order' | 'count'>('order')
+  const [sort, setSort] = useState<ChapterSort>('order')
+
+  useEffect(() => { setSort(loadChapterSort()) }, [])
 
   const load = useCallback(async () => {
     if (!subject) { setLoading(false); return }
@@ -66,11 +69,7 @@ export default function SubjectChapterDashboard() {
 
   const totalQ = subject.chapters.reduce((s, c) => s + (c.end - c.start + 1), 0)
 
-  // 교재 순서대로 보는 게 기본이지만, 문제수가 큰 단원부터 붙는 게
-  // 실제 공부 순서에 가까울 때가 많다. 그래서 정렬만 바꿔 끼운다.
-  const sortedChapters = sort === 'count'
-    ? [...subject.chapters].sort((a, b) => (b.end - b.start) - (a.end - a.start))
-    : subject.chapters
+  const sortedChapters = sortChapters(subject.chapters, sort)
 
   return (
     <main className="min-h-screen bg-[#050d1a] text-white p-5 md:p-8">
@@ -85,8 +84,8 @@ export default function SubjectChapterDashboard() {
         <p className="text-gray-600 text-sm mb-4">전체 {totalQ}문제 · {subject.chapters.length}단원</p>
 
         <div className="flex gap-1.5 mb-5">
-          {([['order', '교재 순서'], ['count', '문제수순']] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setSort(k)}
+          {CHAPTER_SORTS.map(({ key: k, label }) => (
+            <button key={k} onClick={() => { setSort(k); saveChapterSort(k) }}
               className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${
                 sort === k ? 'bg-blue-600 text-white' : 'bg-gray-800/70 text-gray-500 hover:text-gray-300'
               }`}>{label}</button>
