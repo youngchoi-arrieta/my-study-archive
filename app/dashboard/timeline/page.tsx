@@ -194,32 +194,35 @@ export default function TimelinePage() {
   const inputCls = 'bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-2 text-sm outline-none transition'
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <main className="min-h-screen bg-gray-950 text-white p-4 md:p-6">
+      <div className={`mx-auto ${tab === 'priority' ? 'max-w-[1500px]' : 'max-w-6xl'}`}>
 
         <div className="mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
         </div>
-        <div className="flex items-center gap-3 mb-1">
-          <span className="text-2xl">🗓</span>
-          <h1 className="text-2xl font-bold">주요 일정 및 우선순위</h1>
-        </div>
-        <p className="text-gray-500 text-sm mb-5">
-          {tab === 'gantt'
-            ? '공기업 트랙과 일본 트랙을 한 줄에 · 띠는 원서접수, ◆는 시험일'
-            : '층은 계산된다 · 경계조건 · 시효 · 공통분모 · 단일용도 · 축적'}
-        </p>
-
-        <div className="grid grid-cols-2 gap-1 bg-gray-900 rounded-xl p-1 mb-5 max-w-sm">
-          {([
-            { key: 'gantt', label: '🗓 일정' },
-            { key: 'priority', label: '🧭 우선순위' },
-          ] as const).map(({ key, label }) => (
-            <button key={key} onClick={() => setTab(key)}
-              className={`py-2 rounded-lg text-xs font-medium transition ${
-                tab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
-              }`}>{label}</button>
-          ))}
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🗓</span>
+              <h1 className="text-xl font-bold truncate">주요 일정 및 우선순위</h1>
+            </div>
+            <p className="text-gray-600 text-[11px] mt-0.5 truncate">
+              {tab === 'gantt'
+                ? '띠는 원서접수, ◆는 시험일 · 공기업 트랙과 일본 트랙을 한 줄에'
+                : '경계조건 · 시효 · 공통분모 · 단일용도 · 축적 — 층은 계산된다'}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-1 bg-gray-900 rounded-xl p-1 shrink-0 w-48">
+            {([
+              { key: 'gantt', label: '🗓 일정' },
+              { key: 'priority', label: '🧭 우선순위' },
+            ] as const).map(({ key, label }) => (
+              <button key={key} onClick={() => setTab(key)}
+                className={`py-1.5 rounded-lg text-[11px] font-medium transition ${
+                  tab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}>{label}</button>
+            ))}
+          </div>
         </div>
 
         {tab === 'priority' && <PriorityBoard />}

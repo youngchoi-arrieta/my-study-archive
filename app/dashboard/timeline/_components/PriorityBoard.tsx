@@ -16,11 +16,15 @@ import {
 //  간트가 "언제"를 그린다면 이 화면은 "무엇을 놓을까"를 그린다.
 //  층을 손으로 옮기는 기능은 일부러 넣지 않았다.
 //  옮길 수 있게 만들면 결국 마인드맵으로 돌아간다.
+//
+//  레이아웃 원칙 — 한 화면에 다 들어와야 한다.
+//    스크롤을 내려야 보이는 층은 없는 층과 같다.
+//    위 띠   점검 · 경로 · 축적    (판단의 배경)
+//    0층 띠  경계조건              (한 줄 칩. 배경이니 자리도 배경만큼)
+//    본문    1층 · 2층 · 3층       (가로 3열. 이게 실제 판단 대상)
 // ───────────────────────────────────────────────────────────────
 
 interface Link { item_id: string; path_id: string }
-
-const LAYER_SEQ: Layer[] = ['fixed', 'expiring', 'shared', 'single', 'orphan']
 
 const emptyDraft = () => ({
   title: '', note: '', fixed: false, daily: false,
@@ -50,8 +54,7 @@ export default function PriorityBoard() {
       supabase.from('pr_item_paths').select('item_id, path_id'),
       supabase.from('pr_reviews').select('*').order('reviewed_on', { ascending: false }).limit(6),
     ])
-    if (p.error) setErr(p.error.message)
-    else setErr(null)
+    setErr(p.error ? p.error.message : null)
     setPaths((p.data as PrPath[]) || [])
     setItems((i.data as PrItem[]) || [])
     setLinks((l.data as Link[]) || [])
@@ -82,6 +85,10 @@ export default function PriorityBoard() {
     // 2층은 걸침 수가 많은 순
     g.shared.sort((a, b) =>
       liveCount(b.id, links, paths) - liveCount(a.id, links, paths))
+    // 3층은 열린 것 먼저. 잠긴 것과 매몰된 것은 아래로.
+    const lockRank = { open: 0, locked: 1, sunk: 2 }
+    g.single.sort((a, b) =>
+      lockRank[lockOf(a.id, links, paths)] - lockRank[lockOf(b.id, links, paths)])
     return g
   }, [visible, links, paths])
 
@@ -205,140 +212,169 @@ export default function PriorityBoard() {
 
   return (
     <>
-      {/* ── 월간 점검 ─────────────────────────────────────────── */}
-      <ReviewPanel flags={flags} last={reviews[0] ?? null}
-        onStamp={stampReview} busy={busy} />
+      {/* ── 위 띠: 점검 · 경로 · 축적 ──────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">
 
-      {/* ── 경로 ──────────────────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-2xl p-4 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-gray-500 uppercase tracking-widest">경로</p>
+        <ReviewPanel flags={flags} last={reviews[0] ?? null}
+          onStamp={stampReview} busy={busy} />
+
+        {/* 경로 */}
+        <Panel title="경로" right={
           <button onClick={() => setPathEdit(v => !v)}
-            className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition ${
+            className={`text-[10px] px-2 py-0.5 rounded font-bold transition ${
               pathEdit ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-300'
             }`}>
-            {pathEdit ? '완료' : '✎ 상태'}
+            {pathEdit ? '완료' : '✎'}
           </button>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {paths.map(p => {
-            const n = links.filter(l => l.path_id === p.id).length
-            return (
-              <button key={p.id} disabled={!pathEdit}
-                onClick={() => cyclePathStatus(p)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
-                  p.status === 'dropped'
-                    ? 'bg-gray-950 text-gray-700 line-through'
-                    : p.status === 'active'
-                      ? 'bg-gray-800 text-white'
-                      : 'bg-gray-950 text-gray-500'
-                } ${pathEdit ? 'hover:ring-1 hover:ring-gray-600 cursor-pointer' : 'cursor-default'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: p.status === 'dropped' ? '#374151' : p.color }} />
-                {p.label}
-                <span className="text-[10px] opacity-60">{n}</span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded ${PATH_STATUS_META[p.status].chip}`}>
-                  {PATH_STATUS_META[p.status].short}
-                </span>
-              </button>
-            )
-          })}
-          {paths.length === 0 && (
-            <p className="text-xs text-gray-600">경로가 없습니다. 아래에서 시범 데이터를 넣어보세요.</p>
-          )}
-        </div>
-        {pathEdit && (
-          <p className="text-[10px] text-gray-700 mt-3 leading-relaxed">
-            눌러서 확정 → 보류 → 접음 순으로 돕니다.
-            접으면 걸침 수에서 빠지므로, 2층에 있던 항목이 3층으로 내려앉는 것이 보입니다.
-          </p>
-        )}
-      </div>
-
-      {/* ── 본문 ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
-
-        <div className="space-y-4">
-          {LAYER_SEQ.map(L => {
-            const list = grouped[L]
-            if (L === 'orphan' && list.length === 0) return null
-            return (
-              <LayerBlock key={L} layer={L} count={list.length}>
-                {list.length === 0 ? (
-                  <p className="text-[11px] text-gray-700">
-                    {L === 'single'
-                      ? '비어 있는 것이 정상입니다. 경로를 확정한 뒤에 채웁니다.'
-                      : L === 'shared'
-                        ? `살아있는 경로 ${SHARED_MIN}개 이상에 걸친 항목이 아직 없습니다.`
-                        : '없음'}
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {list.map(it => (
-                      <ItemRow key={it.id} it={it} layer={L}
-                        live={liveCount(it.id, links, paths)}
-                        lock={lockOf(it.id, links, paths)}
-                        tags={pathsOf(it.id)}
-                        onEdit={() => openEdit(it)}
-                        onDone={() => toggleDone(it)} />
-                    ))}
-                  </div>
-                )}
-              </LayerBlock>
-            )
-          })}
-        </div>
+        }>
+          <div className="flex flex-wrap gap-1">
+            {paths.map(p => {
+              const n = links.filter(l => l.path_id === p.id).length
+              return (
+                <button key={p.id} disabled={!pathEdit}
+                  onClick={() => cyclePathStatus(p)}
+                  title={pathEdit ? '확정 → 보류 → 접음' : PATH_STATUS_META[p.status].label}
+                  className={`px-1.5 py-1 rounded text-[10px] font-bold transition flex items-center gap-1 ${
+                    p.status === 'dropped'
+                      ? 'bg-gray-950 text-gray-700 line-through'
+                      : p.status === 'active'
+                        ? 'bg-gray-800 text-white'
+                        : 'bg-gray-950 text-gray-500'
+                  } ${pathEdit ? 'hover:ring-1 hover:ring-gray-600' : 'cursor-default'}`}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: p.status === 'dropped' ? '#374151' : p.color }} />
+                  {p.label}
+                  <span className="opacity-50">{n}</span>
+                  <span className={`px-1 rounded text-[9px] ${PATH_STATUS_META[p.status].chip}`}>
+                    {PATH_STATUS_META[p.status].short}
+                  </span>
+                </button>
+              )
+            })}
+            {paths.length === 0 && (
+              <p className="text-[10px] text-gray-600">경로 없음 · 아래에서 시범 데이터를 넣어보세요</p>
+            )}
+          </div>
+        </Panel>
 
         {/* 옆줄 — 층이 아니라 별도 레인 */}
-        <div className="bg-gray-900 rounded-2xl p-4 h-fit lg:sticky lg:top-4">
-          <p className={`text-xs uppercase tracking-widest mb-1 ${LAYER_META.daily.accent}`}>
-            축적 트랙
-          </p>
-          <p className="text-[10px] text-gray-600 leading-relaxed mb-3">
-            {LAYER_META.daily.blurb}
-          </p>
+        <Panel title="축적 트랙" accent={LAYER_META.daily.accent}
+          hint={LAYER_META.daily.blurb}>
           {grouped.daily.length === 0 ? (
-            <p className="text-[11px] text-gray-700">비어 있습니다. 시험 공부는 여기 못 들어옵니다.</p>
+            <p className="text-[10px] text-gray-700">비어 있음 · 시험 공부는 못 들어옵니다</p>
           ) : (
-            <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-1">
               {grouped.daily.map(it => (
-                <button key={it.id} onClick={() => openEdit(it)}
-                  className="w-full text-left bg-gray-950 hover:bg-gray-800 rounded-lg px-3 py-2 transition">
-                  <p className={`text-[13px] font-semibold leading-tight ${it.done ? 'text-gray-600 line-through' : ''}`}>
-                    {it.title}
-                  </p>
-                  {it.note && <p className="text-[10px] text-gray-600 mt-0.5">{it.note}</p>}
+                <button key={it.id} onClick={() => openEdit(it)} title={it.note ?? ''}
+                  className={`px-2 py-1 rounded bg-gray-950 hover:bg-gray-800 text-[11px] font-semibold transition ${
+                    it.done ? 'text-gray-600 line-through' : 'text-green-300/90'
+                  }`}>
+                  {it.title}
                 </button>
               ))}
             </div>
           )}
+        </Panel>
+      </div>
+
+      {/* ── 0층 띠: 배경이니 자리도 배경만큼 ───────────────────── */}
+      <div className="bg-gray-900 rounded-xl px-3 py-2 mb-2 flex items-center gap-3 flex-wrap">
+        <div className="flex items-baseline gap-1.5 shrink-0">
+          <span className="text-xs font-black text-gray-600">0</span>
+          <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">경계조건</span>
         </div>
+        {grouped.fixed.length === 0 ? (
+          <p className="text-[10px] text-gray-700">없음</p>
+        ) : grouped.fixed.map(it => (
+          <button key={it.id} onClick={() => openEdit(it)} title={it.note ?? ''}
+            className={`px-2 py-1 rounded bg-gray-950 hover:bg-gray-800 text-[11px] transition ${
+              it.done ? 'text-gray-700 line-through' : 'text-gray-400'
+            }`}>
+            {it.title}
+          </button>
+        ))}
+        <span className="text-[9px] text-gray-700 ml-auto hidden md:block">
+          {LAYER_META.fixed.blurb}
+        </span>
+      </div>
+
+      {/* ── 본문: 판단 대상 세 층을 가로로 ─────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 items-start">
+
+        <LayerColumn layer="expiring" count={grouped.expiring.length}>
+          {grouped.expiring.map(it => (
+            <ItemRow key={it.id} it={it} layer="expiring"
+              live={liveCount(it.id, links, paths)}
+              lock={lockOf(it.id, links, paths)}
+              tags={pathsOf(it.id)}
+              onEdit={() => openEdit(it)} onDone={() => toggleDone(it)} />
+          ))}
+          {grouped.expiring.length === 0 && <Empty>날짜가 붙은 항목이 없습니다</Empty>}
+        </LayerColumn>
+
+        <LayerColumn layer="shared" count={grouped.shared.length}>
+          {grouped.shared.map(it => (
+            <ItemRow key={it.id} it={it} layer="shared"
+              live={liveCount(it.id, links, paths)}
+              lock={lockOf(it.id, links, paths)}
+              tags={pathsOf(it.id)}
+              onEdit={() => openEdit(it)} onDone={() => toggleDone(it)} />
+          ))}
+          {grouped.shared.length === 0 && (
+            <Empty>살아있는 경로 {SHARED_MIN}개 이상에 걸친 항목이 없습니다</Empty>
+          )}
+
+          {grouped.orphan.length > 0 && (
+            <div className="pt-2 mt-2 border-t border-gray-800">
+              <p className={`text-[10px] font-bold mb-1.5 ${LAYER_META.orphan.accent}`}>
+                미분류 {grouped.orphan.length} · {LAYER_META.orphan.blurb}
+              </p>
+              <div className="space-y-1">
+                {grouped.orphan.map(it => (
+                  <ItemRow key={it.id} it={it} layer="orphan" live={0} lock="locked"
+                    tags={[]} onEdit={() => openEdit(it)} onDone={() => toggleDone(it)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </LayerColumn>
+
+        <LayerColumn layer="single" count={grouped.single.length}>
+          {grouped.single.map(it => (
+            <ItemRow key={it.id} it={it} layer="single"
+              live={liveCount(it.id, links, paths)}
+              lock={lockOf(it.id, links, paths)}
+              tags={pathsOf(it.id)}
+              onEdit={() => openEdit(it)} onDone={() => toggleDone(it)} />
+          ))}
+          {grouped.single.length === 0 && (
+            <Empty>비어 있는 것이 정상입니다</Empty>
+          )}
+        </LayerColumn>
       </div>
 
       {/* ── 하단 ──────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 mt-5">
+      <div className="flex flex-wrap items-center gap-2 mt-3">
         <button onClick={openAdd}
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-bold transition">
+          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold transition">
           + 항목
         </button>
         <button onClick={() => setShowDone(v => !v)}
-          className={`px-3 py-2 rounded-lg text-xs font-bold transition ${
+          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition ${
             showDone ? 'bg-gray-800 text-white' : 'bg-gray-900 text-gray-600 hover:text-gray-300'
           }`}>
           끝난 항목 {showDone ? '숨기기' : '보기'}
         </button>
         {items.length === 0 && (
           <button onClick={seed} disabled={busy}
-            className="px-3 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-xs font-bold text-gray-400 transition disabled:opacity-40">
+            className="px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-[11px] font-bold text-gray-400 transition disabled:opacity-40">
             시범 데이터 넣기
           </button>
         )}
+        <span className="text-[10px] text-gray-700 ml-auto hidden lg:block">
+          층은 고르는 게 아니라 계산됩니다 · 자리가 어색하면 태그를 고치세요
+        </span>
       </div>
-
-      <p className="text-[10px] text-gray-700 mt-4 leading-relaxed">
-        층은 직접 고르지 않습니다. 경계조건 여부 · 날짜 · 걸친 경로 수에서 계산됩니다.
-        자리가 어색하면 층을 옮기지 말고 태그를 고치세요.
-      </p>
 
       {/* ── 입력 ──────────────────────────────────────────────── */}
       {formOpen && (
@@ -426,6 +462,28 @@ export default function PriorityBoard() {
 
 // ── 조각 ─────────────────────────────────────────────────────────
 
+function Panel({ title, accent, hint, right, children }: {
+  title: string; accent?: string; hint?: string
+  right?: React.ReactNode; children: React.ReactNode
+}) {
+  return (
+    <div className="bg-gray-900 rounded-xl px-3 py-2.5">
+      <div className="flex items-center justify-between mb-1.5">
+        <p className={`text-[10px] uppercase tracking-widest font-semibold ${accent ?? 'text-gray-500'}`}>
+          {title}
+        </p>
+        {right}
+      </div>
+      {hint && <p className="text-[9px] text-gray-700 leading-snug mb-1.5">{hint}</p>}
+      {children}
+    </div>
+  )
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="text-[10px] text-gray-700">{children}</p>
+}
+
 function ToggleChip({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
   return (
     <button onClick={onClick}
@@ -437,19 +495,19 @@ function ToggleChip({ on, label, onClick }: { on: boolean; label: string; onClic
   )
 }
 
-function LayerBlock({ layer, count, children }: {
+function LayerColumn({ layer, count, children }: {
   layer: Layer; count: number; children: React.ReactNode
 }) {
   const m = LAYER_META[layer]
   return (
-    <div className="bg-gray-900 rounded-2xl p-4">
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className={`text-sm font-black ${m.accent}`}>{m.n}</span>
-        <p className={`text-xs uppercase tracking-widest font-semibold ${m.accent}`}>{m.label}</p>
+    <div className="bg-gray-900 rounded-xl px-3 py-2.5">
+      <div className="flex items-baseline gap-1.5 mb-0.5">
+        <span className={`text-xs font-black ${m.accent}`}>{m.n}</span>
+        <p className={`text-[10px] uppercase tracking-widest font-semibold ${m.accent}`}>{m.label}</p>
         <span className="text-[10px] text-gray-700">{count}</span>
       </div>
-      <p className="text-[10px] text-gray-600 leading-relaxed mb-3">{m.blurb}</p>
-      {children}
+      <p className="text-[9px] text-gray-700 leading-snug mb-2">{m.blurb}</p>
+      <div className="space-y-1">{children}</div>
     </div>
   )
 }
@@ -464,54 +522,53 @@ function ItemRow({ it, layer, live, lock, tags, onEdit, onDone }: {
   const sunk = lock === 'sunk'
 
   return (
-    <div className={`flex items-center gap-2.5 rounded-lg px-3 py-2 transition ${
+    <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 transition ${
       sunk ? 'bg-gray-950/50' : 'bg-gray-950 hover:bg-gray-800'
     }`}>
-      <button onClick={onDone}
-        className={`w-4 h-4 rounded border shrink-0 transition ${
+      <button onClick={onDone} aria-label="완료"
+        className={`w-3.5 h-3.5 rounded-sm border shrink-0 transition ${
           it.done ? 'bg-green-700 border-green-700' : 'border-gray-700 hover:border-gray-500'
         }`} />
 
-      <button onClick={onEdit} className="min-w-0 flex-1 text-left">
-        <div className="flex items-center gap-1.5">
-          {sunk && <span className="text-[10px] shrink-0">💀</span>}
-          {dim && !sunk && <span className="text-[10px] shrink-0">🔒</span>}
-          <p className={`text-[13px] font-semibold leading-tight truncate ${
+      <button onClick={onEdit} className="min-w-0 flex-1 text-left" title={it.note ?? ''}>
+        <div className="flex items-center gap-1">
+          {sunk && <span className="text-[9px] shrink-0">💀</span>}
+          {dim && !sunk && <span className="text-[9px] shrink-0">🔒</span>}
+          {layer === 'shared' && (
+            <span className={`text-[9px] px-1 rounded font-bold shrink-0 ${
+              live >= 3 ? 'bg-blue-600/30 text-blue-300' : 'bg-gray-800 text-gray-500'
+            }`}>{live}</span>
+          )}
+          <p className={`text-[12px] font-semibold leading-tight truncate ${
             it.done || sunk ? 'text-gray-600 line-through' : dim ? 'text-gray-500' : ''
           }`}>
             {it.title}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          {layer === 'shared' && (
-            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-              live >= 3 ? 'bg-blue-600/30 text-blue-300' : 'bg-gray-800 text-gray-500'
-            }`}>
-              경로 {live}
-            </span>
-          )}
-          {tags.map(p => (
-            <span key={p.id} className="text-[9px] text-gray-600 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: p.status === 'dropped' ? '#374151' : p.color }} />
-              {p.label}
-            </span>
-          ))}
-          {it.note && <span className="text-[10px] text-gray-700 truncate">{it.note}</span>}
-        </div>
+        {tags.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
+            {tags.map(p => (
+              <span key={p.id} className="text-[9px] text-gray-600 flex items-center gap-0.5 shrink-0">
+                <span className="w-1 h-1 rounded-full"
+                  style={{ backgroundColor: p.status === 'dropped' ? '#374151' : p.color }} />
+                {p.label}
+              </span>
+            ))}
+          </div>
+        )}
       </button>
 
       {layer === 'expiring' && (
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 leading-tight">
           {it.decide_by ? (
-            <p className={`text-[11px] font-bold ${overdue ? 'text-red-400' : 'text-amber-400'}`}>
-              결정 {ddayLabel(d)}
+            <p className={`text-[10px] font-bold ${overdue ? 'text-red-400' : 'text-amber-400'}`}>
+              {ddayLabel(d)}
             </p>
           ) : (
-            <p className="text-[10px] text-red-400/80 font-bold">결정시점 없음</p>
+            <p className="text-[9px] text-red-400/80 font-bold">결정시점<br />없음</p>
           )}
           {it.expires_on && (
-            <p className="text-[9px] text-gray-600">만료 {it.expires_on}</p>
+            <p className="text-[9px] text-gray-700">~{it.expires_on.slice(2)}</p>
           )}
         </div>
       )}
@@ -526,41 +583,36 @@ function ReviewPanel({ flags, last, onStamp, busy }: {
   busy: boolean
 }) {
   const alerts = [
-    { n: flags.overdue,   label: '결정시점 지남', tone: 'text-red-400' },
+    { n: flags.overdue,   label: '결정 지남',   tone: 'text-red-400' },
     { n: flags.undecided, label: '결정시점 없음', tone: 'text-amber-400' },
-    { n: flags.orphan,    label: '경로 미지정',   tone: 'text-red-400' },
-    { n: flags.locked,    label: '3층에 잠김',    tone: 'text-gray-500' },
+    { n: flags.orphan,    label: '경로 미지정',  tone: 'text-red-400' },
+    { n: flags.locked,    label: '3층 잠김',    tone: 'text-gray-500' },
   ].filter(a => a.n > 0)
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-4 mb-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">월간 점검</p>
-          <p className="text-[11px] text-gray-600">
-            {last
-              ? `마지막 점검 ${last.reviewed_on} · ${flags.daysSinceReview}일 전`
-              : '아직 점검한 적이 없습니다'}
-          </p>
-        </div>
-        <button onClick={onStamp} disabled={busy}
-          className="shrink-0 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-[11px] font-bold transition disabled:opacity-40">
-          오늘 점검함
-        </button>
-      </div>
-
+    <Panel title="월간 점검" right={
+      <button onClick={onStamp} disabled={busy}
+        className="px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-[10px] font-bold transition disabled:opacity-40">
+        오늘 점검함
+      </button>
+    }>
+      <p className="text-[9px] text-gray-700 mb-1.5">
+        {last
+          ? `마지막 점검 ${last.reviewed_on} · ${flags.daysSinceReview}일 전`
+          : '아직 점검한 적이 없습니다'}
+      </p>
       {alerts.length === 0 ? (
-        <p className="text-[11px] text-gray-600">지금 썩고 있는 항목은 없습니다.</p>
+        <p className="text-[10px] text-gray-600">지금 썩고 있는 항목은 없습니다</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           {alerts.map(a => (
-            <div key={a.label} className="bg-gray-950 rounded-lg px-3 py-2 flex items-baseline gap-2">
-              <span className={`text-lg font-black ${a.tone}`}>{a.n}</span>
-              <span className="text-[10px] text-gray-500">{a.label}</span>
+            <div key={a.label} className="bg-gray-950 rounded px-1.5 py-1 flex items-baseline gap-1">
+              <span className={`text-sm font-black ${a.tone}`}>{a.n}</span>
+              <span className="text-[9px] text-gray-500">{a.label}</span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Panel>
   )
 }

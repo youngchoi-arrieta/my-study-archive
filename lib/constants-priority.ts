@@ -50,32 +50,32 @@ export const LAYER_META: Record<Layer, {
 }> = {
   fixed: {
     n: '0', label: '경계조건',
-    blurb: '우선순위 대상이 아니라 나머지를 푸는 조건. 여기 있는 것은 배경으로만 둔다.',
+    blurb: '나머지를 푸는 조건. 배경으로만 둔다.',
     accent: 'text-gray-500',
   },
   expiring: {
     n: '1', label: '시효',
-    blurb: '지금이 아니면 사라지는 것. 만료일보다 결정시점이 중요하다.',
+    blurb: '지금이 아니면 사라지는 것. 만료일보다 결정시점.',
     accent: 'text-amber-400',
   },
   shared: {
     n: '2', label: '공통분모',
-    blurb: '여러 경로에 동시에 쓰이는 것. 아무것도 확정 못 한 달에도 이 칸은 굴린다.',
+    blurb: '여러 경로에 걸친 것. 아무것도 확정 못 한 달에도 굴린다.',
     accent: 'text-blue-400',
   },
   single: {
     n: '3', label: '단일용도',
-    blurb: '경로 하나에만 쓰이는 것. 그 경로가 확정되기 전까지는 잠가둔다.',
+    blurb: '경로 하나에만. 확정 전엔 잠가둔다.',
     accent: 'text-gray-500',
   },
   orphan: {
     n: '·', label: '미분류',
-    blurb: '경로를 하나도 안 달았다. 어디에 쓰는지 모르는 채로 굴리고 있다는 뜻이다.',
+    blurb: '경로를 안 달았다. 어디에 쓰는지 모른다는 뜻.',
     accent: 'text-red-400',
   },
   daily: {
     n: '—', label: '축적 트랙',
-    blurb: '위 네 층과 자원을 다투지 않는다. 자격은 하나 — 매일 20분으로 성립하는가.',
+    blurb: '네 층과 자원을 다투지 않는다. 매일 20분으로 성립하는 것만.',
     accent: 'text-green-400',
   },
 }
