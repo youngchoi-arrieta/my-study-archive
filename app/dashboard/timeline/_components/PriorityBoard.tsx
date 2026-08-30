@@ -26,6 +26,19 @@ import {
 
 interface Link { item_id: string; path_id: string }
 
+/**
+ * "이 층에 넣고 싶다" 를 눌렀는데 아직 그 층이 아닐 때 뜨는 안내.
+ * 층을 직접 지정하는 칸을 주는 대신, 조건을 알려준다.
+ */
+const TARGET_HINT: Record<Layer, string> = {
+  fixed:    '경계조건 토글을 켜면 0층으로 갑니다.',
+  expiring: '만료일이나 결정시점 중 하나를 넣으면 1층으로 갑니다.',
+  shared:   `살아있는 경로를 ${SHARED_MIN}개 이상 고르면 2층으로 갑니다.`,
+  single:   '경로를 하나만 고르면 3층으로 갑니다.',
+  orphan:   '경로를 하나도 안 고르면 미분류로 남습니다.',
+  daily:    '매일 20분 토글을 켜면 축적 트랙으로 갑니다.',
+}
+
 const emptyDraft = () => ({
   title: '', note: '', fixed: false, daily: false,
   expires_on: '', decide_by: '', paths: [] as string[],
@@ -44,6 +57,7 @@ export default function PriorityBoard() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const [target, setTarget] = useState<Layer | null>(null)
   const [busy, setBusy] = useState(false)
 
   const fetchAll = useCallback(async () => {
@@ -113,8 +127,19 @@ export default function PriorityBoard() {
       .update({ status: next, updated_at: new Date().toISOString() }).eq('id', p.id)
   }
 
-  const openAdd = () => { setDraft(emptyDraft()); setEditingId(null); setFormOpen(true) }
+  /**
+   * 어느 층에 놓고 싶은지는 받되, 층 자체를 저장하지는 않는다.
+   * 받은 것은 힌트로만 쓴다 — 0층·축적만 토글로 미리 켜주고
+   * 나머지는 "이렇게 하면 그 층에 간다"고 알려주기만 한다.
+   */
+  const openAdd = (t: Layer | null = null) => {
+    const d = emptyDraft()
+    if (t === 'fixed') d.fixed = true
+    if (t === 'daily') d.daily = true
+    setDraft(d); setTarget(t); setEditingId(null); setFormOpen(true)
+  }
   const openEdit = (it: PrItem) => {
+    setTarget(null)
     setDraft({
       title: it.title, note: it.note ?? '',
       fixed: it.fixed, daily: it.daily,
@@ -123,7 +148,21 @@ export default function PriorityBoard() {
     })
     setEditingId(it.id); setFormOpen(true)
   }
-  const close = () => { setFormOpen(false); setEditingId(null); setDraft(emptyDraft()) }
+  const close = () => {
+    setFormOpen(false); setEditingId(null); setTarget(null); setDraft(emptyDraft())
+  }
+
+  /** 지금 입력값이면 어느 층에 놓이는가 — 저장 전에 보여준다 */
+  const previewLayer: Layer = useMemo(() => {
+    const alive = new Set(paths.filter(p => p.status !== 'dropped').map(p => p.id))
+    const live = draft.paths.filter(id => alive.has(id)).length
+    return layerOf({
+      id: '', title: '', note: null, done: false, sort_order: 0,
+      fixed: draft.fixed, daily: draft.daily,
+      expires_on: draft.expires_on || null,
+      decide_by: draft.decide_by || null,
+    }, live)
+  }, [draft, paths])
 
   const save = async () => {
     if (!draft.title.trim() || busy) return
@@ -259,7 +298,11 @@ export default function PriorityBoard() {
 
         {/* 옆줄 — 층이 아니라 별도 레인 */}
         <Panel title="축적 트랙" accent={LAYER_META.daily.accent}
-          hint={LAYER_META.daily.blurb}>
+          hint={LAYER_META.daily.blurb}
+          right={
+            <button onClick={() => openAdd('daily')} title={TARGET_HINT.daily}
+              className="text-gray-600 hover:text-white text-sm leading-none px-1 transition">+</button>
+          }>
           {grouped.daily.length === 0 ? (
             <p className="text-[10px] text-gray-700">비어 있음 · 시험 공부는 못 들어옵니다</p>
           ) : (
@@ -282,6 +325,8 @@ export default function PriorityBoard() {
         <div className="flex items-baseline gap-1.5 shrink-0">
           <span className="text-xs font-black text-gray-600">0</span>
           <span className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold">경계조건</span>
+          <button onClick={() => openAdd('fixed')} title={TARGET_HINT.fixed}
+            className="text-gray-600 hover:text-white text-sm leading-none px-1 transition">+</button>
         </div>
         {grouped.fixed.length === 0 ? (
           <p className="text-[10px] text-gray-700">없음</p>
@@ -301,7 +346,7 @@ export default function PriorityBoard() {
       {/* ── 본문: 판단 대상 세 층을 가로로 ─────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 items-start">
 
-        <LayerColumn layer="expiring" count={grouped.expiring.length}>
+        <LayerColumn layer="expiring" count={grouped.expiring.length} onAdd={() => openAdd('expiring')}>
           {grouped.expiring.map(it => (
             <ItemRow key={it.id} it={it} layer="expiring"
               live={liveCount(it.id, links, paths)}
@@ -312,7 +357,7 @@ export default function PriorityBoard() {
           {grouped.expiring.length === 0 && <Empty>날짜가 붙은 항목이 없습니다</Empty>}
         </LayerColumn>
 
-        <LayerColumn layer="shared" count={grouped.shared.length}>
+        <LayerColumn layer="shared" count={grouped.shared.length} onAdd={() => openAdd('shared')}>
           {grouped.shared.map(it => (
             <ItemRow key={it.id} it={it} layer="shared"
               live={liveCount(it.id, links, paths)}
@@ -339,7 +384,7 @@ export default function PriorityBoard() {
           )}
         </LayerColumn>
 
-        <LayerColumn layer="single" count={grouped.single.length}>
+        <LayerColumn layer="single" count={grouped.single.length} onAdd={() => openAdd('single')}>
           {grouped.single.map(it => (
             <ItemRow key={it.id} it={it} layer="single"
               live={liveCount(it.id, links, paths)}
@@ -355,7 +400,7 @@ export default function PriorityBoard() {
 
       {/* ── 하단 ──────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 mt-3">
-        <button onClick={openAdd}
+        <button onClick={() => openAdd()}
           className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold transition">
           + 항목
         </button>
@@ -380,9 +425,27 @@ export default function PriorityBoard() {
       {formOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-gray-900 rounded-2xl p-5 w-full max-w-md my-8">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold">{editingId ? '항목 수정' : '항목 추가'}</h3>
               <button onClick={close} className="text-gray-500 hover:text-white text-sm">닫기</button>
+            </div>
+
+            {/* 층은 고르는 게 아니라 계산된다. 그래서 저장 전에 보여준다. */}
+            <div className="bg-gray-950 rounded-lg px-3 py-2 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-600">지금 이대로 저장하면</span>
+                <span className={`text-xs font-black ${LAYER_META[previewLayer].accent}`}>
+                  {LAYER_META[previewLayer].n}
+                </span>
+                <span className={`text-[11px] font-bold ${LAYER_META[previewLayer].accent}`}>
+                  {LAYER_META[previewLayer].label}
+                </span>
+              </div>
+              {target && target !== previewLayer && (
+                <p className="text-[10px] text-amber-400/90 mt-1 leading-snug">
+                  {TARGET_HINT[target]}
+                </p>
+              )}
             </div>
 
             <div className="space-y-3">
@@ -419,7 +482,12 @@ export default function PriorityBoard() {
               </p>
 
               <div>
-                <span className="text-[10px] text-gray-500 block mb-1.5">걸치는 경로</span>
+                <span className="text-[10px] text-gray-500 block mb-1.5">
+                  걸치는 경로
+                  <span className="text-gray-700 ml-1.5">
+                    {SHARED_MIN}개 이상이면 2층 · 1개면 3층
+                  </span>
+                </span>
                 <div className="flex flex-wrap gap-1.5">
                   {paths.map(p => {
                     const on = draft.paths.includes(p.id)
@@ -495,8 +563,8 @@ function ToggleChip({ on, label, onClick }: { on: boolean; label: string; onClic
   )
 }
 
-function LayerColumn({ layer, count, children }: {
-  layer: Layer; count: number; children: React.ReactNode
+function LayerColumn({ layer, count, onAdd, children }: {
+  layer: Layer; count: number; onAdd: () => void; children: React.ReactNode
 }) {
   const m = LAYER_META[layer]
   return (
@@ -505,6 +573,10 @@ function LayerColumn({ layer, count, children }: {
         <span className={`text-xs font-black ${m.accent}`}>{m.n}</span>
         <p className={`text-[10px] uppercase tracking-widest font-semibold ${m.accent}`}>{m.label}</p>
         <span className="text-[10px] text-gray-700">{count}</span>
+        <button onClick={onAdd} title={TARGET_HINT[layer]}
+          className="ml-auto text-gray-600 hover:text-white text-sm leading-none px-1 transition">
+          +
+        </button>
       </div>
       <p className="text-[9px] text-gray-700 leading-snug mb-2">{m.blurb}</p>
       <div className="space-y-1">{children}</div>
