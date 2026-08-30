@@ -179,7 +179,7 @@ export default function Home() {
             <SectionLabel>🛠 도구</SectionLabel>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 mb-10">
               <ToolCard href="/dashboard/achievements" emoji="🏅" title="해낸 것들" desc="자격증·어학 연표 · 증빙 PDF" />
-              <ToolCard href="/dashboard/timeline" emoji="🗓" title="시험 일정" desc="접수·시험일 간트 · 트랙 통합" />
+              <ToolCard href="/dashboard/timeline" emoji="🗓" title="주요 일정 및 우선순위" desc="간트 · 3층 우선순위 보드" />
               <ToolCard href="/jobs" emoji="💼" title="진로 대시보드" desc="칸반 · 마감일 · AI 파싱" />
               <ToolCard href="/library" emoji="📖" title="레퍼런스 라이브러리" desc="주제별 PDF · 드라이브" />
               <ToolCard href="/portfolio" emoji="🌀" title="찬란한 무용함" desc="호기심대로 만드는 것들" />

@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import PriorityBoard from './_components/PriorityBoard'
+
+// ───────────────────────────────────────────────────────────────
+//  주요 일정 및 우선순위
+//  두 탭은 같은 질문의 앞뒤다.
+//    일정   언제 걸리는가        → 간트
+//    우선순위 무엇에 힘을 쓸까   → 3층 보드
+// ───────────────────────────────────────────────────────────────
 
 // ───────────────────────────────────────────────────────────────
 //  시험 일정 간트
@@ -73,7 +81,10 @@ const emptyDraft = () => ({
 })
 type Draft = ReturnType<typeof emptyDraft>
 
+type Tab = 'gantt' | 'priority'
+
 export default function TimelinePage() {
+  const [tab, setTab] = useState<Tab>('gantt')
   const [events, setEvents] = useState<Ev[]>([])
   const [loading, setLoading] = useState(true)
   const [hidden, setHidden] = useState<Set<Track>>(new Set())
@@ -191,11 +202,29 @@ export default function TimelinePage() {
         </div>
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">🗓</span>
-          <h1 className="text-2xl font-bold">시험 일정</h1>
+          <h1 className="text-2xl font-bold">주요 일정 및 우선순위</h1>
         </div>
         <p className="text-gray-500 text-sm mb-5">
-          공기업 트랙과 일본 트랙을 한 줄에 · 띠는 원서접수, ◆는 시험일
+          {tab === 'gantt'
+            ? '공기업 트랙과 일본 트랙을 한 줄에 · 띠는 원서접수, ◆는 시험일'
+            : '층은 계산된다 · 경계조건 · 시효 · 공통분모 · 단일용도 · 축적'}
         </p>
+
+        <div className="grid grid-cols-2 gap-1 bg-gray-900 rounded-xl p-1 mb-5 max-w-sm">
+          {([
+            { key: 'gantt', label: '🗓 일정' },
+            { key: 'priority', label: '🧭 우선순위' },
+          ] as const).map(({ key, label }) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`py-2 rounded-lg text-xs font-medium transition ${
+                tab === key ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
+              }`}>{label}</button>
+          ))}
+        </div>
+
+        {tab === 'priority' && <PriorityBoard />}
+
+        {tab === 'gantt' && (<>
 
         {/* 다가오는 것 */}
         {upcoming.length > 0 && (
@@ -423,6 +452,8 @@ export default function TimelinePage() {
           초기 일정은 정리해두신 스프레드시트를 옮긴 것이라 실제 공고와 며칠씩 어긋날 수 있습니다.
           제목을 눌러 수정하고, 끝난 일정은 왼쪽 체크로 접어두세요.
         </p>
+
+        </>)}
 
       </div>
     </main>
