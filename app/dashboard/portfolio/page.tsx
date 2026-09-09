@@ -30,20 +30,6 @@ const ITEMS: Item[] = [
     desc: '주제별 PDF · 드라이브 자료 아카이브',
     color: '#85B7EB',
   },
-  {
-    href: '/diagram',
-    emoji: '📐',
-    title: '도식',
-    desc: '등가회로 · 3상 · 고장이론 도식 카탈로그',
-    color: '#5DCAA5',
-  },
-  {
-    href: '/cards',
-    emoji: '🗂',
-    title: '카드',
-    desc: '개념 · 핵심 정리 카드',
-    color: '#AFA9EC',
-  },
 ]
 
 function ItemCard({ it }: { it: Item }) {

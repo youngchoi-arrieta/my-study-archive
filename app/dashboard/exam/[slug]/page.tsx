@@ -167,7 +167,7 @@ export default function ExamHub() {
     <main className="min-h-screen bg-gray-950 text-white p-6 md:p-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-2">
-          <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
+          <Link href="/dashboard/certs" className="text-gray-400 hover:text-white text-sm">← 자격증</Link>
         </div>
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">{spec.emoji}</span>

@@ -33,7 +33,6 @@ export default function InterviewPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      const savedVersion = Number(localStorage.getItem(VERSION_KEY) || '0')
 
       if (!raw) {
         // 처음 열림: 기본 질문 전체를 심는다
@@ -42,14 +41,12 @@ export default function InterviewPage() {
         localStorage.setItem(VERSION_KEY, String(QUESTIONS_VERSION))
       } else {
         const stored: Question[] = JSON.parse(raw)
-        if (savedVersion < QUESTIONS_VERSION) {
-          // 버전 상승: 저장본에 없는 기본 질문만 뒤에 덧붙인다.
-          // 사용자가 편집/삭제/추가한 질문과 메모는 그대로 보존.
-          const existingIds = new Set(stored.map(q => q.id))
-          const merged = [
-            ...stored,
-            ...DEFAULT_QUESTIONS.filter(q => !existingIds.has(q.id)),
-          ]
+        // 버전과 무관하게, 저장본에 없는 기본 질문은 항상 병합한다.
+        // (사용자가 편집/삭제/추가한 질문과 메모는 그대로 보존)
+        const existingIds = new Set(stored.map(q => q.id))
+        const missing = DEFAULT_QUESTIONS.filter(q => !existingIds.has(q.id))
+        if (missing.length > 0) {
+          const merged = [...stored, ...missing]
           setQuestions(merged)
           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
           localStorage.setItem(VERSION_KEY, String(QUESTIONS_VERSION))
