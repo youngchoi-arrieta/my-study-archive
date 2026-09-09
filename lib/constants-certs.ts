@@ -11,10 +11,14 @@
 //  때만 이 배열에 한 줄 넣으면 된다.
 // ═══════════════════════════════════════════════════════════════
 
-export type CertStatus = 'active' | 'planned' | 'done'
+export type CertStatus = 'active' | 'planned' | 'done' | 'obsolete'
 export type Flag = '🇯🇵' | '🇰🇷'
 
-export const STATUS_ORDER: CertStatus[] = ['active', 'planned', 'done']
+// 편집 UI에 노출하는 순서. obsolete 는 편집 모드에서만 되살리기용으로 쓰고
+// 문의 기본 3구분(진행/예정/취득)에는 넣지 않는다.
+export const STATUS_ORDER: CertStatus[] = ['active', 'planned', 'done', 'obsolete']
+// 자격증 문 본문에 실제로 렌더하는 구분 (obsolete 제외)
+export const VISIBLE_STATUS_ORDER: CertStatus[] = ['active', 'planned', 'done']
 
 export const STATUS_META: Record<CertStatus, { label: string; short: string; sub: string; chip: string }> = {
   active: {
@@ -28,6 +32,10 @@ export const STATUS_META: Record<CertStatus, { label: string; short: string; sub
   done: {
     label: '✅ 취득 완료', short: '취득', sub: '아카이브',
     chip: 'bg-green-900/50 text-green-400',
+  },
+  obsolete: {
+    label: '🗄 보관', short: '보관', sub: '지금은 안 쓰는 것 · 참조/수정용으로만 존치',
+    chip: 'bg-gray-800 text-gray-500',
   },
 }
 
@@ -100,7 +108,7 @@ export const CERTS: Cert[] = [
     org: '한국 공기업 전기직', title: '공기업 채용',
     desc: '기업별 가점 구조 · 서류점수 · NCS/전공',
     meta: '기업별 상시 · NCS + 전공',
-    defaultStatus: 'planned',
+    defaultStatus: 'obsolete',
   },
   {
     slug: 'gisulsa-kr', href: '/dashboard/gisulsa', emoji: '📐', flag: '🇰🇷',
