@@ -8,6 +8,11 @@ export type Question = {
   warning?: string
 }
 
+// 이 숫자를 올리면, 이미 앱을 쓰던 기기에서도 새로 추가된 질문이
+// 자동으로 병합된다(기존 메모·직접 추가한 질문은 보존). page.tsx가
+// localStorage에 저장된 버전과 비교해 처리한다.
+export const QUESTIONS_VERSION = 2
+
 export const CATEGORIES = [
   { id: 'all',       label: '전체' },
   { id: 'self',      label: '자기소개' },

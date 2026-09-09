@@ -134,12 +134,18 @@ export default function CertsPage() {
             <h1 className="text-3xl font-bold mb-1">📚 자격증</h1>
             <p className="text-gray-500 text-sm">진행 중 · 예정 · 취득 — 상태로 관리하는 시험 허브</p>
           </div>
-          <button onClick={() => setEditing(v => !v)}
-            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              editing ? 'bg-blue-600 text-white' : 'bg-gray-900 text-gray-500 hover:text-gray-300'
-            }`}>
-            {editing ? '완료' : '✎ 상태 편집'}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link href="/dashboard/achievements"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 text-gray-400 hover:text-white transition">
+              🏅 해낸 것들
+            </Link>
+            <button onClick={() => setEditing(v => !v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                editing ? 'bg-blue-600 text-white' : 'bg-gray-900 text-gray-500 hover:text-gray-300'
+              }`}>
+              {editing ? '완료' : '✎ 상태 편집'}
+            </button>
+          </div>
         </div>
 
         {editing ? (

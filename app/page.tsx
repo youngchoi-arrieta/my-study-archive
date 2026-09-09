@@ -42,7 +42,7 @@ const GATES: Gate[] = [
     items: ['진행 중 · 예정 · 취득', '기출 · 오답 · 채점', '해낸 것들'],
   },
   {
-    href: '/portfolio',
+    href: '/dashboard/portfolio',
     emoji: '🌀',
     title: '포트폴리오',
     desc: '앞으로 커질 축',

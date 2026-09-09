@@ -1,9 +1,10 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
-import { Question, CATEGORIES, DEFAULT_QUESTIONS } from './data'
+import { Question, CATEGORIES, DEFAULT_QUESTIONS, QUESTIONS_VERSION } from './data'
 
 const STORAGE_KEY = 'interview_questions'
 const NOTES_KEY   = 'interview_notes'
+const VERSION_KEY = 'interview_questions_version'
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
 
@@ -28,11 +29,35 @@ export default function InterviewPage() {
   const [form, setForm]           = useState<Omit<Question, 'id'>>(EMPTY_FORM)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
-  // Load from localStorage
+  // Load from localStorage — 버전이 바뀌었으면 새 질문을 병합
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      setQuestions(raw ? JSON.parse(raw) : DEFAULT_QUESTIONS)
+      const savedVersion = Number(localStorage.getItem(VERSION_KEY) || '0')
+
+      if (!raw) {
+        // 처음 열림: 기본 질문 전체를 심는다
+        setQuestions(DEFAULT_QUESTIONS)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_QUESTIONS))
+        localStorage.setItem(VERSION_KEY, String(QUESTIONS_VERSION))
+      } else {
+        const stored: Question[] = JSON.parse(raw)
+        if (savedVersion < QUESTIONS_VERSION) {
+          // 버전 상승: 저장본에 없는 기본 질문만 뒤에 덧붙인다.
+          // 사용자가 편집/삭제/추가한 질문과 메모는 그대로 보존.
+          const existingIds = new Set(stored.map(q => q.id))
+          const merged = [
+            ...stored,
+            ...DEFAULT_QUESTIONS.filter(q => !existingIds.has(q.id)),
+          ]
+          setQuestions(merged)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+          localStorage.setItem(VERSION_KEY, String(QUESTIONS_VERSION))
+        } else {
+          setQuestions(stored)
+        }
+      }
+
       const rawNotes = localStorage.getItem(NOTES_KEY)
       setNotes(rawNotes ? JSON.parse(rawNotes) : {})
     } catch { setQuestions(DEFAULT_QUESTIONS) }
@@ -80,6 +105,7 @@ export default function InterviewPage() {
 
   function resetToDefault() {
     save(DEFAULT_QUESTIONS)
+    localStorage.setItem(VERSION_KEY, String(QUESTIONS_VERSION))
     setNotes({})
     localStorage.removeItem(NOTES_KEY)
   }
