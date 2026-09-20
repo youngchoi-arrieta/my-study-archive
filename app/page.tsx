@@ -28,10 +28,10 @@ const GATES: Gate[] = [
   {
     href: '/jobs',
     emoji: '💼',
-    title: '채용',
-    desc: '칸반이 중심 · 공고를 여기서 관리',
+    title: '채용 & 이직',
+    desc: '취업 확정 이후 — 유지 · 미래 서랍',
     color: '#5DCAA5',
-    items: ['칸반 (공기업·사기업 전부)', '마감 타임라인', '면접 대비'],
+    items: ['칸반 (공기업·사기업 전부)', '마감 타임라인', '면접 · 이직 대비'],
   },
   {
     href: '/dashboard/certs',
@@ -95,18 +95,31 @@ export default function Home() {
           <p className="text-gray-500">電気工学 · 수학 · 물리 학습 아카이브</p>
         </div>
 
-        {/* 상시 띠 — 어느 축에도 안 속하지만 항상 봐야 하는 것 */}
-        <Link href="/dashboard/timeline"
-          className="block bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-2xl px-5 py-4 mb-10 transition">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🗓</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-amber-300 leading-tight">주요 일정 &amp; 우선순위</p>
-              <p className="text-[11px] text-amber-200/60 leading-snug">마감 타임라인(간트) · 3층 우선순위 보드 — 항상 체크</p>
+        {/* 상시 띠 — 어느 축에도 안 속하지만 항상 봐야 하는 것 (매일 여는 것) */}
+        <div className="space-y-2 mb-10">
+          <Link href="/dashboard/timeline"
+            className="block bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-2xl px-5 py-4 transition">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🗓</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-amber-300 leading-tight">주요 일정 &amp; 우선순위</p>
+                <p className="text-[11px] text-amber-200/60 leading-snug">마감 타임라인(간트) · 3층 우선순위 보드 — 항상 체크</p>
+              </div>
+              <span className="text-amber-500/50 text-sm shrink-0">→</span>
             </div>
-            <span className="text-amber-500/50 text-sm shrink-0">→</span>
-          </div>
-        </Link>
+          </Link>
+          <Link href="/dashboard/company"
+            className="block bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded-2xl px-5 py-4 transition">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🏢</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-teal-300 leading-tight">회사생활</p>
+                <p className="text-[11px] text-teal-200/60 leading-snug">오늘 체크·업무일지·일정 + 나침반·포트폴리오 — 퇴근 후 반성</p>
+              </div>
+              <span className="text-teal-500/50 text-sm shrink-0">→</span>
+            </div>
+          </Link>
+        </div>
 
         {/* 문 3개 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
