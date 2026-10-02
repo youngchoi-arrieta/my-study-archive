@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import TodayBoard from './_components/TodayBoard'
 
 // 홈 = 상시 띠 + 문 3개 + 개인 영역
 // -------------------------------------------------------------------
@@ -94,6 +95,9 @@ export default function Home() {
           <h1 className="text-4xl font-bold mb-1">⚡ 나의 전기공학 도장</h1>
           <p className="text-gray-500">電気工学 · 수학 · 물리 학습 아카이브</p>
         </div>
+
+        {/* 오늘 — 기록함 · 다가오는 마감 · 안 끝난 지시 */}
+        <TodayBoard />
 
         {/* 상시 띠 — 어느 축에도 안 속하지만 항상 봐야 하는 것 (매일 여는 것) */}
         <div className="space-y-2 mb-10">

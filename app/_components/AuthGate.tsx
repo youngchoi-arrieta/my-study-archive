@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase'
+import QuickCapture from './QuickCapture'
 
 // 앱 전체 관문 — 로그인 세션이 없으면 /login 으로 보낸다.
 // -------------------------------------------------------------------
@@ -46,9 +47,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+      <QuickCapture />
       <button
         onClick={() => supabase.auth.signOut()}
-        className="fixed bottom-3 right-3 z-50 text-[11px] text-gray-600 hover:text-gray-300 bg-gray-900/80 hover:bg-gray-800 rounded-lg px-2.5 py-1 transition"
+        className="fixed bottom-3 left-3 z-50 text-[11px] text-gray-600 hover:text-gray-300 bg-gray-900/80 hover:bg-gray-800 rounded-lg px-2.5 py-1 transition"
         title="로그아웃"
       >
         로그아웃
