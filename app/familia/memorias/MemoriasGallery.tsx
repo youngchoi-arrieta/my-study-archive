@@ -2,6 +2,7 @@
 import { useEffect, useState, ChangeEvent } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
+import { signBucketUrls } from '../../../lib/storageSign'
 import styles from './memorias.module.css'
 
 type Lang = 'ko' | 'es'
@@ -458,7 +459,9 @@ export default function MemoriasGallery() {
       supabase.from('memoria_chapters').select('*').order('sort_order'),
       supabase.from('memoria_items').select('*').order('sort_order'),
     ])
-    setChapters(ch??[]); setItems(it??[]); setLoading(false)
+    // memorias 버킷은 비공개 — 화면용 서명 URL로 바꿔 끼운다 (DB 값은 그대로)
+    const signed = await signBucketUrls('memorias', it ?? [])
+    setChapters(ch??[]); setItems(signed); setLoading(false)
   }
 
   function go(dir:'next'|'prev') {
@@ -505,7 +508,10 @@ export default function MemoriasGallery() {
   async function saveItem(item:Omit<MemItem,'id'|'sort_order'>) {
     const sort_order = items.filter(i=>i.chapter_id===item.chapter_id).length
     const {data} = await supabase.from('memoria_items').insert({...item,sort_order}).select().single()
-    if (data) setItems(prev=>[...prev,data])
+    if (data) {
+      const [signed] = await signBucketUrls('memorias', [data as MemItem])
+      setItems(prev=>[...prev,signed])
+    }
     setAddItemModal({open:false,chapterId:''})
   }
 

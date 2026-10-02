@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { requireUser } from '../../../lib/serverAuth'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
 export async function POST(req: NextRequest) {
+  // 로그인한 본인만 — 토큰 없으면 Anthropic 크레딧을 쓰기 전에 거절
+  if (!(await requireUser(req))) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
   const { sentence } = await req.json()
   if (!sentence?.trim()) {
     return NextResponse.json({ error: '문장이 없습니다' }, { status: 400 })
