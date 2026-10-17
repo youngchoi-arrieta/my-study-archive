@@ -146,7 +146,7 @@ function Shelf() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-6">
-      <div className={`mx-auto ${opened ? 'max-w-[1500px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-6' : 'max-w-5xl'}`}>
+      <div className="mx-auto max-w-5xl">
       <div className="min-w-0">
         <div className="mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
@@ -187,12 +187,9 @@ function Shelf() {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-1.5 mb-4">
-            {sortTags(tags).map((t, i, arr) => (
-              <span key={t.id} className="contents">
-                {i > 0 && arr[i - 1].grp !== t.grp && <span className="w-px h-4 bg-gray-800 mx-0.5" aria-hidden />}
-                <TagChip label={t.label} color={t.color} on={selected.includes(t.id)}
-                  count={counts[t.id] ?? 0} onClick={() => toggleTag(t.id)} />
-              </span>
+            {sortTags(tags).map(t => (
+              <TagChip key={t.id} label={t.label} color={t.color} on={selected.includes(t.id)}
+                count={counts[t.id] ?? 0} onClick={() => toggleTag(t.id)} />
             ))}
             {untaggedCount > 0 && (
               <TagChip label="태그 없음" color="#94A3B8" on={selected.includes('none')} count={untaggedCount}

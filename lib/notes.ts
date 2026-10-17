@@ -27,9 +27,8 @@ export const TAG_GROUPS: { key: TagGroup | null; label: string; hint: string }[]
   { key: 'topic', label: '주제', hint: '여러 개' },
   { key: null, label: '기타', hint: '' },
 ]
-const grpRank = (g: TagGroup | null) => (g === 'type' ? 0 : g === 'topic' ? 1 : 2)
-export const sortTags = (ts: NoteTag[]) =>
-  [...ts].sort((a, b) => grpRank(a.grp) - grpRank(b.grp) || a.sort_order - b.sort_order)
+// 태그 순서 = 태그 편집에서 정한 순서 하나뿐 (위에 있을수록 중요)
+export const sortTags = (ts: NoteTag[]) => [...ts].sort((a, b) => a.sort_order - b.sort_order)
 
 // 추천 태그셋 — 「태그 편집 → 추천 태그셋 채우기」와 notes_tags_v2_migration.sql 이 같은 목록을 쓴다
 export const RECOMMENDED_TAGS: { label: string; grp: TagGroup; color: string }[] = [
@@ -152,15 +151,19 @@ export async function seedRecommendedTags() {
   }
 }
 
-// 위/아래로 한 칸 — 정렬 순서를 0..n 으로 다시 매긴다
-export async function moveTag(tags: NoteTag[], id: string, dir: -1 | 1) {
-  const i = tags.findIndex(t => t.id === id)
-  const j = i + dir
-  if (i < 0 || j < 0 || j >= tags.length) return
-  const next = [...tags]
-  ;[next[i], next[j]] = [next[j], next[i]]
-  await Promise.all(next.map((t, k) =>
-    t.sort_order === k ? null : supabase.from('note_tags').update({ sort_order: k }).eq('id', t.id)))
+// 순서 바꾸기 — to 자리로 옮기고 정렬 순서를 0..n 으로 다시 매긴다 (to=0 이면 맨 위로)
+export async function moveTagTo(tags: NoteTag[], id: string, to: number) {
+  const list = sortTags(tags)
+  const i = list.findIndex(t => t.id === id)
+  if (i < 0) return
+  const j = Math.max(0, Math.min(list.length - 1, to))
+  if (i === j && list.every((t, k) => t.sort_order === k)) return
+  const [t] = list.splice(i, 1)
+  list.splice(j, 0, t)
+  const res = await Promise.all(list.map((x, k) =>
+    x.sort_order === k ? null : supabase.from('note_tags').update({ sort_order: k }).eq('id', x.id)))
+  const bad = res.find(r => r && r.error)
+  if (bad && bad.error) throw bad.error
 }
 
 const norm = (s: string) => s.trim().toLowerCase()
