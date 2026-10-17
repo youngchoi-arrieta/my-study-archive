@@ -1,6 +1,6 @@
 'use client'
 
-import type { Note, NoteTag } from '@/lib/notes'
+import { sortTags, type Note, type NoteTag } from '@/lib/notes'
 
 // 책장 보기의 노트 한 권 — 세로로 선 책 표지.
 // 표지색 = 성격 태그 색(없으면 회색). 왼쪽 띠는 책등.
@@ -13,9 +13,9 @@ export default function BookCover({
   active: boolean
   onOpen: () => void
 }) {
-  const tags = note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t)
-  const type = tags.find(t => t.grp === 'type')
-  const topics = tags.filter(t => t.grp !== 'type')
+  const tags = sortTags(note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t))
+  const type = tags[0]
+  const topics = tags.slice(1)
   const base = type?.color ?? '#64748B'
 
   return (

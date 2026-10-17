@@ -102,19 +102,20 @@ function Shelf() {
     return notes.filter(n => selected.every(id => n.tagIds.includes(id)))
   }, [notes, selected])
 
-  // 책장: 성격 태그 하나당 선반 하나. 성격이 없으면 맨 아래 「성격 미정」 선반
+  // 책장: 태그 하나당 선반 하나. 노트는 붙은 태그 중 맨 위 순서(태그 편집의 ↑↓) 태그 선반에 꽂힌다.
+  // 태그가 없는 노트는 맨 아래 「태그 없음」 선반
   const shelves = useMemo(() => {
-    const typeTags = sortTags(tags).filter(t => t.grp === 'type')
-    const typeIds = new Set(typeTags.map(t => t.id))
+    const ordered = sortTags(tags)
+    const rank = new Map(ordered.map((t, i) => [t.id, i]))
     const m = new Map<string, Note[]>()
     for (const n of visible) {
-      const k = n.tagIds.find(id => typeIds.has(id)) ?? ''
-      ;(m.get(k) ?? m.set(k, []).get(k)!).push(n)
+      const first = [...n.tagIds].filter(id => rank.has(id)).sort((a, b) => rank.get(a)! - rank.get(b)!)[0] ?? ''
+      ;(m.get(first) ?? m.set(first, []).get(first)!).push(n)
     }
     const out: { key: string; label: string; color: string; notes: Note[] }[] = []
-    typeTags.forEach(t => { const ns = m.get(t.id); if (ns?.length) out.push({ key: t.id, label: t.label, color: t.color, notes: ns }) })
+    ordered.forEach(t => { const ns = m.get(t.id); if (ns?.length) out.push({ key: t.id, label: t.label, color: t.color, notes: ns }) })
     const rest = m.get('')
-    if (rest?.length) out.push({ key: '', label: '성격 미정', color: '#64748B', notes: rest })
+    if (rest?.length) out.push({ key: '', label: '태그 없음', color: '#64748B', notes: rest })
     out.forEach(s => s.notes.sort((a, b) => b.made_on.localeCompare(a.made_on)))
     return out
   }, [visible, tags])
@@ -277,7 +278,7 @@ function NoteRow({ note, tagMap, active, onOpen }: {
   note: Note; tagMap: Map<string, NoteTag>; active: boolean; onOpen: () => void
 }) {
   const tags = sortTags(note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t))
-  const type = tags.find(t => t.grp === 'type')
+  const type = tags[0]
   return (
     <button type="button" onClick={onOpen} title={note.summary ?? note.title}
       className={`w-full text-left flex items-center gap-2.5 px-3 py-2 transition ${active ? 'bg-gray-800' : 'bg-gray-900/60 hover:bg-gray-800/70'}`}>
@@ -286,7 +287,7 @@ function NoteRow({ note, tagMap, active, onOpen }: {
       <span className="flex-1 min-w-0 truncate text-sm text-gray-200">{note.title}</span>
       {note.series && <span className="hidden sm:inline text-[10px] text-gray-500 shrink-0 max-w-[120px] truncate">{note.series}{note.ver > 1 ? ` v${note.ver}` : ''}</span>}
       <span className="hidden md:flex items-center gap-1 shrink-0">
-        {tags.filter(t => t.grp !== 'type').slice(0, 4).map(t => (
+        {tags.slice(1, 5).map(t => (
           <span key={t.id} className="w-1.5 h-1.5 rounded-full" style={{ background: t.color }} title={`#${t.label}`} />
         ))}
       </span>
