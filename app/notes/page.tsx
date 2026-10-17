@@ -6,8 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchNotes, fetchTags, NOTES_EVENT, sortTags, type Note, type NoteTag } from '@/lib/notes'
 import UploadDrop from './_components/UploadDrop'
 import TagManager from './_components/TagManager'
-import NoteCard from './_components/NoteCard'
 import TagChip from './_components/TagChip'
+import BookCover from './_components/BookCover'
+import ReaderPanel from './_components/ReaderPanel'
 
 // ───────────────────────────────────────────────────────────────
 //  서가 — /notes
@@ -15,10 +16,15 @@ import TagChip from './_components/TagChip'
 //  입력은 대화에서, 앱은 보관과 다시 찾기만.
 //    위   PDF 끌어다 놓기 (속성 자동 읽기)
 //    중간 검색 · 태그 필터(여러 개 고르면 모두 가진 노트) · 보기 전환
-//    아래 날짜순(월별) 또는 시리즈별 목록
+//    아래 책장(성격 태그별 선반) · 날짜순(월별) · 시리즈별
+//    책·줄을 누르면 페이지를 떠나지 않고 옆에서 펼친다 (레퍼런스 라이브러리와 같은 방식)
 // ───────────────────────────────────────────────────────────────
 
-type View = 'date' | 'series'
+type View = 'shelf' | 'date' | 'series'
+const VIEW_KEY = 'notes:view'
+const readView = (): View => {
+  try { const v = localStorage.getItem(VIEW_KEY); return v === 'date' || v === 'series' ? v : 'shelf' } catch { return 'shelf' }
+}
 
 export default function NotesPage() {
   return (
@@ -38,7 +44,10 @@ function Shelf() {
   const [tags, setTags] = useState<NoteTag[]>([])
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
-  const [view, setView] = useState<View>('date')
+  // Shelf 는 useSearchParams 때문에 클라이언트에서만 그려지므로 localStorage 를 바로 읽어도 된다
+  const [view, setViewState] = useState<View>(readView)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const setView = (v: View) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch {} }
   const [editTags, setEditTags] = useState(() => params.get('edit') === 'tags')
   const [showUpload, setShowUpload] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -93,6 +102,26 @@ function Shelf() {
     return notes.filter(n => selected.every(id => n.tagIds.includes(id)))
   }, [notes, selected])
 
+  // 책장: 성격 태그 하나당 선반 하나. 성격이 없으면 맨 아래 「성격 미정」 선반
+  const shelves = useMemo(() => {
+    const typeTags = sortTags(tags).filter(t => t.grp === 'type')
+    const typeIds = new Set(typeTags.map(t => t.id))
+    const m = new Map<string, Note[]>()
+    for (const n of visible) {
+      const k = n.tagIds.find(id => typeIds.has(id)) ?? ''
+      ;(m.get(k) ?? m.set(k, []).get(k)!).push(n)
+    }
+    const out: { key: string; label: string; color: string; notes: Note[] }[] = []
+    typeTags.forEach(t => { const ns = m.get(t.id); if (ns?.length) out.push({ key: t.id, label: t.label, color: t.color, notes: ns }) })
+    const rest = m.get('')
+    if (rest?.length) out.push({ key: '', label: '성격 미정', color: '#64748B', notes: rest })
+    out.forEach(s => s.notes.sort((a, b) => b.made_on.localeCompare(a.made_on)))
+    return out
+  }, [visible, tags])
+
+  const opened = useMemo(() => (openId ? allNotes.find(n => n.id === openId) ?? notes.find(n => n.id === openId) ?? null : null), [openId, allNotes, notes])
+  const toggleOpen = (id: string) => setOpenId(cur => (cur === id ? null : id))
+
   const groups = useMemo(() => {
     const m = new Map<string, Note[]>()
     for (const n of visible) {
@@ -116,7 +145,8 @@ function Shelf() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-6">
-      <div className="max-w-3xl mx-auto">
+      <div className={`mx-auto ${opened ? 'max-w-[1500px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:gap-6' : 'max-w-5xl'}`}>
+      <div className="min-w-0">
         <div className="mb-2">
           <Link href="/" className="text-gray-400 hover:text-white text-sm">← 홈</Link>
         </div>
@@ -180,7 +210,7 @@ function Shelf() {
             {visible.length}권{selected.length > 1 && !selected.includes('none') ? ' · 고른 태그를 모두 가진 노트' : ''}
           </p>
           <div className="flex bg-gray-900 rounded-lg p-0.5 text-[11px]">
-            {([['date', '날짜순'], ['series', '시리즈']] as const).map(([k, l]) => (
+            {([['shelf', '책장'], ['date', '날짜순'], ['series', '시리즈']] as const).map(([k, l]) => (
               <button key={k} onClick={() => setView(k)}
                 className={`px-2.5 py-1 rounded-md transition ${view === k ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>{l}</button>
             ))}
@@ -193,21 +223,76 @@ function Shelf() {
             <p className="text-sm text-gray-600 text-center py-10">
               {allNotes.length ? '조건에 맞는 노트가 없어요.' : '아직 꽂힌 노트가 없어요. 위에 PDF 를 끌어다 놓으세요.'}
             </p>
+          ) : view === 'shelf' ? (
+            <div className="space-y-7">
+              {shelves.map(sh => (
+                <section key={sh.key || '_'}>
+                  <div className="flex items-center gap-2 rounded-t-lg px-3 py-1.5"
+                    style={{ background: `linear-gradient(90deg, ${sh.color}40, ${sh.color}10)` }}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: sh.color }} />
+                    <span className="text-sm font-semibold" style={{ color: sh.color }}>{sh.label}</span>
+                    <span className="text-[11px] text-white/40">{sh.notes.length}권</span>
+                    {sh.key && (
+                      <button onClick={() => setSelected([sh.key])} className="ml-auto text-[10px] text-white/40 hover:text-white/80">이 선반만 →</button>
+                    )}
+                  </div>
+                  <div className="bg-gray-900/70 border-x border-gray-800 px-4 pt-5 pb-3">
+                    <div className="flex flex-wrap gap-3">
+                      {sh.notes.map(n => (
+                        <BookCover key={n.id} note={n} tagMap={tagMap} active={openId === n.id} onOpen={() => toggleOpen(n.id)} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="h-2.5 rounded-b-md bg-gray-700 shadow-lg shadow-black/40" />
+                </section>
+              ))}
+            </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {groups.map(([k, ns]) => (
                 <section key={k || '_'}>
                   <p className="text-[11px] text-gray-500 font-semibold mb-2 sticky top-0 bg-gray-950/95 py-1 z-10">
                     {groupLabel(k)} <span className="text-gray-700 font-normal">{ns.length}</span>
                   </p>
-                  <div className="space-y-2">
-                    {ns.map(n => <NoteCard key={n.id} note={n} tagMap={tagMap} onTagClick={id => setSelected([id])} />)}
+                  <div className="rounded-xl overflow-hidden border border-gray-800 divide-y divide-gray-800/80">
+                    {ns.map(n => <NoteRow key={n.id} note={n} tagMap={tagMap} active={openId === n.id} onOpen={() => toggleOpen(n.id)} />)}
                   </div>
                 </section>
               ))}
             </div>
           )}
       </div>
+
+      {opened && (
+        <ReaderPanel note={opened} tagMap={tagMap} onClose={() => setOpenId(null)}
+          onTagClick={id => { setSelected([id]) }} />
+      )}
+      </div>
     </main>
+  )
+}
+
+// 날짜순·시리즈 보기의 한 줄 — 카드 대신 촘촘한 줄. 누르면 옆에서 펼친다.
+function NoteRow({ note, tagMap, active, onOpen }: {
+  note: Note; tagMap: Map<string, NoteTag>; active: boolean; onOpen: () => void
+}) {
+  const tags = sortTags(note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t))
+  const type = tags.find(t => t.grp === 'type')
+  return (
+    <button type="button" onClick={onOpen} title={note.summary ?? note.title}
+      className={`w-full text-left flex items-center gap-2.5 px-3 py-2 transition ${active ? 'bg-gray-800' : 'bg-gray-900/60 hover:bg-gray-800/70'}`}>
+      <span className="w-1 self-stretch rounded-full shrink-0" style={{ background: type?.color ?? '#334155' }} />
+      <span className="text-[11px] text-gray-500 tabular-nums shrink-0 w-[42px]">{note.made_on.slice(5)}</span>
+      <span className="flex-1 min-w-0 truncate text-sm text-gray-200">{note.title}</span>
+      {note.series && <span className="hidden sm:inline text-[10px] text-gray-500 shrink-0 max-w-[120px] truncate">{note.series}{note.ver > 1 ? ` v${note.ver}` : ''}</span>}
+      <span className="hidden md:flex items-center gap-1 shrink-0">
+        {tags.filter(t => t.grp !== 'type').slice(0, 4).map(t => (
+          <span key={t.id} className="w-1.5 h-1.5 rounded-full" style={{ background: t.color }} title={`#${t.label}`} />
+        ))}
+      </span>
+      {note.scope === 'company' && <span className="text-[10px] text-amber-300 shrink-0">🔒</span>}
+      {note.widget_path && <span className="text-[10px] text-purple-300 shrink-0">◈</span>}
+      {note.pages ? <span className="text-[10px] text-gray-600 shrink-0 w-8 text-right">{note.pages}쪽</span> : null}
+    </button>
   )
 }
