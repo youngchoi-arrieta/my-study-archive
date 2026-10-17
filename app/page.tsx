@@ -2,9 +2,16 @@
 
 import Link from 'next/link'
 import TodayBoard from './_components/TodayBoard'
+import ShelfBlock from './_components/ShelfBlock'
 
-// 홈 = 상시 띠 + 문 3개 + 개인 영역
+// 홈 = 오늘 + 서가 + 상시 띠 + 문 3개 + 개인 영역
 // -------------------------------------------------------------------
+// 2026-10 재편: 중심을 시험 공부에서 「서가」로 옮겼다.
+// 생각은 클로드와 대화하며 정리하고, 결과 PDF 를 서가에 꽂는다.
+//
+//   오늘     → 한 줄 입력 · 기록함 · 다가오는 마감 · 안 끝난 지시
+//   서가     → 최근 노트 + 태그 바로가기  (/notes)
+//
 // 3축(채용·자격증·포트폴리오)으로 정리한다. 시험 나열은 홈에서
 // 걷어내 「자격증」문 안으로 접어넣었다. 우선순위·마감처럼 어느 축에도
 // 속하지 않지만 상시로 봐야 하는 것은 맨 위 띠 하나로 뽑았다.
@@ -99,6 +106,9 @@ export default function Home() {
         {/* 오늘 — 기록함 · 다가오는 마감 · 안 끝난 지시 */}
         <TodayBoard />
 
+        {/* 서가 — 클로드와 정리한 PDF 노트 */}
+        <ShelfBlock />
+
         {/* 상시 띠 — 어느 축에도 안 속하지만 항상 봐야 하는 것 (매일 여는 것) */}
         <div className="space-y-2 mb-10">
           <Link href="/dashboard/timeline"
@@ -118,7 +128,7 @@ export default function Home() {
               <span className="text-2xl">🏢</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-teal-300 leading-tight">회사생활</p>
-                <p className="text-[11px] text-teal-200/60 leading-snug">오늘 체크·업무일지·일정 + 나침반·포트폴리오 — 퇴근 후 반성</p>
+                <p className="text-[11px] text-teal-200/60 leading-snug">원칙 리마인더 · 위생 체크 · 저녁 삼분법 — 퇴근 후 2분</p>
               </div>
               <span className="text-teal-500/50 text-sm shrink-0">→</span>
             </div>

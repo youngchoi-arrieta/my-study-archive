@@ -28,3 +28,11 @@ export async function signBucketUrls<T extends { photo_url: string | null }>(
     return s ? { ...i, photo_url: s } : i
   })
 }
+
+// 경로 하나 → 서명 URL. 비공개 버킷의 파일(PDF 노트 등)을 열 때.
+// 실패하면 null — 화면에서 '열 수 없음'으로 처리한다.
+export async function signPath(bucket: string, path: string, expiresSec = 60 * 60): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresSec)
+  if (error || !data?.signedUrl) { console.error(error); return null }
+  return data.signedUrl
+}

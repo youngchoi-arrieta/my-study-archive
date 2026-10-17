@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { PEOPLE_PIN } from '@/lib/constants-company'
+
+// 2026-10: 이 탭은 화면에서 내렸다 (company/page.tsx 에서 import 하지 않음).
+// 브라우저 코드 안의 PIN 은 번들을 열면 보이므로 진짜 잠금이 아니다.
+// 되살린다면 PIN 대신 '회사에서 안 열기' 규율 + 로그인(RLS)에만 기댈 것.
+const PEOPLE_PIN = '0402'
 
 interface Person { id: string; name: string; role: string | null; strengths: string | null; cautions: string | null; sort_order: number }
 const now = () => new Date().toISOString()

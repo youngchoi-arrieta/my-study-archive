@@ -73,6 +73,5 @@ export const RESUME_TAGS = {
 export const OUTPUT_KINDS = ['오픈소스', '문서', '테스트벤치', '기타'] as const
 export const WATCH_LAYERS = ['제조', 'EPC', '운영', '정책'] as const
 
-// 사람 탭 잠금 PIN. 화면 힐끗·자리비움 대비의 얇은 자물쇠.
-// 규율(회사에서 안 열기)에 기댄 안전이라 강한 암호화는 아님 — 편할 때 바꿔 쓸 것.
-export const PEOPLE_PIN = '0402'
+// 2026-10 재편: 화면에는 '오늘' 하나만 남긴다 (company/page.tsx).
+// 나머지 탭 컴포넌트와 테이블은 지우지 않고 보관 — 되살리려면 page.tsx 에서 다시 import.

@@ -19,6 +19,7 @@
     "@types/katex": "^0.16.8",
     "katex": "^0.16.33",
     "next": "16.1.6",
+    "pdfjs-dist": "^4.10.38",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.1",
