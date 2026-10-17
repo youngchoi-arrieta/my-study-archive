@@ -3,8 +3,8 @@
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { readPdf, type PdfDraft } from '@/lib/pdfMeta'
-import { ensureTags, findByHash, saveDraft, type NoteTag } from '@/lib/notes'
-import TagChip from './TagChip'
+import { createTag, ensureTags, findByHash, saveDraft, toggleWithRule, type NoteTag } from '@/lib/notes'
+import TagPicker from './TagPicker'
 
 // PDF 끌어다 놓기 → 브라우저에서 읽어 카드 미리 채움 → 확인 후 저장
 // -------------------------------------------------------------------
@@ -20,18 +20,20 @@ interface Item {
   status: Status
   draft?: PdfDraft
   tagIds: string[]
-  newLabels: string[]       // 아직 없는 태그 — 저장할 때 만든다
-  tagInput: string
+  newLabels: string[]       // PDF 에 적혔지만 아직 없는 태그 — 저장할 때 만든다
   dupOf?: { id: string; title: string }
   savedId?: string
   error?: string
 }
 
 export default function UploadDrop({
-  tags, onSaved,
+  tags, onSaved, onTagsChanged, onEditTags, seriesOptions = [],
 }: {
   tags: NoteTag[]
   onSaved: () => void
+  onTagsChanged: () => void       // 새 태그를 만들었을 때 — 부모가 태그 목록을 다시 읽는다
+  onEditTags?: () => void
+  seriesOptions?: string[]
 }) {
   const [items, setItems] = useState<Item[]>([])
   const [over, setOver] = useState(false)
@@ -46,7 +48,7 @@ export default function UploadDrop({
     const list = Array.from(files)
     const fresh: Item[] = list.map(f => ({
       key: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(36).slice(2, 7)}`,
-      file: f, status: 'reading', tagIds: [], newLabels: [], tagInput: '',
+      file: f, status: 'reading', tagIds: [], newLabels: [],
     }))
     setItems(prev => [...fresh, ...prev])
 
@@ -85,7 +87,11 @@ export default function UploadDrop({
     patch(it.key, { status: 'saving', error: undefined })
     try {
       const created = await ensureTags(it.newLabels)
-      const id = await saveDraft(it.file, d, Array.from(new Set([...it.tagIds, ...created])))
+      if (created.length) onTagsChanged()
+      // 편집 중에 지워진 태그가 남아 있으면 빼고 저장
+      const alive = new Set(tags.map(t => t.id))
+      const ids = Array.from(new Set([...it.tagIds.filter(x => alive.has(x)), ...created]))
+      const id = await saveDraft(it.file, d, ids)
       patch(it.key, { status: 'saved', savedId: id, newLabels: [] })
       onSaved()
     } catch (e) {
@@ -97,12 +103,17 @@ export default function UploadDrop({
     }
   }
 
-  function addTagFromInput(it: Item) {
-    const v = it.tagInput.trim().replace(/^#/, '')
-    if (!v) return
-    const exist = tags.find(t => t.label.trim().toLowerCase() === v.toLowerCase())
-    if (exist) patch(it.key, { tagIds: it.tagIds.includes(exist.id) ? it.tagIds : [...it.tagIds, exist.id], tagInput: '' })
-    else patch(it.key, { newLabels: it.newLabels.includes(v) ? it.newLabels : [...it.newLabels, v], tagInput: '' })
+  // 새 태그는 그 자리에서 바로 만든다 → 모든 카드의 태그 줄에 곧바로 나타난다
+  async function addTag(key: string, label: string) {
+    try {
+      const t = await createTag(label)
+      onTagsChanged()
+      setItems(prev => prev.map(i => i.key === key && !i.tagIds.includes(t.id)
+        ? { ...i, tagIds: toggleWithRule(i.tagIds, t, [...tags, t]), error: undefined } : i))
+    } catch (e) {
+      const m = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : ''
+      patch(key, { error: `태그를 만들지 못했어요. ${m}` })
+    }
   }
 
   const ready = items.filter(i => i.status === 'ready')
@@ -128,6 +139,10 @@ export default function UploadDrop({
           onChange={e => { if (e.target.files?.length) accept(e.target.files); e.target.value = '' }}
         />
       </div>
+
+      <datalist id="notes-series-options">
+        {seriesOptions.map(x => <option key={x} value={x} />)}
+      </datalist>
 
       {items.length > 0 && (
         <div className="flex items-center justify-between">
@@ -188,7 +203,7 @@ export default function UploadDrop({
                   onChange={e => patchDraft(it.key, { madeOn: e.target.value })}
                   className="bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs outline-none" aria-label="날짜" />
                 <input value={it.draft.series} onChange={e => patchDraft(it.key, { series: e.target.value })}
-                  placeholder="시리즈 (선택)"
+                  placeholder="시리즈 (선택)" list="notes-series-options"
                   className="bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs outline-none placeholder:text-gray-700" />
                 <label className="flex items-center gap-1 bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 text-xs text-gray-500">
                   v<input type="number" min={1} value={it.draft.ver}
@@ -201,22 +216,16 @@ export default function UploadDrop({
                 rows={3} placeholder="요지 (선택)"
                 className="w-full bg-gray-950 border border-gray-800 focus:border-gray-600 rounded-lg px-3 py-1.5 text-xs outline-none resize-y placeholder:text-gray-700" />
 
-              <div className="flex flex-wrap gap-1.5 items-center">
-                {tags.map(t => {
-                  const on = it.tagIds.includes(t.id)
-                  return <TagChip key={t.id} label={t.label} color={t.color} on={on}
-                    onClick={() => patch(it.key, { tagIds: on ? it.tagIds.filter(x => x !== t.id) : [...it.tagIds, t.id] })} />
-                })}
-                {it.newLabels.map(l => (
-                  <TagChip key={`new-${l}`} label={l} color="#E0B341" pending title="새 태그 — 저장할 때 만들어져요. 누르면 빼기"
-                    onClick={() => patch(it.key, { newLabels: it.newLabels.filter(x => x !== l) })} />
-                ))}
-                <input value={it.tagInput}
-                  onChange={e => patch(it.key, { tagInput: e.target.value })}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); addTagFromInput(it) } }}
-                  placeholder="+ 태그"
-                  className="w-24 bg-transparent border-b border-gray-800 focus:border-gray-600 px-1 py-0.5 text-[11px] outline-none placeholder:text-gray-600" />
-              </div>
+              <TagPicker
+                tags={tags}
+                selected={it.tagIds}
+                onToggle={t => patch(it.key, { tagIds: toggleWithRule(it.tagIds, t, tags) })}
+                onAdd={l => addTag(it.key, l)}
+                pendingLabels={it.newLabels}
+                onRemovePending={l => patch(it.key, { newLabels: it.newLabels.filter(x => x !== l) })}
+                onEditTags={onEditTags}
+                disabled={it.status === 'saving'}
+              />
 
               {it.draft.scope === 'company' && (
                 <p className="text-[10px] text-amber-300/80">회사자료 노트 — PDF 파일과 본문은 올리지 않고, 제목·요지·태그 카드만 남겨요. 원본은 내 컴퓨터에 보관하세요.</p>

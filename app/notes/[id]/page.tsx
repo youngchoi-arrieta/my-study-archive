@@ -5,9 +5,9 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
   createTag, deleteNote, fetchNote, fetchNotes, fetchTags, removeWidget, signedNoteUrl,
-  toggleNoteTag, updateNote, uploadWidget, type Note, type NoteTag,
+  setNoteTags, toggleWithRule, updateNote, uploadWidget, type Note, type NoteTag,
 } from '@/lib/notes'
-import TagChip from '../_components/TagChip'
+import TagPicker from '../_components/TagPicker'
 import NoteCard from '../_components/NoteCard'
 import WidgetFrame from '../_components/WidgetFrame'
 
@@ -27,7 +27,6 @@ export default function NotePage() {
   const [missing, setMissing] = useState(false)
   const [edit, setEdit] = useState(false)
   const [form, setForm] = useState({ title: '', made_on: '', series: '', ver: 1, summary: '' })
-  const [tagInput, setTagInput] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [widgetRev, setWidgetRev] = useState(0)
@@ -76,22 +75,22 @@ export default function NotePage() {
     try { await fn() } catch (e) { setErr(msg(e)); load() } finally { setBusy(false) }
   }
 
-  const toggle = (tagId: string) => note && run(async () => {
-    const on = !note.tagIds.includes(tagId)
-    setNote({ ...note, tagIds: on ? [...note.tagIds, tagId] : note.tagIds.filter(x => x !== tagId) })
-    await toggleNoteTag(note.id, tagId, on)
+  // 성격 태그는 하나만 — 바꾸면 이전 성격 태그가 떨어지므로 목록째 저장한다
+  const toggle = (t: NoteTag) => note && run(async () => {
+    const next = toggleWithRule(note.tagIds, t, tags)
+    setNote({ ...note, tagIds: next })
+    await setNoteTags(note.id, next)
   })
 
-  const addTag = () => note && run(async () => {
-    const v = tagInput.trim().replace(/^#/, '')
-    if (!v) return
-    const t = await createTag(v)
-    if (!tags.some(x => x.id === t.id)) setTags(prev => [...prev, t])
+  const addTag = (label: string) => note && run(async () => {
+    const t = await createTag(label)
+    const all = tags.some(x => x.id === t.id) ? tags : [...tags, t]
+    setTags(all)
     if (!note.tagIds.includes(t.id)) {
-      await toggleNoteTag(note.id, t.id, true)
-      setNote({ ...note, tagIds: [...note.tagIds, t.id] })
+      const next = toggleWithRule(note.tagIds, t, all)
+      setNote({ ...note, tagIds: next })
+      await setNoteTags(note.id, next)
     }
-    setTagInput('')
   })
 
   const saveMeta = () => {
@@ -175,16 +174,8 @@ export default function NotePage() {
         )}
 
         {/* 태그 — 눌러서 붙이고 떼기 */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {tags.map(t => (
-            <TagChip key={t.id} label={t.label} color={t.color} on={note.tagIds.includes(t.id)} onClick={() => toggle(t.id)}
-              title={note.tagIds.includes(t.id) ? '눌러서 떼기' : '눌러서 붙이기'} />
-          ))}
-          <input value={tagInput} onChange={e => setTagInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) addTag() }}
-            placeholder="+ 새 태그"
-            className="w-24 bg-transparent border-b border-gray-800 focus:border-gray-600 px-1 py-0.5 text-[11px] outline-none placeholder:text-gray-600" />
-        </div>
+        <TagPicker tags={tags} selected={note.tagIds} onToggle={t => { toggle(t) }} onAdd={l => { addTag(l) }} disabled={busy}
+          onEditTags={() => router.push('/notes?edit=tags')} />
 
         {err && <p className="text-xs text-red-400">{err}</p>}
 

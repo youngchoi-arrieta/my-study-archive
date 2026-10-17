@@ -1,9 +1,9 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { fetchNotes, fetchTags, NOTES_EVENT, type Note, type NoteTag } from '@/lib/notes'
+import { fetchNotes, fetchTags, NOTES_EVENT, sortTags, type Note, type NoteTag } from '@/lib/notes'
 import UploadDrop from './_components/UploadDrop'
 import TagManager from './_components/TagManager'
 import NoteCard from './_components/NoteCard'
@@ -39,10 +39,11 @@ function Shelf() {
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   const [view, setView] = useState<View>('date')
-  const [editTags, setEditTags] = useState(false)
+  const [editTags, setEditTags] = useState(() => params.get('edit') === 'tags')
   const [showUpload, setShowUpload] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+  const tagBoxRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { const t = setTimeout(() => setDebounced(q), 300); return () => clearTimeout(t) }, [q])
 
@@ -70,6 +71,12 @@ function Shelf() {
     allNotes.forEach(n => n.tagIds.forEach(id => { c[id] = (c[id] ?? 0) + 1 }))
     return c
   }, [allNotes])
+  const seriesOptions = useMemo(() =>
+    [...new Set(allNotes.map(n => n.series).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, 'ko')), [allNotes])
+  const openTagEditor = () => {
+    setEditTags(true)
+    setTimeout(() => tagBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   const untaggedCount = useMemo(() => allNotes.filter(n => !n.tagIds.length).length, [allNotes])
 
   const setSelected = (ids: string[]) => {
@@ -131,7 +138,8 @@ function Shelf() {
 
         {(showUpload || (!loading && !allNotes.length && !err)) && (
           <div className="mb-5">
-            <UploadDrop tags={tags} onSaved={() => { loadTags(); loadAll() }} />
+            <UploadDrop tags={tags} onSaved={() => { loadTags(); loadAll() }} onTagsChanged={loadTags}
+              onEditTags={openTagEditor} seriesOptions={seriesOptions} />
           </div>
         )}
 
@@ -141,15 +149,19 @@ function Shelf() {
           className="w-full bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none mb-3 placeholder:text-gray-600" />
 
         {/* 태그 */}
+        <div ref={tagBoxRef} className="scroll-mt-4" />
         {editTags ? (
           <div className="mb-4">
             <TagManager tags={tags} counts={counts} onChanged={() => { loadTags(); loadAll() }} onClose={() => setEditTags(false)} />
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-1.5 mb-4">
-            {tags.map(t => (
-              <TagChip key={t.id} label={t.label} color={t.color} on={selected.includes(t.id)}
-                count={counts[t.id] ?? 0} onClick={() => toggleTag(t.id)} />
+            {sortTags(tags).map((t, i, arr) => (
+              <span key={t.id} className="contents">
+                {i > 0 && arr[i - 1].grp !== t.grp && <span className="w-px h-4 bg-gray-800 mx-0.5" aria-hidden />}
+                <TagChip label={t.label} color={t.color} on={selected.includes(t.id)}
+                  count={counts[t.id] ?? 0} onClick={() => toggleTag(t.id)} />
+              </span>
             ))}
             {untaggedCount > 0 && (
               <TagChip label="태그 없음" color="#94A3B8" on={selected.includes('none')} count={untaggedCount}
@@ -158,7 +170,7 @@ function Shelf() {
             {selected.length > 0 && (
               <button onClick={() => setSelected([])} className="text-[11px] text-gray-500 hover:text-gray-300 px-1">필터 지우기</button>
             )}
-            <button onClick={() => setEditTags(true)} className="text-[11px] text-gray-600 hover:text-gray-300 ml-auto">✎ 태그 편집</button>
+            <button onClick={openTagEditor} className="text-[11px] text-gray-500 hover:text-gray-300 ml-auto">✎ 태그 편집·삭제</button>
           </div>
         )}
 

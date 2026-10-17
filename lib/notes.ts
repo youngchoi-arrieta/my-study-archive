@@ -11,11 +11,47 @@ export const NOTES_EVENT = 'notes:changed'
 
 export type Scope = 'personal' | 'company'
 
+export type TagGroup = 'type' | 'topic'
+
 export interface NoteTag {
   id: string
   label: string
   color: string
   sort_order: number
+  grp: TagGroup | null      // 성격(하나만) · 주제(여러 개) · 기타(null)
+}
+
+// 태그 묶음 — 서가·업로드·노트 화면이 같은 순서로 보여준다
+export const TAG_GROUPS: { key: TagGroup | null; label: string; hint: string }[] = [
+  { key: 'type', label: '성격', hint: '하나만' },
+  { key: 'topic', label: '주제', hint: '여러 개' },
+  { key: null, label: '기타', hint: '' },
+]
+const grpRank = (g: TagGroup | null) => (g === 'type' ? 0 : g === 'topic' ? 1 : 2)
+export const sortTags = (ts: NoteTag[]) =>
+  [...ts].sort((a, b) => grpRank(a.grp) - grpRank(b.grp) || a.sort_order - b.sort_order)
+
+// 추천 태그셋 — 「태그 편집 → 추천 태그셋 채우기」와 notes_tags_v2_migration.sql 이 같은 목록을 쓴다
+export const RECOMMENDED_TAGS: { label: string; grp: TagGroup; color: string }[] = [
+  { label: '통찰', grp: 'type', color: '#F0997B' },
+  { label: '로드맵', grp: 'type', color: '#85B7EB' },
+  { label: '분석', grp: 'type', color: '#A78BFA' },
+  { label: '설계', grp: 'type', color: '#34D399' },
+  { label: '도구', grp: 'type', color: '#E0B341' },
+  { label: '문헌', grp: 'type', color: '#94A3B8' },
+  { label: '조직', grp: 'topic', color: '#F472B6' },
+  { label: '배전망ESS', grp: 'topic', color: '#5DCAA5' },
+  { label: '테스트벤치', grp: 'topic', color: '#85B7EB' },
+  { label: 'KERI알고리즘', grp: 'topic', color: '#A78BFA' },
+  { label: '마이크로그리드·인버터', grp: 'topic', color: '#E0B341' },
+]
+
+// 성격 태그는 하나만 — 켜면 다른 성격 태그는 떨어진다
+export function toggleWithRule(tagIds: string[], tag: NoteTag, tags: NoteTag[]): string[] {
+  if (tagIds.includes(tag.id)) return tagIds.filter(x => x !== tag.id)
+  if (tag.grp !== 'type') return [...tagIds, tag.id]
+  const typeIds = new Set(tags.filter(t => t.grp === 'type').map(t => t.id))
+  return [...tagIds.filter(x => !typeIds.has(x)), tag.id]
 }
 
 export interface Note {
@@ -54,36 +90,66 @@ function changed() {
 }
 
 // ── 태그 ───────────────────────────────────────────────────────────
+// grp 열은 notes_tags_v2_migration.sql 에서 생긴다. 아직 안 돌렸어도 서가가 깨지지 않게 한 번 물러선다.
+let hasGrp = true
+const TAG_COLS = () => (hasGrp ? 'id,label,color,sort_order,grp' : 'id,label,color,sort_order')
+const missingGrp = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === '42703' || e.code === 'PGRST204' || /grp/.test(e.message ?? ''))
+
 export async function fetchTags(): Promise<NoteTag[]> {
-  const { data, error } = await supabase.from('note_tags').select('id,label,color,sort_order')
-    .order('sort_order').order('created_at')
-  if (error) throw error
-  return data ?? []
+  let r = await supabase.from('note_tags').select(TAG_COLS()).order('sort_order').order('created_at')
+  if (r.error && hasGrp && missingGrp(r.error)) {
+    hasGrp = false
+    r = await supabase.from('note_tags').select(TAG_COLS()).order('sort_order').order('created_at')
+  }
+  if (r.error) throw r.error
+  const rows = (r.data ?? []) as unknown as (Omit<NoteTag, 'grp'> & { grp?: TagGroup | null })[]
+  return rows.map(t => ({ ...t, grp: t.grp ?? null }))
 }
 
-export async function createTag(label: string, color?: string): Promise<NoteTag> {
+export const tagsNeedMigration = () => !hasGrp
+
+export async function createTag(label: string, opts: { color?: string; grp?: TagGroup | null } = {}): Promise<NoteTag> {
   const tags = await fetchTags()
   const exist = tags.find(t => norm(t.label) === norm(label))
   if (exist) return exist
-  const { data, error } = await supabase.from('note_tags').insert({
+  const row: Record<string, unknown> = {
     label: label.trim(),
-    color: color ?? TAG_COLORS[tags.length % TAG_COLORS.length],
+    color: opts.color ?? TAG_COLORS[tags.length % TAG_COLORS.length],
     sort_order: tags.length ? Math.max(...tags.map(t => t.sort_order)) + 1 : 0,
-  }).select('id,label,color,sort_order').single()
+  }
+  if (hasGrp) row.grp = opts.grp ?? null
+  const { data, error } = await supabase.from('note_tags').insert(row).select(TAG_COLS()).single()
   if (error) throw error
-  return data
+  if (!data) throw new Error('태그를 만들지 못했어요. 로그인 상태를 확인해 주세요.')
+  const t = data as unknown as Omit<NoteTag, 'grp'> & { grp?: TagGroup | null }
+  return { ...t, grp: t.grp ?? null }
 }
 
-export async function updateTag(id: string, patch: Partial<Pick<NoteTag, 'label' | 'color' | 'sort_order'>>) {
-  const p = { ...patch, ...(patch.label !== undefined ? { label: patch.label.trim() } : {}) }
-  const { error } = await supabase.from('note_tags').update(p).eq('id', id)
+export async function updateTag(id: string, patch: Partial<Pick<NoteTag, 'label' | 'color' | 'sort_order' | 'grp'>>) {
+  const p: Record<string, unknown> = { ...patch }
+  if (patch.label !== undefined) p.label = patch.label.trim()
+  if (!hasGrp) delete p.grp
+  if (!Object.keys(p).length) return
+  const { data, error } = await supabase.from('note_tags').update(p).eq('id', id).select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('태그를 바꾸지 못했어요. 로그인 상태를 확인해 주세요.')
 }
 
-// 태그를 지워도 노트는 남는다 (연결만 사라짐)
+// 태그를 지워도 노트는 남는다 (연결만 사라짐).
+// RLS 로 막히면 오류 없이 0행이 지워지므로, 지워진 행을 돌려받아 확인한다.
 export async function deleteTag(id: string) {
-  const { error } = await supabase.from('note_tags').delete().eq('id', id)
+  const { data, error } = await supabase.from('note_tags').delete().eq('id', id).select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('태그를 지우지 못했어요. 로그인 상태를 확인하거나 notes_tags_v2_migration.sql 을 실행해 주세요.')
+}
+
+// 추천 태그셋 채우기 — 없는 것만 만들고, 이미 있는 같은 이름 태그는 묶음(grp)만 맞춘다
+export async function seedRecommendedTags() {
+  for (const r of RECOMMENDED_TAGS) {
+    const t = await createTag(r.label, { color: r.color, grp: r.grp })
+    if (hasGrp && t.grp !== r.grp) await updateTag(t.id, { grp: r.grp })
+  }
 }
 
 // 위/아래로 한 칸 — 정렬 순서를 0..n 으로 다시 매긴다

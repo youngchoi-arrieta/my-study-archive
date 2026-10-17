@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import type { Note, NoteTag } from '@/lib/notes'
+import { sortTags, type Note, type NoteTag } from '@/lib/notes'
 import TagChip from './TagChip'
 
 // 서가의 노트 한 권
@@ -13,8 +13,7 @@ export default function NoteCard({
   onTagClick?: (tagId: string) => void
   compact?: boolean
 }) {
-  const tags = note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t)
-    .sort((a, b) => a.sort_order - b.sort_order)
+  const tags = sortTags(note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t))
 
   return (
     <div className="bg-gray-900 hover:bg-gray-800/80 rounded-2xl px-4 py-3.5 transition group">
