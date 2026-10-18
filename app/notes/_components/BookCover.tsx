@@ -3,19 +3,20 @@
 import { sortTags, type Note, type NoteTag } from '@/lib/notes'
 
 // 책장 보기의 노트 한 권 — 세로로 선 책 표지.
-// 표지색 = 성격 태그 색(없으면 회색). 왼쪽 띠는 책등.
-// 아래 작은 점들 = 주제 태그 색. 눌러도 페이지를 떠나지 않고 옆에서 펼친다.
+// 표지색 = 꽂힌 선반의 태그 색(없으면 회색). 왼쪽 띠는 책등.
+// 아래 작은 점들 = 그 밖에 붙은 태그 색 (그 선반에도 같은 책이 꽂혀 있다).
 export default function BookCover({
-  note, tagMap, active, onOpen,
+  note, tagMap, active, onOpen, shelfTagId,
 }: {
   note: Note
   tagMap: Map<string, NoteTag>
   active: boolean
   onOpen: () => void
+  shelfTagId?: string          // 이 책이 꽂힌 선반의 태그 — 표지색은 선반을 따르고, 점은 나머지 태그
 }) {
   const tags = sortTags(note.tagIds.map(id => tagMap.get(id)).filter((t): t is NoteTag => !!t))
-  const type = tags[0]
-  const topics = tags.slice(1)
+  const type = (shelfTagId && tags.find(t => t.id === shelfTagId)) || tags[0]
+  const topics = tags.filter(t => t.id !== type?.id)
   const base = type?.color ?? '#64748B'
 
   return (

@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { fetchNotes, fetchTags, NOTES_EVENT, sortTags, type Note, type NoteTag } from '@/lib/notes'
+import { fetchNotes, fetchTags, moveTagTo, NOTES_EVENT, sortTags, type Note, type NoteTag } from '@/lib/notes'
 import UploadDrop from './_components/UploadDrop'
 import TagManager from './_components/TagManager'
 import TagChip from './_components/TagChip'
@@ -102,23 +102,34 @@ function Shelf() {
     return notes.filter(n => selected.every(id => n.tagIds.includes(id)))
   }, [notes, selected])
 
-  // 책장: 태그 하나당 선반 하나. 노트는 붙은 태그 중 맨 위 순서(태그 편집의 ↑↓) 태그 선반에 꽂힌다.
-  // 태그가 없는 노트는 맨 아래 「태그 없음」 선반
+  // 책장: 태그 하나당 선반 하나. 태그가 여러 개인 노트는 그 태그 선반마다 꽂힌다.
+  // 선반 순서 = 태그 순서 (선반 머리의 ↑↓ 또는 태그 편집). 태그가 없는 노트는 맨 아래 「태그 없음」 선반
   const shelves = useMemo(() => {
     const ordered = sortTags(tags)
-    const rank = new Map(ordered.map((t, i) => [t.id, i]))
-    const m = new Map<string, Note[]>()
-    for (const n of visible) {
-      const first = [...n.tagIds].filter(id => rank.has(id)).sort((a, b) => rank.get(a)! - rank.get(b)!)[0] ?? ''
-      ;(m.get(first) ?? m.set(first, []).get(first)!).push(n)
-    }
     const out: { key: string; label: string; color: string; notes: Note[] }[] = []
-    ordered.forEach(t => { const ns = m.get(t.id); if (ns?.length) out.push({ key: t.id, label: t.label, color: t.color, notes: ns }) })
-    const rest = m.get('')
-    if (rest?.length) out.push({ key: '', label: '태그 없음', color: '#64748B', notes: rest })
-    out.forEach(s => s.notes.sort((a, b) => b.made_on.localeCompare(a.made_on)))
+    ordered.forEach(t => {
+      const ns = visible.filter(n => n.tagIds.includes(t.id))
+      if (ns.length) out.push({ key: t.id, label: t.label, color: t.color, notes: ns })
+    })
+    const known = new Set(ordered.map(t => t.id))
+    const rest = visible.filter(n => !n.tagIds.some(id => known.has(id)))
+    if (rest.length) out.push({ key: '', label: '태그 없음', color: '#64748B', notes: rest })
+    out.forEach(sh => { sh.notes = [...sh.notes].sort((a, b) => b.made_on.localeCompare(a.made_on)) })
     return out
   }, [visible, tags])
+
+  // 선반 한 칸 위/아래 — 보이는 이웃 선반의 자리로 태그를 옮긴다
+  const [shelfBusy, setShelfBusy] = useState(false)
+  const moveShelf = async (idx: number, dir: -1 | 1) => {
+    const me = shelves[idx], nb = shelves[idx + dir]
+    if (!me?.key || !nb?.key) return
+    const ordered = sortTags(tags)
+    const to = ordered.findIndex(t => t.id === nb.key)
+    setShelfBusy(true)
+    try { await moveTagTo(tags, me.key, to); await loadTags() }
+    catch (e) { setErr(String((e as { message?: string })?.message ?? e)) }
+    finally { setShelfBusy(false) }
+  }
 
   const opened = useMemo(() => (openId ? allNotes.find(n => n.id === openId) ?? notes.find(n => n.id === openId) ?? null : null), [openId, allNotes, notes])
   const toggleOpen = (id: string) => setOpenId(cur => (cur === id ? null : id))
@@ -223,7 +234,7 @@ function Shelf() {
             </p>
           ) : view === 'shelf' ? (
             <div className="space-y-7">
-              {shelves.map(sh => (
+              {shelves.map((sh, si) => (
                 <section key={sh.key || '_'}>
                   <div className="flex items-center gap-2 rounded-t-lg px-3 py-1.5"
                     style={{ background: `linear-gradient(90deg, ${sh.color}40, ${sh.color}10)` }}>
@@ -231,13 +242,19 @@ function Shelf() {
                     <span className="text-sm font-semibold" style={{ color: sh.color }}>{sh.label}</span>
                     <span className="text-[11px] text-white/40">{sh.notes.length}권</span>
                     {sh.key && (
-                      <button onClick={() => setSelected([sh.key])} className="ml-auto text-[10px] text-white/40 hover:text-white/80">이 선반만 →</button>
+                      <span className="ml-auto flex items-center gap-1">
+                        <button onClick={() => moveShelf(si, -1)} disabled={shelfBusy || si === 0 || !shelves[si - 1]?.key}
+                          className="text-xs text-white/40 hover:text-white disabled:opacity-20 px-1.5" aria-label="선반 위로" title="선반 위로">↑</button>
+                        <button onClick={() => moveShelf(si, 1)} disabled={shelfBusy || !shelves[si + 1]?.key}
+                          className="text-xs text-white/40 hover:text-white disabled:opacity-20 px-1.5" aria-label="선반 아래로" title="선반 아래로">↓</button>
+                        <button onClick={() => setSelected([sh.key])} className="text-[10px] text-white/40 hover:text-white/80 ml-1">이 선반만 →</button>
+                      </span>
                     )}
                   </div>
                   <div className="bg-gray-900/70 border-x border-gray-800 px-4 pt-5 pb-3">
                     <div className="flex flex-wrap gap-3">
                       {sh.notes.map(n => (
-                        <BookCover key={n.id} note={n} tagMap={tagMap} active={openId === n.id} onOpen={() => toggleOpen(n.id)} />
+                        <BookCover key={n.id} note={n} tagMap={tagMap} shelfTagId={sh.key || undefined} active={openId === n.id} onOpen={() => toggleOpen(n.id)} />
                       ))}
                     </div>
                   </div>
@@ -262,7 +279,8 @@ function Shelf() {
       </div>
 
       {opened && (
-        <ReaderPanel note={opened} tagMap={tagMap} onClose={() => setOpenId(null)}
+        <ReaderPanel note={opened} tagMap={tagMap} tags={tags} onClose={() => setOpenId(null)}
+          onDeleted={() => { setOpenId(null); loadAll() }}
           onTagClick={id => { setSelected([id]) }} />
       )}
       </div>

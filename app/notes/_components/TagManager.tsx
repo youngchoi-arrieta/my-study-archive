@@ -68,7 +68,7 @@ export default function TagManager({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-gray-300 font-semibold">태그 편집</p>
-          <p className="text-[10px] text-gray-600 mt-0.5">위에 있을수록 중요 · 끌어서 옮기거나 ⤒ 로 맨 위로 · 노트는 맨 위 순서 태그의 선반에 꽂혀요</p>
+          <p className="text-[10px] text-gray-600 mt-0.5">위에 있을수록 중요 · 끌어서 옮기거나 ⤒ 로 맨 위로 · 선반도 이 순서로 놓여요</p>
         </div>
         <button onClick={onClose} className="text-[11px] text-gray-500 hover:text-gray-300 shrink-0">완료</button>
       </div>
