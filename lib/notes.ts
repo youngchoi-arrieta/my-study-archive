@@ -212,6 +212,10 @@ export async function findByHash(hash: string): Promise<Pick<Note, 'id' | 'title
   return data ?? null
 }
 
+// PDF 에서 뽑은 글자에 섞인 NUL(\u0000)은 Postgres 가 받지 않는다
+// ("unsupported Unicode escape sequence") → 저장 전에 지운다
+const nul = (s: string) => s.replace(/\u0000/g, '')
+
 // ── 저장 ───────────────────────────────────────────────────────────
 // personal → PDF 를 비공개 버킷에 올리고 카드 저장
 // company  → 파일은 올리지 않고 카드(제목·요지·태그)만 저장
@@ -228,9 +232,9 @@ export async function saveDraft(file: File, d: PdfDraft, tagIds: string[]): Prom
 
   const { error } = await supabase.from('notes').insert({
     id,
-    title: d.title.trim() || file.name,
+    title: nul(d.title).trim() || file.name,
     made_on: d.madeOn,
-    summary: d.summary.trim() || null,
+    summary: nul(d.summary).trim() || null,
     series: d.series.trim() || null,
     ver: d.ver || 1,
     scope: d.scope,
@@ -239,7 +243,7 @@ export async function saveDraft(file: File, d: PdfDraft, tagIds: string[]): Prom
     file_hash: d.fileHash,
     pages: d.pages,
     // company 노트는 본문도 남기지 않는다 — 카드만
-    body_text: d.scope === 'personal' ? d.bodyText : null,
+    body_text: d.scope === 'personal' ? nul(d.bodyText) : null,
   })
   if (error) {
     if (pdfPath) await supabase.storage.from(NOTES_BUCKET).remove([pdfPath])
