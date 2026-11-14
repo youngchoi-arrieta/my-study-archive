@@ -11,6 +11,7 @@ import ShelfBlock from './_components/ShelfBlock'
 //
 //   오늘     → 한 줄 입력 · 기록함 · 다가오는 마감 · 안 끝난 지시
 //   서가     → 최근 노트 + 태그 바로가기  (/notes)
+//   병기고   → MIL·SIL Lab 기체 보관 · 소화 · 출고 (/armory)  — 2026-11
 //
 // 3축(채용·자격증·포트폴리오)으로 정리한다. 시험 나열은 홈에서
 // 걷어내 「자격증」문 안으로 접어넣었다. 우선순위·마감처럼 어느 축에도
@@ -120,6 +121,17 @@ export default function Home() {
                 <p className="text-[11px] text-amber-200/60 leading-snug">마감 타임라인(간트) · 3층 우선순위 보드 — 항상 체크</p>
               </div>
               <span className="text-amber-500/50 text-sm shrink-0">→</span>
+            </div>
+          </Link>
+          <Link href="/armory"
+            className="block bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-2xl px-5 py-4 transition">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🛡</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-blue-300 leading-tight">병기고</p>
+                <p className="text-[11px] text-blue-200/60 leading-snug">MIL·SIL Lab 기체 보관 — HTML · 소스 zip · 제1원리 노트 한 번에 입고, 소화 후 출고</p>
+              </div>
+              <span className="text-blue-500/50 text-sm shrink-0">→</span>
             </div>
           </Link>
           <Link href="/dashboard/company"
